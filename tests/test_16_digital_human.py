@@ -9,6 +9,8 @@ test_16_digital_human — aichat-hub Cycle 16 数字虚拟人模块测试
   4. create_digital_human(从预设 / 自定义)
   5. 状态切换 + 表情触发 + 动作
   6. 表情自动检测(detect_expression_from_text)
+"""
+import time
   7. 内存 session 存储
   8. 渲染元数据(沙箱友好)
   9. CLI 入口

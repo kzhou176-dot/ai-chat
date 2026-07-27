@@ -8,6 +8,10 @@ test_27_desktop.py — desktop_app 单元测试
 - 历史持久化
 - 设置持久化
 - 状态/统计
+
+注:tkinter 需要 $DISPLAY(Linux 桌面环境)。
+- macOS / Windows 桌面:正常跑
+- Linux CI / headless:用 Xvfb 或 skip
 """
 import os
 import sys
@@ -20,6 +24,25 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 SCRIPTS = os.path.join(ROOT, "scripts")
 sys.path.insert(0, SCRIPTS)
+
+# 检查 tkinter 是否可用(无 DISPLAY 时 skip 全部)
+def _tkinter_available() -> bool:
+    try:
+        import tkinter
+        # 探测是否能创建 root
+        r = tkinter.Tk()
+        r.withdraw()
+        r.destroy()
+        return True
+    except Exception:
+        return False
+
+_SKIP_DESKTOP = not _tkinter_available()
+_SKIP_REASON = "tkinter needs $DISPLAY (Linux CI/headless) — install Xvfb or run on desktop"
+
+import pytest  # noqa: E402
+if _SKIP_DESKTOP:
+    pytest.skip(_SKIP_REASON, allow_module_level=True)
 
 # 用临时目录作为 home(避免污染真实 ~/Library)
 _test_home = tempfile.mkdtemp(prefix="aichat-test-")

@@ -8,6 +8,8 @@ test_18_prompt_templates — aichat-hub Cycle 18 Prompt 模板库测试
   3. 30+ 模板(跨 7 模块)
   4. PromptLibrary(get / list / search / render / add / remove)
   5. 模板渲染(str.format_map 变量替换)
+"""
+import re
   6. 关键词搜索(按 name/content/tags/category 评分)
   7. 动态添加/删除
   8. 各分类统计
