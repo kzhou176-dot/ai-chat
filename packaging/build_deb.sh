@@ -91,7 +91,7 @@ if [ "$ARCH" != "all" ]; then
 fi
 
 # 3. 打包
-BUILD_TMP="$(mktemp -d -t aichat-deb)"
+BUILD_TMP="$(mktemp -d -t aichat-deb.XXXXXX)"
 trap "rm -rf $BUILD_TMP" EXIT
 
 # 3a. debian-binary
