@@ -68,6 +68,7 @@ logs/
 
 # 本地 CI 日志(debug 用,不入仓)
 .ci-logs/
+.ci-logs2/
 
 # 用户专属(应用数据)
 .history/
