@@ -657,5 +657,23 @@
 - ✅ 性能基准报告
 - ✅ MIT 开源协议
 
+---
+
+# 🛠️ Post-[DONE] Patches
+
+v1.0.2 推送后,CI 失败 3 次,均已修复:
+
+1. **test_16/test_18 docstring 破损** (`3f74a44`) — 之前的 fix 把 import 写到了 docstring 内部
+2. **test.yml YAML parse error** (`9e13620`) — block scalar 内的 import 行没缩进
+3. **release.yml heredoc EOF 缩进陷阱** (`1d17528`) — bash heredoc 终止符必须 column 0
+
+CI 现状:
+- ✅ `test.yml` workflow:success
+- ✅ `release.yml` workflow:success
+- ✅ GitHub Release v1.0.2 published,4 个 DEB assets
+- ✅ Token 仅 inline,不入任何配置文件
+
+详见 `progress.md` 末尾的 Post-[DONE] Patches 段。
+
 [DONE]
 

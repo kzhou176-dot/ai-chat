@@ -1960,3 +1960,75 @@
 
 项目状态:**可投稿 / 可演示 / 可生产部署**。
 
+---
+
+# 🛠️ Post-[DONE] Patches (CI 修复)
+
+v1.0.2 推送后,CI 一直 fail,根因 3 个连续 bug,逐一修复。
+
+## Bug 1: test_16/test_18 docstring 破损 (commit `df8713d` 引入)
+
+**症状**:CI Linux 跑 `pytest tests/ -v` 时,test_16_digital_human.py 和 test_18_prompt_templates.py 报 `IndentationError`。
+
+**根因**:`df8713d fix(CI): missing imports` 提交里用 `edit` 加 `import time` / `import re` 时,old_string 没匹配正确,导致 import 被插入到了 docstring 内部(line 13),docstring 没正常闭合,后续 `7. 内存 session 存储` 等内容变成 syntax error。
+
+**修复** (commit `3f74a44`):把整个 docstring 重写干净,import 移到正常的 imports block 内。验证 94/94 pass。
+
+## Bug 2: test.yml YAML parse error
+
+**症状**:每次 push 后 CI run 都是 `created == updated == started`(1 秒内),`conclusion: failure`,`jobs: []`。
+
+**根因**:`.github/workflows/test.yml` 的 `Import smoke test` 步骤里,`run: |` block scalar 缩进是 10 空格,但 `import web` / `import persona` / `print(...)` 这些行**没缩进**。YAML parser 在 line 79 看到 `import` 就认为 block scalar 结束,报 `ScannerError: while scanning a simple key ... could not find expected ':'`。整个 workflow 启动失败,所有 job 都没创建。
+
+**修复** (commit `9e13620`):把多行 `python3 -c "..."` 折叠成单行 `python3 -c "import a, b, c; print(...)"`,完全消除缩进问题。YAML 解析过,`jobs: ['test', 'lint']`。
+
+## Bug 3: release.yml heredoc EOF 缩进陷阱
+
+**症状**:`Extract CHANGELOG section` step 失败:
+```
+shell: /usr/bin/bash -e {0}
+... shell-init ...
+warning: here-document at line 2 delimited by end-of-file (wanted `EOF')
+  File "<stdin>", line 10
+    cat RELEASE_BODY.md
+        ^^^^^^^^^^^^
+SyntaxError: invalid syntax
+```
+
+**根因**:在 YAML block scalar (`run: |`) 里写的 `python3 - <<EOF ... EOF > RELEASE_BODY.md`,所有行被 10 空格缩进。bash heredoc 终止符 `EOF` **必须**在 column 0,10 空格缩进后 bash 不认,继续读 stdin,`cat RELEASE_BODY.md` 也被吃进 stdin,Python 把它当代码执行 → SyntaxError。
+
+**修复** (commit `1d17528`):改用 `VERSION=... python3 -c "..."` 单行形式,通过 `os.environ['VERSION']` 在 Python 内部读取,完全避免 heredoc。
+
+## 最终结果
+
+- ✅ `test.yml` workflow:success (3 commits 修复后)
+- ✅ `release.yml` workflow:success (1 commit 修复后)
+- ✅ GitHub Release v1.0.2 已发布,4 个 DEB assets:
+  - `aichat-hub_1.0.2_all.deb` (292K)
+  - `aichat-hub_1.0.2_amd64.deb` (292K)
+  - `aichat-hub_1.0.2_arm64.deb` (292K)
+  - `aichat-hub_1.0.2_armhf.deb` (292K)
+- ✅ macOS 本地:839/839 tests pass
+- ✅ Token `ghp_FOok...` 只在 inline URL,不入 `.git/config` / `.git-credentials` / git history
+
+## Commit 链 (1d17528 最新 →)
+
+```
+1d17528  fix(release): use python -c with env var, avoid heredoc EOF indent trap
+9e13620  fix(CI): test.yml YAML parse error (unindented imports inside block scalar)
+3f74a44  fix(CI): repair botched docstring+imports in test_16/test_18 + untrack .ci-logs2
+df8713d  fix(CI): missing imports + desktop test headless skip (← 引入 botched docstring)
+3eec1ab  fix(persona): correct Path handling (use parent.parent, not str())
+0b3c11f  fix: replace hardcoded paths with Path(__file__).parent.parent
+12fbd8e  fix(packaging): mktemp template needs at least 3 X's (CI was failing)
+058e0ab  Add GitHub admin operations manual + CI/CD + PR/Issue templates
+19f76d1  Initial commit: aichat-hub v1.0.2
+```
+
+## 经验教训
+
+1. **botched edit 会传染** — 一个 `edit` 调用没匹配好,后续所有基于它的 fix 都是修补上一个 fix,容易越修越烂。这次连续 3 个 commit 都是修复前一个 commit 引入的回归。
+2. **YAML block scalar (`|`) 的缩进是金科玉律** — 多行脚本放进 CI step 时,要么用单行 `python3 -c`,要么把脚本写成独立文件 `python3 script.py`。
+3. **bash heredoc 终止符必须 column 0** — 不要在 YAML block scalar 里用 `<<EOF` / `<<-EOF`,环境不确定。
+4. **state pollution 是测试设计的坑** — 多个 `data/test_*_tmp/` 目录在 macOS 本地多次跑测试后会污染(每次 `make_tracker("name")` load 旧 state),导致 round-trip 测试假阳性失败。CI 干净环境不会触发。修法:测试用 `tmp_path` pytest fixture 或每次 test 前清空。
+
