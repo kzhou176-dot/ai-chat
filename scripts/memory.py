@@ -107,7 +107,7 @@ class MemoryStore:
     def __init__(self, persona_name: str, root: Path = None):
         self.persona_name = persona_name
         self.root = root or Path(
-            "/Users/yuefeng/.mavis/agents/mavis/workspace/aichat-hub/data/memory"
+            "str(Path(__file__).parent.parent)/data/memory"
         )
         self.root.mkdir(parents=True, exist_ok=True)
         self.episodes: List[Episode] = []

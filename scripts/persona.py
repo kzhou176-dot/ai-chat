@@ -97,7 +97,7 @@ class Persona:
 class PersonaStore:
     """虚拟人档案存储(本地 JSON)"""
     def __init__(self, root: Path = None):
-        self.root = root or Path("/Users/yuefeng/.mavis/agents/mavis/workspace/aichat-hub/data/personas")
+        self.root = root or Path("str(Path(__file__).parent.parent)/data/personas")
         self.root.mkdir(parents=True, exist_ok=True)
 
     def save(self, persona: Persona) -> Path:

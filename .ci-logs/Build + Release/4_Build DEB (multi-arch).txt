@@ -1,0 +1,55 @@
+﻿2026-07-27T09:10:14.9902585Z ##[group]Run # 在 Linux runner 上构建(BSD ar 在 macOS 上不工作)
+2026-07-27T09:10:14.9905003Z [36;1m# 在 Linux runner 上构建(BSD ar 在 macOS 上不工作)[0m
+2026-07-27T09:10:14.9907228Z [36;1mfor arch in all amd64 arm64 armhf; do[0m
+2026-07-27T09:10:14.9909364Z [36;1m  bash packaging/build_deb.sh $arch[0m
+2026-07-27T09:10:14.9911487Z [36;1mdone[0m
+2026-07-27T09:10:14.9912903Z [36;1mls -lah dist/*.deb[0m
+2026-07-27T09:10:14.9997659Z shell: /usr/bin/bash -e {0}
+2026-07-27T09:10:14.9999401Z env:
+2026-07-27T09:10:15.0001347Z   pythonLocation: /opt/hostedtoolcache/Python/3.13.14/x64
+2026-07-27T09:10:15.0004147Z   PKG_CONFIG_PATH: /opt/hostedtoolcache/Python/3.13.14/x64/lib/pkgconfig
+2026-07-27T09:10:15.0006892Z   Python_ROOT_DIR: /opt/hostedtoolcache/Python/3.13.14/x64
+2026-07-27T09:10:15.0009394Z   Python2_ROOT_DIR: /opt/hostedtoolcache/Python/3.13.14/x64
+2026-07-27T09:10:15.0012826Z   Python3_ROOT_DIR: /opt/hostedtoolcache/Python/3.13.14/x64
+2026-07-27T09:10:15.0015419Z   LD_LIBRARY_PATH: /opt/hostedtoolcache/Python/3.13.14/x64/lib
+2026-07-27T09:10:15.0017809Z ##[endgroup]
+2026-07-27T09:10:15.0191298Z [build_deb] Package: aichat-hub 1.0.2 (all)
+2026-07-27T09:10:15.0193619Z [build_deb] Source:  /home/runner/work/ai-chat/ai-chat
+2026-07-27T09:10:15.0195605Z [build_deb] Output:  /home/runner/work/ai-chat/ai-chat/dist/aichat-hub_1.0.2_all.deb
+2026-07-27T09:10:15.0197417Z [build_deb] Preparing stage...
+2026-07-27T09:10:15.2034095Z [build_deb] ✅ Built: /home/runner/work/ai-chat/ai-chat/dist/aichat-hub_1.0.2_all.deb
+2026-07-27T09:10:15.2062674Z [build_deb] Size: 292K
+2026-07-27T09:10:15.2063840Z 
+2026-07-27T09:10:15.2065044Z Install on Linux:  sudo dpkg -i /home/runner/work/ai-chat/ai-chat/dist/aichat-hub_1.0.2_all.deb
+2026-07-27T09:10:15.2067483Z Inspect on macOS:  ar tv /home/runner/work/ai-chat/ai-chat/dist/aichat-hub_1.0.2_all.deb
+2026-07-27T09:10:15.2108995Z [build_deb] Package: aichat-hub 1.0.2 (amd64)
+2026-07-27T09:10:15.2111266Z [build_deb] Source:  /home/runner/work/ai-chat/ai-chat
+2026-07-27T09:10:15.2113216Z [build_deb] Output:  /home/runner/work/ai-chat/ai-chat/dist/aichat-hub_1.0.2_amd64.deb
+2026-07-27T09:10:15.2115088Z [build_deb] Preparing stage...
+2026-07-27T09:10:15.3807236Z [build_deb] ✅ Built: /home/runner/work/ai-chat/ai-chat/dist/aichat-hub_1.0.2_amd64.deb
+2026-07-27T09:10:15.3826031Z [build_deb] Size: 292K
+2026-07-27T09:10:15.3827150Z 
+2026-07-27T09:10:15.3828331Z Install on Linux:  sudo dpkg -i /home/runner/work/ai-chat/ai-chat/dist/aichat-hub_1.0.2_amd64.deb
+2026-07-27T09:10:15.3830926Z Inspect on macOS:  ar tv /home/runner/work/ai-chat/ai-chat/dist/aichat-hub_1.0.2_amd64.deb
+2026-07-27T09:10:15.3872347Z [build_deb] Package: aichat-hub 1.0.2 (arm64)
+2026-07-27T09:10:15.3874024Z [build_deb] Source:  /home/runner/work/ai-chat/ai-chat
+2026-07-27T09:10:15.3876036Z [build_deb] Output:  /home/runner/work/ai-chat/ai-chat/dist/aichat-hub_1.0.2_arm64.deb
+2026-07-27T09:10:15.3877952Z [build_deb] Preparing stage...
+2026-07-27T09:10:15.5498059Z [build_deb] ✅ Built: /home/runner/work/ai-chat/ai-chat/dist/aichat-hub_1.0.2_arm64.deb
+2026-07-27T09:10:15.5514837Z [build_deb] Size: 292K
+2026-07-27T09:10:15.5516000Z 
+2026-07-27T09:10:15.5517887Z Install on Linux:  sudo dpkg -i /home/runner/work/ai-chat/ai-chat/dist/aichat-hub_1.0.2_arm64.deb
+2026-07-27T09:10:15.5520808Z Inspect on macOS:  ar tv /home/runner/work/ai-chat/ai-chat/dist/aichat-hub_1.0.2_arm64.deb
+2026-07-27T09:10:15.5560462Z [build_deb] Package: aichat-hub 1.0.2 (armhf)
+2026-07-27T09:10:15.5563193Z [build_deb] Source:  /home/runner/work/ai-chat/ai-chat
+2026-07-27T09:10:15.5565581Z [build_deb] Output:  /home/runner/work/ai-chat/ai-chat/dist/aichat-hub_1.0.2_armhf.deb
+2026-07-27T09:10:15.5567451Z [build_deb] Preparing stage...
+2026-07-27T09:10:15.7246726Z [build_deb] ✅ Built: /home/runner/work/ai-chat/ai-chat/dist/aichat-hub_1.0.2_armhf.deb
+2026-07-27T09:10:15.7266016Z [build_deb] Size: 292K
+2026-07-27T09:10:15.7270056Z 
+2026-07-27T09:10:15.7272516Z Install on Linux:  sudo dpkg -i /home/runner/work/ai-chat/ai-chat/dist/aichat-hub_1.0.2_armhf.deb
+2026-07-27T09:10:15.7275062Z Inspect on macOS:  ar tv /home/runner/work/ai-chat/ai-chat/dist/aichat-hub_1.0.2_armhf.deb
+2026-07-27T09:10:15.7300648Z -rw-r--r-- 1 runner runner 289K Jul 27 09:10 dist/aichat-hub_1.0.2_all.deb
+2026-07-27T09:10:15.7303692Z -rw-r--r-- 1 runner runner 289K Jul 27 09:10 dist/aichat-hub_1.0.2_amd64.deb
+2026-07-27T09:10:15.7306515Z -rw-r--r-- 1 runner runner 289K Jul 27 09:10 dist/aichat-hub_1.0.2_arm64.deb
+2026-07-27T09:10:15.7309236Z -rw-r--r-- 1 runner runner 289K Jul 27 09:10 dist/aichat-hub_1.0.2_armhf.deb

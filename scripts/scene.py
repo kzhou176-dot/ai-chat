@@ -113,7 +113,7 @@ class SceneStore:
 
     def __init__(self, root: Path = None):
         self.root = root or Path(
-            "/Users/yuefeng/.mavis/agents/mavis/workspace/aichat-hub/data/scenes"
+            "str(Path(__file__).parent.parent)/data/scenes"
         )
         self.root.mkdir(parents=True, exist_ok=True)
         self.scenes: Dict[str, Scene] = {}

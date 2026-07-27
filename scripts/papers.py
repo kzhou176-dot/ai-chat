@@ -33,7 +33,7 @@ from typing import List, Dict, Optional, Any, Tuple
 
 # ============== 路径 ==============
 
-ROOT = Path("/Users/yuefeng/.mavis/agents/mavis/workspace/aichat-hub")
+ROOT = Path(__file__).parent.parent
 PAPERS_DIR = ROOT / "papers"
 
 

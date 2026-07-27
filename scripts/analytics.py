@@ -62,7 +62,7 @@ class Analytics:
 
     def __init__(self, root: Path = None):
         self.root = root or Path(
-            "/Users/yuefeng/.mavis/agents/mavis/workspace/aichat-hub/data/analytics"
+            "str(Path(__file__).parent.parent)/data/analytics"
         )
         self.root.mkdir(parents=True, exist_ok=True)
         self.events: List[UserEvent] = []

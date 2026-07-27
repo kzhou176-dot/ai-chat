@@ -66,7 +66,7 @@ class CostTracker:
         budget_usd: float = None,
     ):
         self.root = root or Path(
-            "/Users/yuefeng/.mavis/agents/mavis/workspace/aichat-hub/data/cost"
+            "str(Path(__file__).parent.parent)/data/cost"
         )
         self.root.mkdir(parents=True, exist_ok=True)
         self.pricing = pricing or DEFAULT_PRICING

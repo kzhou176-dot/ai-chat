@@ -1,0 +1,90 @@
+﻿2026-07-27T09:10:13.9619822Z Node 20 is being deprecated. This workflow is running with Node 24 by default. If you need to temporarily use Node 20, you can set the ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION=true environment variable. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+2026-07-27T09:10:13.9629741Z ##[group]Run actions/checkout@v4
+2026-07-27T09:10:13.9630569Z with:
+2026-07-27T09:10:13.9631458Z   repository: kzhou176-dot/ai-chat
+2026-07-27T09:10:13.9635534Z   token: ***
+2026-07-27T09:10:13.9636282Z   ssh-strict: true
+2026-07-27T09:10:13.9636786Z   ssh-user: git
+2026-07-27T09:10:13.9637269Z   persist-credentials: true
+2026-07-27T09:10:13.9637809Z   clean: true
+2026-07-27T09:10:13.9638291Z   sparse-checkout-cone-mode: true
+2026-07-27T09:10:13.9638868Z   fetch-depth: 1
+2026-07-27T09:10:13.9639340Z   fetch-tags: false
+2026-07-27T09:10:13.9639826Z   show-progress: true
+2026-07-27T09:10:13.9640314Z   lfs: false
+2026-07-27T09:10:13.9641217Z   submodules: false
+2026-07-27T09:10:13.9641806Z   set-safe-directory: true
+2026-07-27T09:10:13.9642373Z   allow-unsafe-pr-checkout: false
+2026-07-27T09:10:13.9643325Z ##[endgroup]
+2026-07-27T09:10:14.0816965Z Syncing repository: kzhou176-dot/ai-chat
+2026-07-27T09:10:14.0820130Z ##[group]Getting Git version info
+2026-07-27T09:10:14.0821901Z Working directory is '/home/runner/work/ai-chat/ai-chat'
+2026-07-27T09:10:14.0824317Z [command]/usr/bin/git version
+2026-07-27T09:10:14.0912829Z git version 2.54.0
+2026-07-27T09:10:14.0944997Z ##[endgroup]
+2026-07-27T09:10:14.0958467Z Temporarily overriding HOME='/home/runner/work/_temp/e82e82bd-5f7f-4aa5-82e1-e565563564cf' before making global git config changes
+2026-07-27T09:10:14.0961549Z Adding repository directory to the temporary git global config as a safe directory
+2026-07-27T09:10:14.0965543Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/ai-chat/ai-chat
+2026-07-27T09:10:14.1035076Z Deleting the contents of '/home/runner/work/ai-chat/ai-chat'
+2026-07-27T09:10:14.1056329Z ##[group]Initializing the repository
+2026-07-27T09:10:14.1073796Z [command]/usr/bin/git init /home/runner/work/ai-chat/ai-chat
+2026-07-27T09:10:14.1244187Z hint: Using 'master' as the name for the initial branch. This default branch name
+2026-07-27T09:10:14.1245811Z hint: will change to "main" in Git 3.0. To configure the initial branch name
+2026-07-27T09:10:14.1246905Z hint: to use in all of your new repositories, which will suppress this warning,
+2026-07-27T09:10:14.1247752Z hint: call:
+2026-07-27T09:10:14.1248355Z hint:
+2026-07-27T09:10:14.1248959Z hint: 	git config --global init.defaultBranch <name>
+2026-07-27T09:10:14.1249646Z hint:
+2026-07-27T09:10:14.1250890Z hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+2026-07-27T09:10:14.1253034Z hint: 'development'. The just-created branch can be renamed via this command:
+2026-07-27T09:10:14.1254647Z hint:
+2026-07-27T09:10:14.1255570Z hint: 	git branch -m <name>
+2026-07-27T09:10:14.1256651Z hint:
+2026-07-27T09:10:14.1258020Z hint: Disable this message with "git config set advice.defaultBranchName false"
+2026-07-27T09:10:14.1260472Z Initialized empty Git repository in /home/runner/work/ai-chat/ai-chat/.git/
+2026-07-27T09:10:14.1270546Z [command]/usr/bin/git remote add origin https://github.com/kzhou176-dot/ai-chat
+2026-07-27T09:10:14.1319151Z ##[endgroup]
+2026-07-27T09:10:14.1320510Z ##[group]Disabling automatic garbage collection
+2026-07-27T09:10:14.1323518Z [command]/usr/bin/git config --local gc.auto 0
+2026-07-27T09:10:14.1355776Z ##[endgroup]
+2026-07-27T09:10:14.1357090Z ##[group]Setting up auth
+2026-07-27T09:10:14.1363647Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-07-27T09:10:14.1409940Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-07-27T09:10:14.1828228Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-07-27T09:10:14.1865407Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-07-27T09:10:14.2088100Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-07-27T09:10:14.2123848Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-07-27T09:10:14.2357150Z [command]/usr/bin/git config --local http.https://github.com/.extraheader AUTHORIZATION: basic ***
+2026-07-27T09:10:14.2398180Z ##[endgroup]
+2026-07-27T09:10:14.2399888Z ##[group]Fetching the repository
+2026-07-27T09:10:14.2410152Z [command]/usr/bin/git -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --depth=1 origin +12fbd8e5c7ec9cde485b3b44e6ef762cb5497195:refs/tags/v1.0.2
+2026-07-27T09:10:14.7212498Z From https://github.com/kzhou176-dot/ai-chat
+2026-07-27T09:10:14.7214486Z  * [new ref]         12fbd8e5c7ec9cde485b3b44e6ef762cb5497195 -> v1.0.2
+2026-07-27T09:10:14.7254896Z ##[endgroup]
+2026-07-27T09:10:14.7256391Z ##[group]Determining the checkout info
+2026-07-27T09:10:14.7258062Z ##[endgroup]
+2026-07-27T09:10:14.7262748Z [command]/usr/bin/git sparse-checkout disable
+2026-07-27T09:10:14.7313135Z [command]/usr/bin/git config --local --unset-all extensions.worktreeConfig
+2026-07-27T09:10:14.7344973Z ##[group]Checking out the ref
+2026-07-27T09:10:14.7348951Z [command]/usr/bin/git checkout --progress --force refs/tags/v1.0.2
+2026-07-27T09:10:14.7688139Z Note: switching to 'refs/tags/v1.0.2'.
+2026-07-27T09:10:14.7689097Z 
+2026-07-27T09:10:14.7689808Z You are in 'detached HEAD' state. You can look around, make experimental
+2026-07-27T09:10:14.7691933Z changes and commit them, and you can discard any commits you make in this
+2026-07-27T09:10:14.7694826Z state without impacting any branches by switching back to a branch.
+2026-07-27T09:10:14.7696961Z 
+2026-07-27T09:10:14.7698056Z If you want to create a new branch to retain commits you create, you may
+2026-07-27T09:10:14.7700503Z do so (now or later) by using -c with the switch command. Example:
+2026-07-27T09:10:14.7702317Z 
+2026-07-27T09:10:14.7702954Z   git switch -c <new-branch-name>
+2026-07-27T09:10:14.7703980Z 
+2026-07-27T09:10:14.7704712Z Or undo this operation with:
+2026-07-27T09:10:14.7705797Z 
+2026-07-27T09:10:14.7706467Z   git switch -
+2026-07-27T09:10:14.7707331Z 
+2026-07-27T09:10:14.7708673Z Turn off this advice by setting config variable advice.detachedHead to false
+2026-07-27T09:10:14.7710800Z 
+2026-07-27T09:10:14.7712384Z HEAD is now at 12fbd8e fix(packaging): mktemp template needs at least 3 X's (CI was failing)
+2026-07-27T09:10:14.7716680Z ##[endgroup]
+2026-07-27T09:10:14.7746599Z [command]/usr/bin/git log -1 --format=%H
+2026-07-27T09:10:14.7774583Z 12fbd8e5c7ec9cde485b3b44e6ef762cb5497195

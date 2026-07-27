@@ -150,7 +150,7 @@ class RelationshipEngine:
         self.persona_name = persona_name
         self.user_id = user_id
         self.root = root or Path(
-            "/Users/yuefeng/.mavis/agents/mavis/workspace/aichat-hub/data/relationships"
+            "str(Path(__file__).parent.parent)/data/relationships"
         )
         self.root.mkdir(parents=True, exist_ok=True)
         self.rel = self._load()

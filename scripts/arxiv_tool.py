@@ -23,7 +23,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Dict, Optional
 
-ROOT = Path("/Users/yuefeng/.mavis/agents/mavis/workspace/aichat-hub")
+ROOT = Path(__file__).parent.parent
 PAPERS = ROOT / "papers"
 PDFS = ROOT / "papers" / "pdfs"
 PARSED = ROOT / "papers" / "parsed"

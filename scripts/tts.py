@@ -123,7 +123,7 @@ class MockProvider(TTSProvider):
 
     def __init__(self, cache_dir: Path = None):
         self.cache_dir = cache_dir or Path(
-            "/Users/yuefeng/.mavis/agents/mavis/workspace/aichat-hub/data/tts_cache"
+            "str(Path(__file__).parent.parent)/data/tts_cache"
         )
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         # mock 计费(元/千字符)
