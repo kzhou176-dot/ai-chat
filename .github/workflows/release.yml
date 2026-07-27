@@ -44,17 +44,19 @@ jobs:
         id: changelog
         run: |
           # 提取最新版本的 changelog 段
-          python3 - <<EOF
-          import re
-          with open("CHANGELOG.md") as f:
+          # 用 env var 传 VERSION,避免 heredoc EOF 缩进陷阱
+          VERSION="${{ steps.version.outputs.VERSION }}" python3 -c "
+          import os, re
+          version = os.environ['VERSION']
+          with open('CHANGELOG.md') as f:
               text = f.read()
-          m = re.search(rf"## \[v{'$VERSION'}\][^\n]*\n(.*?)(?=\n## |\Z)", text, re.DOTALL)
-          if m:
-              print(m.group(1).strip())
-          else:
-              print("See CHANGELOG.md for details")
-          EOF > RELEASE_BODY.md
-          cat RELEASE_BODY.md
+          pattern = r'## \[v' + re.escape(version) + r'\][^\n]*\n(.*?)(?=\n## |\Z)'
+          m = re.search(pattern, text, re.DOTALL)
+          body = m.group(1).strip() if m else 'See CHANGELOG.md for details'
+          with open('RELEASE_BODY.md', 'w') as f:
+              f.write(body)
+          print(body)
+          "
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
