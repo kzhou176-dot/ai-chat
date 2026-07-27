@@ -75,15 +75,4 @@ jobs:
 
       - name: Import smoke test
         run: |
-          PYTHONPATH=scripts python3 -c "
-import web
-import persona
-import llm_client
-import memory
-import scene
-import benchmark
-import desktop_app
-import repl
-import e2e_demo
-print(f'✓ All {len(web.ROUTES)} web routes registered')
-"
+          PYTHONPATH=scripts python3 -c "import web, persona, llm_client, memory, scene, benchmark, desktop_app, repl, e2e_demo; print(f'OK {len(web.ROUTES)} routes')"
