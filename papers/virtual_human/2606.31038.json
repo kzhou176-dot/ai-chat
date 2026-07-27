@@ -1,0 +1,24 @@
+{
+  "arxiv_id": "2606.31038",
+  "title": "LLM-Driven Personalities for Decision Making in Emergency Simulations",
+  "authors": [
+    "Stefano Calzolari",
+    "Rubens Montanha",
+    "Gabriel Schneider",
+    "Gustavo Wide",
+    "Paulo Knob",
+    "Francesco Strada",
+    "Andrea Bottino",
+    "Soraia Raupp Musse"
+  ],
+  "abstract": "For virtual humans to appear believable, they must exhibit agency and spatial awareness while interacting with their environment in ways that reflect competence and intelligence. At the core of these capabilities lies effective decision-making, which strongly shapes agent behavior. With the rapid advancement of artificial intelligence, Large Language Models (LLMs) have increasingly been explored as a mechanism to support such decision-making processes. In this work, we investigate the use of LLMs to drive decision-making in virtual humans within a simulated evacuation scenario, incorporating OCEAN personality traits into agent representations. Our goal is to evaluate how personality, expressed through language-based prompts, influences both individual behaviors and collective simulation outcomes. Our results demonstrate that LLM-driven personality profiles significantly impact agents' decisions, leading to distinct behavioral patterns across different traits. These findings suggest that heterogeneous crowds composed of LLM-guided agents can enhance the realism and variability of simulated environments, offering a flexible alternative to traditional rule-based approaches.",
+  "published": "2026-06-30T02:15:22Z",
+  "categories": [
+    "cs.GR",
+    "cs.AI"
+  ],
+  "keyword": "virtual_human",
+  "fetched_at": "2026-07-21T04:01:21Z",
+  "abs_url": "https://arxiv.org/abs/2606.31038",
+  "pdf_url": "https://arxiv.org/pdf/2606.31038"
+}

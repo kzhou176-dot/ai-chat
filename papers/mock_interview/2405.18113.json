@@ -1,0 +1,15 @@
+{
+  "arxiv_id": "2405.18113",
+  "title": "MockLLM: A Multi-Agent Behavior Collaboration Framework for Online Job Seeking and Recruiting",
+  "summary": "Online recruitment platforms have reshaped job-seeking and recruiting processes, driving increased demand for applications that enhance person-job matching. Traditional methods generally rely on analyzing textual data from resumes and job descriptions, limiting the dynamic, interactive aspects crucial to effective recruitment. Recent advances in Large Language Models (LLMs) have revealed remarkable potential in simulating adaptive, role-based dialogues, making them well-suited for recruitment scenarios. In this paper, we propose \\textbf{MockLLM}, a novel framework to generate and evaluate mock interview interactions. The system consists of two key components: mock interview generation and two-sided evaluation in handshake protocol. By simulating both interviewer and candidate roles, MockLL",
+  "authors": [
+    "Hongda Sun",
+    "Hongzhan Lin",
+    "Haiyu Yan",
+    "Yang Song",
+    "Xin Gao"
+  ],
+  "published": "2024-05-28",
+  "category": "cs.CL",
+  "keyword": "mock_interview"
+}

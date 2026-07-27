@@ -1,0 +1,19 @@
+{
+  "arxiv_id": "2511.22598",
+  "title": "LLM-Cave: A benchmark and light environment for large language models reasoning and decision-making system",
+  "authors": [
+    "Huanyu Li",
+    "Zongyuan Li",
+    "Wei Huang",
+    "Xian Guo"
+  ],
+  "abstract": "Large language models (LLMs) such as ChatGPT o1, ChatGPT o3, and DeepSeek R1 have shown great potential in solving difficult problems. However, current LLM evaluation benchmarks are limited to one-step interactions. Some of the existing sequence decision-making environments, such as TextStarCraftII and LLM-PySC2, are too complicated and require hours of interaction to complete a game. In this paper, we introduce LLM-Cave, a benchmark and light environment for LLM reasoning and decision-making systems. This environment is a classic instance in the era of Symbolism. Artificial intelligence enables the agent to explore the environment and avoid potential losses by reasoning about nearby dangers using partial observable state information. In the experiment, we evaluated the sequential reasoning ability, decision-making performance and computational efficiency of mainstream large language models (LLMs) such as GPT-4o-mini, o1-mini, and DeepSeek-R1. Experiments show that while Deepseek-R1 achieved the highest success rate on complex reasoning tasks, smaller models like 4o-mini significantly narrowed the performance gap on challenges by employing Chain of Speculation and Planner-Critic strategies, at the expense of reduced computational efficiency. This indicates that structured, multi-step reasoning combined with an LLM-based feedback mechanism can substantially enhance an LLM's decision-making capabilities, providing a promising direction for improving reasoning in weaker models and suggesting a new reasoning-centered benchmark for LLM assessment. Our code is open-sourced in https://github.com/puleya1277/CaveEnv.",
+  "published": "2025-11-27T16:26:54Z",
+  "categories": [
+    "cs.LG"
+  ],
+  "keyword": "llm_evaluation",
+  "fetched_at": "2026-07-21T05:31:10Z",
+  "abs_url": "https://arxiv.org/abs/2511.22598",
+  "pdf_url": "https://arxiv.org/pdf/2511.22598"
+}

@@ -1,0 +1,15 @@
+{
+  "arxiv_id": "2607.10310",
+  "title": "PolyInterview: An LLM-based Platform for Immersive Mock Interview Practice with Comprehensive Multimodal Assessment",
+  "summary": "Preparing for job interviews is important for securing desired positions, yet realistic practice remains difficult to access: real interviews are infrequent, expert mock coaching is costly, and self-practice offers neither adaptive dialogue nor structured assessment. Existing systems typically address only parts of this need through fixed question sequences, limited communication channels, or feedback with little supporting evidence. We present PolyInterview, an LLM-based platform for immersive mock interview practice with comprehensive multimodal assessment. PolyInterview uses the target job description and CV to generate questions tailored to the role and candidate, conducts multi-turn spoken interviews with a lip-synced digital human interviewer that asks answer-aware follow-up question",
+  "authors": [
+    "Zhiyuan Wen",
+    "Jiannong Cao",
+    "Kelly Chan",
+    "Zijian Wang",
+    "Chen Chen"
+  ],
+  "published": "2026-07-11",
+  "category": "cs.CL",
+  "keyword": "mock_interview"
+}

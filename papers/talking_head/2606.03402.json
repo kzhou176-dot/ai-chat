@@ -1,0 +1,20 @@
+{
+  "arxiv_id": "2606.03402",
+  "title": "Mamba-Enhanced Implicit Motion Learning for Audio-Driven Portrait Animation",
+  "authors": [
+    "Xuan Wei",
+    "Jiahui Chen",
+    "Kaiheng Li",
+    "Mingyu Shao",
+    "Qingqi Hong"
+  ],
+  "abstract": "Audio-driven human motion video generation aims to synthesize realistic and temporally coherent human animations from a single static image, with applications in talking-head synthesis, co-speech gesture generation, and dynamic presentations. Moving beyond conventional keypoint-based methods that often struggle to capture subtle motion dynamics, We propose a novel implicit-motion framework for generating realistic and temporally coherent human motion videos from a single static image and audio. Our approach uses a two-stage pipeline that decouples motion prediction from rendering. The first stage integrates appearance priors and hierarchical depth cues into a region-aware attention mechanism to model latent motion features. The second stage employs a Mamba-enhanced diffusion model to directly predict these features from audio and the source image, enabling unsupervised learning of fine-grained motion patterns. This decoupled architecture enhances flexibility and efficiency. Trained on a new 380-hour high-quality dataset, our method outperforms prior work across multiple public benchmarks and our collected data in accuracy, naturalness, and temporal coherence, setting a new state-of-the-art.",
+  "published": "2026-06-02T09:43:55Z",
+  "categories": [
+    "cs.CV"
+  ],
+  "keyword": "talking_head",
+  "fetched_at": "2026-07-21T04:03:47Z",
+  "abs_url": "https://arxiv.org/abs/2606.03402",
+  "pdf_url": "https://arxiv.org/pdf/2606.03402"
+}

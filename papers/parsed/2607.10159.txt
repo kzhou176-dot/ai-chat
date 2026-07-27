@@ -1,0 +1,1734 @@
+UNIT: Unleash Large Language Models Potential for Graph
+Continual Learning
+Tairan Huang
+tairanhuang@csu.edu.cn
+Central South University
+Changsha, China
+Yili Wang
+yili.wang@connect.hkust-gz.edu.cn
+Hongkong University of Science and
+Technology (Guangzhou)
+Guangzhou, China
+Beibei Hu
+mindyhbb@gmail.com
+Hunan Institute of Engineering
+Changsha, Hunan
+Yiting Shi
+shiyiting@csu.edu.cn
+Central South University
+Changsha, China
+Qiutong Li
+qiutonglee@csu.edu.cn
+Central South University
+Changsha, China
+Changlong He
+frankemail@csu.edu.cn
+Central South University
+Changsha, China
+Jianliang Gao∗
+gaojianliang@csu.edu.cn
+Central South University
+Changsha, China
+Abstract
+In real-world multimodal web scenarios, graph-structured data of-
+ten arrives in a streaming manner, making graph continual learning
+a crucial paradigm for continuously modeling such evolving struc-
+tures. However, existing graph continual learning methods still
+face two fundamental challenges. 1) semantic-structural separa-
+tion, where the graph-based methods excel at modeling topological
+relationships but neglect deep semantics. 2) imbalanced knowl-
+edge transfer, where existing models fail to effectively leverage
+general knowledge gained from early tasks to benefit subsequent
+new tasks. To address above issues, we propose a novel framework,
+UNleash Large Language Models PotentIal for Graph ConTinual
+Learning (UNIT). By fine-tuning large language model only on the
+first task, we bridge the distributional gap between the pre-trained
+LLM corpus and the target task dataset to enhance the adaptability
+of LLMs for graph-structured tasks. Meanwhile, we propose an
+uncertain-aware anchor generation mechanism to effectively pre-
+serve representative knowledge across tasks, avoiding the neglect of
+universal knowledge learned from previous tasks. Additionally, we
+introduce structural confluence modeling to explicitly integrates
+graph topology information into semantic information, enhanc-
+ing the collaborative capabilities between semantic understanding
+and structural modeling. Extensive experiments demonstrate that
+our proposed method achieves state-of-the-art performance in the
+graph continual learning task.
+∗Corresponding author.
+Permission to make digital or hard copies of all or part of this work for personal or
+classroom use is granted without fee provided that copies are not made or distributed
+for profit or commercial advantage and that copies bear this notice and the full citation
+on the first page. Copyrights for components of this work owned by others than the
+author(s) must be honored. Abstracting with credit is permitted. To copy otherwise, or
+republish, to post on servers or to redistribute to lists, requires prior specific permission
+and/or a fee. Request permissions from permissions@acm.org.
+Conference ACM MM’26, Rio de Janeiro, Brazil
+© 2026 Copyright held by the owner/author(s). Publication rights licensed to ACM.
+ACM ISBN 978-1-4503-XXXX-X/2018/06
+https://doi.org/XXXXXXX.XXXXXXX
+CCS Concepts
+• Computing methodologies →Machine learning; • Informa-
+tion systems →Social networks; Data mining.
+Keywords
+Multimodal Fusion; Continual Learning; Large Language Models;
+Text-attributed Graphs
+ACM Reference Format:
+Tairan Huang, Yili Wang, Beibei Hu, Yiting Shi, Qiutong Li, Changlong He,
+and Jianliang Gao. 2026. UNIT: Unleash Large Language Models Potential for
+Graph Continual Learning. In Proceedings of the 34rd ACM International Con-
+ference on Multimedia (MM ’26), November 10-14, 2026, Rio de Janeiro, Brazil.
+ACM, New York, NY, USA, 9 pages. https://doi.org/XXXXXXX.XXXXXXX
+1
+Introduction
+Graph Continual Learning (GCL) has become a crucial paradigm
+for modeling evolving multimodal data to analyze continuously
+changing structures in domains such as multimedia social net-
+works [2, 12], multimodal knowledge graphs [8], and multime-
+dia recommendation systems [14]. With the strong capability to
+capture complex graph topologies alongside rich multimodal node
+attributes—such as text, images, and video—Graph Neural Networks
+(GNNs) have emerged as the dominant backbone for GCL tasks
+[6]. Although existing efforts can preserve a portion of historical
+knowledge by regularization or empirical replay, they typically
+require retraining from scratch for each new task involving dy-
+namic multimedia content [5], as shown in Figure 1 (a). As a result,
+the model remains prone to overwriting previously learned cross-
+modal alignments and structural knowledge when adapting to new
+data streams, leading to catastrophic forgetting. Therefore, the em-
+phasis on effective strategies to prevent catastrophic forgetting in
+dynamic multimedia environments remains the crucial challenge
+for graph continual learning tasks.
+arXiv:2607.10159v1  [cs.AI]  11 Jul 2026
+
+Conference ACM MM’26, November 10-14, 2026, Rio de Janeiro, Brazil
+Tairan Huang, Yili Wang, Beibei Hu, Yiting Shi, Qiutong Li, Changlong He, and Jianliang Gao
+ GNN 1
+(a) The Conventional GCL Method
+(b) The Proposed UNIT Framework 
+Ts1
+Ts2
+Tsn
+ GNN 2
+ GNN n
+Ts1
+LLM
+Independent
+Independent
+Ts1
+D
+LSsNAFL2pr1pfqS7dBIvgqiRFqsuiG5cV+oI2hMl0g6dTMLMRCkxn+LGhSJu/RJ3/o2TNgtPTBwOde7pnjx4xKZdvfRmljc2t7p7xb2ds/ODwyq8c9GSUCky6O
+WCQGPpKEU6ipGBrEgKPQZ6fuz29zvPxAhacQ7ah4TN0QTgOKkdKSZ1ZHIVJTjFjaybxUeo3M2t23V7AWidOQWpQoO2ZX6NxhJOQcIUZknLo2LFyUyQUxYxkl
+VEiSYzwDE3IUFOQiLdBE9s861MraCSOjHlbVQf2+kKJRyHvp6Mg8qV71c/M8bJiq4dlPK40QRjpeHgoRZKrLyHqwxFQrNtcEYUF1VgtPkUBY6bYqugRn9cvrpN
+eoO8168/6y1rop6ijDKZzBThwBS24gzZ0AcMjPMrvBlPxovxbnwsR0tGsXMCf2B8/gCZ85Q9</latexit>Ts2
+Tsn
+Classifier
+Update
+Update
+Update
+Figure 1: Workflow comparison. The existing graph contin-
+ual learning methods need to train GNN models from scratch
+for each task. In contrast, our proposed framework only fine-
+tunes the LLM on the first task, while subsequent tasks up-
+date the classifier based on the frozen-parameter LLM.
+The existing graph continual learning approaches are broadly
+categorized into three paradigms based on their technical foun-
+dations. The regularization-based methods [13, 41] achieve pa-
+rameter regularization through explicit constraints via topological
+weighting or knowledge distillation. The task-critical parameter
+isolation approaches [35, 37] achieve parameter isolation by ex-
+tending parameters to accommodate new knowledge. The replay-
+based approaches [38, 39] by replaying representative historical
+data, including key nodes, sparse computational subgraphs, and
+streamlined task-specific graphs, etc. However, although existing
+graph continual learning methods alleviate catastrophic forget-
+ting to some extent, they remain limited in effectively leveraging
+historical knowledge. Specifically, replay-based methods face prac-
+tical constraints, as privacy concerns and storage limitations often
+restrict access to historical task data, thereby undermining their
+applicability. Therefore, several studies attempt to design different
+paradigms to mitigate catastrophic forgetting in graph continual
+learning tasks.
+Recently, with the rapid advancement of large language mod-
+els (LLMs), research interest in leveraging LLMs to model graph
+structures in conjunction with textual information has significantly
+increased, called Graph Language Models (GLMs) [21, 40]. The GLM
+methods typically leverage LLMs to retrieve node-related semantic
+knowledge for enhancing the quality of initial embeddings in GNNs
+[31, 43], or incorporate graph structural information into LLMs to
+improve classification predictions [3, 27]. Although such methods
+can effectively integrate semantic and structural information, they
+still fail to fully exploit historical knowledge in graph continual
+learning. In contrast, SimGCL [5] is proposed as the first effort
+among GLM methods for graph continual learning tasks. It em-
+ploys structured prompts to perform instruction-based fine-tuning
+on LLMs during the initial task, while leveraging LLMs for classifi-
+cation predictions in subsequent tasks. Compared to general GLM
+methods, the graph continual learning tasks with GLMs remains
+largely unexplored.
+Despite its directness and effectiveness, these methods men-
+tioned above for graph continual learning task still exhibit several
+issues. First, existing methods suffer from structural information
+degradation caused by the implicit linearization of graph topology.
+While SimGCL attempts to incorporate structural context via text
+prompts, they force non-Euclidean graph structures into linear se-
+quences. This linearization inevitably leads to the loss of high-order
+topological patterns and forces the LLM to infer structure solely
+through semantic attention, lacking an explicit geometric prior.
+Consequently, the distinct structural modality is overshadowed by
+dominant textual features, resulting in semantic-structural imbal-
+ance where critical topological changes in the evolving graph are
+underrepresented. Second, current knowledge transfer mechanisms
+are prone to prototype rigidity. SimGCL adopts a static prototype
+strategy that constructs class representations via simple mean pool-
+ing of sample embeddings. This approach assumes all samples are
+equally reliable, ignoring the inherent uncertainty and noise in
+streaming data. In a continual setting, the deterministic aggrega-
+tion fails to adaptively calibrate historical knowledge with new
+evidence, causing the model to overfit to noisy outliers in current
+tasks. This leads to suboptimal knowledge preservation and limits
+the model’s plasticity for future tasks.
+In this work, we propose a novel framework, UNleash Large Lan-
+guage Models PotentIal for Graph ConTinual Learning, i.e. UNIT.
+UNIT consists of three crucial components that effectively inte-
+grate semantic and structural information with efficient knowledge
+transfer. Specifically, the semantic instruction tuning module de-
+signs specific prompt instructions to fine-tune pre-trained LLMs,
+bridging the distributional gap between the pre-training corpus
+and the target task dataset to enhance the adaptability of LLMs to
+graph-structured tasks. The uncertain-aware anchor generation
+utilizes fine-tuned LLMs to construct semantic anchors at each task,
+which updates classifier weights while achieves efficient knowledge
+transfer without forgetting previous knowledge. Additionally, the
+structural confluence modeling explicitly generates structured an-
+chors through graph topology, which jointly guide classifier weights
+with semantic anchors to achieve sufficient integration of semantic
+and structural information, enhancing the collaborative capabili-
+ties between semantic understanding and structural modeling. The
+comprehensive experiments across five benchmark datasets demon-
+strate that UNIT can accurately classify the changing data from
+graph continual learning tasks to achieve state-of-the-art perfor-
+mance.
+Our contributions are summarized as follows:
+• Specific Design. We deign specific instruction prompts at
+the initial task on LLMs for fine-tuning to bridge the dis-
+tributional gap between the pre-trained LLM corpus and
+the target task dataset, facilitating LLM adaptation to graph
+continual learning tasks.
+• Novel framework. We propose the uncertain-aware anchor
+generation and the structural confluence modeling to achieve
+comprehensive knowledge transfer and the sufficient inte-
+gration of semantic information and structural information
+for graph continual learning tasks.
+
+UNIT: Unleash Large Language Models Potential for Graph Continual Learning
+Conference ACM MM’26, November 10-14, 2026, Rio de Janeiro, Brazil
+(b) Semantic Instruction Tuning  (d) Structural Conﬂuence Modeling  
+Uncertain-aware Anchor 
+Generation  
+Semantic Instruction Tuning  
+Structural Conﬂuence 
+Modeling  
+(a) Overall Architecture
+(c) Uncertain-aware Anchor Generation  
+Ts1
+Ts2
+Tsn
+Classifier
+Test Graphs
+Tsn
+Ts1
+…
+Prediction
+Graph Prompt
+Description: You are a good graph 
+reasoner. Given a graph description 
+from {#dataset} dataset, understand 
+the structure and answer the question. 
+The {#target node} with {#node 
+attributes} have neighbors at hop 1: 
+{#1-hop neighbors} {#node attributes} 
+and neighbors at hop 2: {#2-hop 
+neighbors} {#node attributes}.
+Question: Please predict which of the 
+following {#sub-categories} does this 
+paper belong to. Choose from the 
+following categories: {#categories}.
+LLM
+Answers
+The prediction of the {#target node} 
+is {#predicted category}.
+Tuning
+Labeled Nodes
+Unlabeled Nodes
+Text
+Learnable
+Frozen
+>
+Tsn
+Training Graphs
+t
+X1aOXxSJ4KolI9Vj04rEF+wFtKJvtpF272YTdjVBCf4EXD4p49Sd589+4bXPQ1gcDj/dmJkXJIJr47rfztr6xubWdmGnuLu3f3BYOjpu6ThVDJsFrHqBFSj4BKbhuBnUQhjQKB7WB8N/PbT6g
+0j+WDmSToR3QoecgZNVZqsH6p7FbcOcgq8XJShz1fumrN4hZGqE0TFCtu56bGD+jynAmcFrspRoTysZ0iF1LJY1Q+9n80Ck5t8qAhLGyJQ2Zq78nMhpPYkC2xlRM9L3kz8z+umJrzxMy6T1KB
+ki0VhKoiJyexrMuAKmRETSyhT3N5K2IgqyozNpmhD8JZfXiWty4pXrVQbV+XabR5HAU7hDC7Ag2uowT3UoQkMEJ7hFd6cR+fFeXc+Fq1rTj5zAn/gfP4AyfeM8g=</latexit>c
+Class
+LLM
+Previous Semantic Anchor
+Test Graphs
+LLM
+Classifier
+…
+…
+Tsn
+…
+∆
+pc
+(Tsn)
+pc
+(Tsn−1)
+pc
+(Tsn)
+Refined
+Tsn
+Ts1
+…
+…
+…
+…
+…
+…
+…
+Prediction
+Tsn
+>
+⌦
+o
+Wy2k3bpZhN2N4US+hO8eFDEq7/Im/GbZuDtj4YeLw3w8y8IBFcG9f9dgpr6xubW8Xt0s7u3v5B+fDoScepYthksYhVO6AaBZfYNwIbCcKaRQIbAWj25nfGqPSPJaPZpKgH9GB5CFn1FjpYdzjvXLFrbpzkFXi5aQCORq98le3H7M0QmYoFp3PDcxfkaV4UzgtNRN
+SaUjegAO5ZKGqH2s/mpU3JmlT4JY2VLGjJXf09kNJ6EgW2M6JmqJe9mfif10lNeO1nXCapQckWi8JUEBOT2d+kzxUyIyaWUKa4vZWwIVWUGZtOyYbgLb+8Sp4uql6tWru/rNRv8jiKcAKncA4eXEd7qABTWAwgGd4hTdHOC/Ou/OxaC04+cwx/IHz+QNhFo3h</late
+xit>vi
+vj
+hi
+hj
+Training Graphs
+Tsn
+c
+Class
+vi
+vj
+Neighbor Structure
+uj
+ui
+⌦
+ac
+(Tsn)
+(Tsn−1)
+ac
+∆
+Refined
+F4q49Wfc+TdO2iy0emDgcM693DMnSKQw6LpfTmltfWNzq7xd2dnd2z+oHh51TJxqxtslrHuBdRwKRvo0DJe4nmNAok7wbT29zvPnJtRKwecJbwQUTHSoSCUbS70cUJ0GY0fmQDas1t+4uQP4SryA1KNAaVj/9UczSiCtkhrT9wEBxnVKJjk84qfGp5QNqVj3rdU0YibQbIPCdnVhmRMNb2KSQL9edGRiNjZlFgJ/OM
+ZtXLxf+8forh9SATKkmRK7Y8FKaSYEzyAshIaM5QziyhTAublbAJ1ZShraliS/BWv/yXdC7qXqPeuL+sNW+KOspwAqdwDh5cQRPuoAVtYJDAE7zAq5M6z86b874cLTnFzjH8gvPxDVaZkeY=</latexit>ac
+(Tsn)
+Weight
+Embeddings
+1
+q/qh69LBbBU0lEqseiF48V7Ae0oWy2m3bpZhN3J0IJ/RNePCji1b/jzX/jts1BWx8MPN6bYWZekEh0HW/ncLa+sbmVnG7tLO7t39QPjxqmTjVjDdZLGPdCajhUijeRIGSdxLNaRI3g7GtzO/
+/cS1EbF6wEnC/YgOlQgFo2ilTi9GEXFD+uWKW3XnIKvEy0kFcjT65a/eIGZpxBUySY3pem6CfkY1Cib5tNRLDU8oG9Mh71qN3iZ/N7p+TMKgMSxtqWQjJXf09kNDJmEgW2M6I4MsveTPzP6Y
+YXvuZUEmKXLHFojCVBGMye54MhOYM5cQSyrSwtxI2opoytBGVbAje8surpHVR9WrV2v1lpX6Tx1GEziFc/DgCupwBw1oAgMJz/AKb86j8+K8Ox+L1oKTzxzDHzifP+Haj+I=</latexit>⌦Multiply
+⊙
+NkItbiyh9wqz8m/oH+hXfGCGoRnZDkzLn3nJl7rxsJnkjLeskZU9Mzs3P5+cLC4tLySnF1rZGEaeyxuheKMG65TsIED1hdcilYK4qZ47uCNd3hoYo3r1mc8DA4k6OIdX1nEPA+9xJVKNzxIR0zoslq2zpZU4COwMlZKsWFp/RQ8hPKTwRBAEhZwkNDThg0LEXFdjImLCXEdZ7hDgbQpZTHKcI
+gd0ndAu3bGBrRXnolWe3SKoDcmpYkt0oSUFxNWp5k6nmpnxf7mPdae6m4j+ruZl0+sxAWxf+k+M/+rU7VI9LGva+BU6QZVZ2XuaS6K+rm5peqJDlExCnco3hM2NPKz6bWpPo2lVvHR1/1ZmKVXsvy03xpm5JA7Z/jnMSNHbK9m65clopVQ+yUexgU1s0z3UMUxaqiT9yUe8Ign48S4Mm6M24
+9UI5dp1vFtGfvecCRhg=</latexit>∆fx
+/
+4PCofHzSNnGqGW+xWMa6G1DpVC8hQIl7ya0yiQvBNM7uZ+54lrI2L1iNOE+xEdKREKRtFKnXCQUcTZoFxq+4CZJ14OalAjuag/NUfxiyNuEImqTE9z03Qz6hGwSflfqp4QlEzriPUsVjbjxs8W5M3JhlSEJY21LIVmovycyGhkzjQLbGVEcm1VvLv7n9VIMb/xMqCRFrthyUZhKgjGZ/06GQnOGcmoJZVrYWwkbU0Z2oRKNgRv9eV10r6qerVq7eG60rjN4yjCGZzDJXhQhwbcQxNawGACz/AKb07ivDjvzseyteDkM6fwB87nD69uj9E=</latexit>fatt
+Z
+ekEph0HW/ncLa+sbmVnG7tLO7t39QPjxqGZVpxptMSaU7ATVcioQ3UaDknVRzGgeSt4PR7cxvP3FthEoecJxyP6aDRESCUbRSq6dChaRfrhVdw6ySrycVCBHo1/+6oWKZTFPkElqTNdzU/QnVKNgk9LvczwlLIRHfCupQmNufEn82un5MwqIYmUtpUgmau/JyY0NmYcB7Yzpjg0y95M/M/rZhd+xORpBnyhC0WRZkqMjsdRIKzRnKsSWUaWFvJWxINWVoAyrZELzl1dJ6Lq1aq1+8tK/SaP
+owgncArn4MEV1OEOGtAEBo/wDK/w5ijnxXl3PhatBSefOY/cD5/AEZ9jvM=</latexit>⊙
+Anchor
+…
+pc
+SwTGLRT9AkjDKSUdRxUg/EQRFASO9YHqX+71HIiSNeVvNEuJFaMxpSDFSRvLtE10bRkhNMGK6nfla+m52kfl21ak7c8BV4hakCgq0fPtrOIpxGhGuMENSDlwnUZ5GQlHMSFYZpIkCE/RmAwM5Sgi0tPz+Bk8N8oIhrEwjys4V39vaBRJOYsCM5lHlcteLv7nDVIV3nia8iRVhOPFoTBlUMUw7wKOqCBYsZkhCAtqskI8QJhZRqrmBLc5S+vku5l3W3UGw9X1eZtUcZnIzUAMuAZNcA9aoAMw0OAZvI368l6sd6tj8VoySp2jsEfWJ8/OkyVrQ=</latexit>(Ts1)
+pc
+(Tsn−1)
+Previous Structural Anchor
+…
+(Ts1)
+ac
+(Tsn−1)
+ac
+Figure 2: The overall framework of Unleash Large Language Models Potential for Graph Continual Learning (UNIT). The
+proposed framework includes three stages, i.e., the semantic instruction tuning, the uncertain-aware anchor generation, and
+the structural confluence modeling. The pre-trained LLM is fine-tuned by specific instruction prompts, then generates semantic
+anchors and structural anchors to jointly update classifier weights, achieving accurate classification prediction.
+• SOTA performance. We conduct extensive experiments
+on five real-world datasets to demonstrate the effectiveness
+of UNIT, achieving state-of-the-art performance on graph
+continual learning tasks.
+2
+Related Works
+2.1
+Continual Learning with LLMs
+Continual learning has long been studied as a fundamental para-
+digm for training models that incrementally adapt to new tasks
+without forgetting previously acquired knowledge [6], which as
+become a crucial paradigm for modeling evolving multimodal data.
+With the rapid rise of large language models, an increasing number
+of studies are exploring how to extend these models to continual
+learning scenarios [3, 7, 10, 28]. The language model for continual
+learning task [1] exhibits inherent advantages in generalization ca-
+pabilities when deployed for continuous learning tasks after being
+pre-trained on extensive corpora. InfLoRA [19] and BiLoRA [42] em-
+ploy parameter-efficient fine-tuning (PEFT) through methods such
+as freezing the backbone or retaining pre-trained weights. ENGINE
+[43] and SimpleCIL [40] minimize cross-task interference by adopt-
+ing orthogonal optimizations. However, despite these advances,
+continual learning with LLMs focus on preventing catastrophic for-
+getting of semantic representations, remaining under-explored for
+graph continual learning tasks. Instead, our method only fine-tunes
+the LLM with the specific prompt in the initial task and completes
+subsequent tasks using the LLM with frozen parameters.
+2.2
+Graph Continual Learning
+Graph continual learning primarily investigates catastrophic forget-
+ting arising from evolving graph structures [6]. The graph continual
+learning methods can be categorized based on their approaches to
+mitigating catastrophic forgetting. CPG [13] and ER-GNN [41] serve
+as regularization-based methods, which impose explicit constraints
+on the model through parameter regularization via topology-based
+weighting or knowledge distillation. PI-GNN [35] and HPNs[37] are
+proposed as key parameter isolation methods, achieving parameter
+isolation through expanding parameters or model components to
+accommodate new knowledge. SSM [38], SEM[39], and TPP [30]
+act as replay-based methods, which replay representative historical
+data using key nodes and sparse computational subgraphs respec-
+tively to prevent catastrophic forgetting. However, these meth-
+ods face significant limitations in leveraging historical knowledge
+due to scalability and privacy concerns in the field of graphs. In
+contrast, we introduce uncertain-aware anchor generation for effi-
+cient knowledge transfer, which can leverage historical knowledge
+through LLMs to inspirit future tasks.
+2.3
+Graph Language Models
+Graph language models have gradually emerged as popular ap-
+proaches for leveraging LLMs to address graph tasks [3, 7, 21, 28],
+driven by the rapid advancement of LLMs. Based on how LLMs are
+integrated with graph structures, GLMs methods can be categorized
+into three categories. Glbench [17] and Graphtranslator [34] utilize
+LLMs as enhancers to generate semantic representations for node
+
+Conference ACM MM’26, November 10-14, 2026, Rio de Janeiro, Brazil
+Tairan Huang, Yili Wang, Beibei Hu, Yiting Shi, Qiutong Li, Changlong He, and Jianliang Gao
+textual information, which improves the quality of GNN node em-
+beddings. TEA-GLM [29] and MAGRL [33] act LLMs as predictor to
+perform classification predictions after designing specific prompts
+for graph structural information. CoT [26] and Locle [36] serve as
+alignment methods, which allow LLMs and GNNs to be aligned
+within the same vector space, providing GNNs with clearer seman-
+tic awareness. These GLM methods are not specifically designed for
+continual graph data, whose application in graph continual learn-
+ing remains largely unexplored. Beyond these models, SimGCL [5]
+is proposed as the first GLM method for graph-continual learning
+tasks. It employs a static prototype strategy to guide classification
+predictions for the latest data, exhibiting forgetting of early infor-
+mation and suboptimal adaptation to future tasks. Compared to
+SimGCL, our work achieves efficient knowledge transfer and fully
+integrates semantic and structural information through uncertain-
+aware anchor generation and structural confluence modeling.
+3
+Methodology
+3.1
+Preliminaries
+Text-attributed Graphs (TAGs). According to LLM4GCL bench-
+mark [5], we evaluate the graph continual learning capabilities
+through node classification tasks on Text-attributed Graphs (TAGs)
+[23]. The text-attributed graph is defined as G = {V, E, R}, where
+V = {𝑣1, 𝑣2, . . . , 𝑣𝑁} is the set of nodes, E indicates the edge set,
+and R denotes the collection of textual descriptions. Each node
+𝑣𝑖∈V is associated with a text description 𝑟𝑣𝑖∈R, drawn from
+the vocabulary D and of length 𝐿𝑖. Given a TAG with a set of la-
+beled nodes V𝑙, the node classification objective is to infer the
+labels of the unlabeled nodes V𝑢.
+Graph Continual Learning. The fundamental paradigm in graph
+continual learning is defined as node-level class-incremental learn-
+ing [5], that tackles the challenge of progressively classifying nodes
+as new categories appear in an expanding graph G. Formally, the
+training procedure is organized as a sequence of tasks {T𝑠1, . . . , T𝑠𝑛},
+with each task T𝑠𝑖= {G𝑠𝑖, C𝑠𝑖, V𝑙
+𝑠𝑖}, where G𝑠𝑖⊆G is the induced
+subgraph, C𝑠𝑖the corresponding class set, and V𝑙
+𝑠𝑖the labeled nodes.
+The disjointness constraint holds such that G𝑠𝑖∩G𝑠𝑗= C𝑠𝑖∩C𝑠𝑗= ∅
+for all 𝑖≠𝑗. During learning, the model incrementally adapts to
+each arriving task T𝑠𝑖and predicts the labels of the unseen nodes.
+3.2
+Semantic Instruction Tuning
+It is crucial to design specific instruction prompts for tuning pre-
+trained LLMs to unleash their potential for graph continual learning.
+The semantic instruction tuning facilitates LLM adaptation to graph-
+structured tasks by bridging the distributional gap between the
+pre-trained LLM corpus and the target task dataset. Specifically, we
+construct the comprehensive graph prompt that encapsulates: (1)
+the task description with the continual learning scenario and the
+target dataset; (2) the structural information of the graph, including
+node attributes and local neighborhood connectivity; (3) the task-
+specific question that defines the classification objective along with
+the set of candidate label descriptions. Formally, for a node 𝑣𝑖∈
+V with textual attribute 𝑟𝑣𝑖and neighbor set N𝑣𝑖, the prompt is
+structured as:
+Prompt(𝑣𝑖) = 𝑟task ⊕𝑟str(𝑣𝑖) ⊕𝑟que(𝑣𝑖),
+(1)
+where 𝑟task describes the task description, 𝑟str(𝑣𝑖) summarizes the
+node attributes and local structures of node 𝑣𝑖, and 𝑟que(𝑣𝑖) speci-
+fies the classification query along with the label text options. This
+prompt design enables the LLM to leverage semantic and struc-
+tural cues for classification. To prevent overfitting and maintain
+efficiency, we perform instruction tuning only on the first task T𝑠1
+using Low-Rank Adaptation (LoRA) [10] rather than full fine-tuning.
+Formally, given a node 𝑣𝑖with prompt Prompt(𝑣𝑖), the objective
+is to maximize the correct answer probability with label token se-
+quence 𝑞𝑖= (𝑞𝑖,1, . . . ,𝑞𝑖,𝐿). The answer probability defined by the
+LLM with parameters 𝜃can be expressed as:
+max
+𝜃
+P𝜃(𝑞𝑖| 𝑣𝑖) = max
+𝜃
+𝐿
+Ö
+𝑙=1
+P𝜃
+ 𝑞𝑖,𝑙| 𝑞𝑖,<𝑙, Prompt(𝑣𝑖) ,
+(2)
+where𝑞𝑖,𝑙denotes the𝑙-th token of the target label text, and𝑞𝑖,<𝑙rep-
+resents its preceding tokens. Here, Prompt(𝑣𝑖) encapsulates the task
+description, the node textual attribute, the neighbor context, and the
+query question. The probability P𝜃is modeled by the instruction-
+tuned LLM with LoRA parameters 𝜃, which ensures efficient adap-
+tation without full-scale fine-tuning. This formulation explicitly
+decomposes the sequence-level likelihood into token-level condi-
+tionals, encouraging the model to align its generative distribution
+with the semantic and structural cues provided in the constructed
+prompt. In Figure 2, we provide an overview of UNIT.
+3.3
+Uncertain-aware Anchor Generation
+To effectively preserve representative knowledge across tasks, we
+design an uncertain-aware anchor generation mechanism that pro-
+gressively constructs class-level semantic anchors while retaining
+the influence of early samples. We generate the semantic anchors
+for labeled nodes in each task to update the weights of correspond-
+ing classes in the classifier, thereby improving the accuracy of
+classification prediction.
+Specifically, for each labeled node 𝑣𝑖∈V𝑙
+𝑠𝑖in task T𝑠𝑖, we ob-
+tain its embedding representation through the tuned LLM encoder.
+Given the constructed prompt Prompt(𝑣𝑖), the node embedding
+extraction is defined as:
+h𝑖= 𝑓𝜃(Prompt(𝑣𝑖)) ,
+(3)
+where 𝑓𝜃denotes the embedding function parameterized by the
+LoRA-tuned LLM. These embeddings serve as the basis for anchor
+construction.
+Then, to compute a reliable anchor for each class 𝑐∈C𝑠𝑖, we
+weight individual embeddings according to their uncertainty-aware
+confidence. Let ˆ𝑝(𝑐|𝑣𝑖) be the normalized probability that the LLM
+predicts class 𝑐for node 𝑣𝑖, derived from the generation scores. The
+uncertainty is quantified through the entropy:
+H (𝑣𝑖) = −
+∑︁
+𝑐
+ˆ𝑝(𝑐|𝑣𝑖) log ˆ𝑝(𝑐|𝑣𝑖).
+(4)
+Consequently, the confidence weight 𝛼𝑖∈[0, 1] is explicitly defined
+as 𝛼𝑖= 1 −
+H(𝑣𝑖)
+log | C𝑠𝑖| , where |C𝑠𝑖| is the number of classes. The class-
+level anchor is computed as:
+p
+(T𝑠𝑖)
+𝑐
+=
+Í
+𝑦𝑖∈Y
+(T𝑠𝑖)
+𝑐
+𝛼𝑖h𝑖
+Í
+𝑦𝑖∈Y
+(T𝑠𝑖)
+𝑐
+𝛼𝑖
+,
+(5)
+
+UNIT: Unleash Large Language Models Potential for Graph Continual Learning
+Conference ACM MM’26, November 10-14, 2026, Rio de Janeiro, Brazil
+where Y
+(T𝑠𝑖)
+𝑐
+is the label set of nodes in task T𝑠𝑖belonging to class
+𝑐. In parallel, we maintain an effective count 𝑛
+(T𝑠𝑖)
+𝑐
+that records the
+accumulated contribution of class-𝑐samples up to task T𝑠𝑖, which
+is updated as:
+𝑛
+(T𝑠𝑖)
+𝑐
+= 𝜆· 𝑛
+(T𝑠𝑖−1 )
+𝑐
++
+∑︁
+𝑦𝑖∈Y
+(T𝑠𝑖)
+𝑐
+𝛼𝑖,
+(6)
+where 𝜆∈(0, 1] is the exponential decay factor. This weighted
+count ensures that reliable samples have higher impact while out-
+dated contributions gradually fade.
+Next, we update the class anchor by softly merging the newly ag-
+gregated embedding with the decayed historical anchor. Let p
+(T𝑠𝑖−1 )
+𝑐
+be the anchor obtained after task T𝑠𝑖−1. The refined anchor at task
+T𝑠𝑖is given by:
+p
+(T𝑠𝑖)
+𝑐
+=
+𝜆· 𝑛
+(T𝑠𝑖−1 )
+𝑐
+p
+(T𝑠𝑖−1 )
+𝑐
++ Í
+𝑦𝑖∈Y
+(T𝑠𝑖)
+𝑐
+𝛼𝑖h𝑖
+𝑛
+(T𝑠𝑖)
+𝑐
+,
+(7)
+which softly discounts early anchors while adaptively emphasizing
+reliable new evidence.
+Finally, the refined semantic anchors are combined with subse-
+quent structural anchors and aligned with classifier weights, primar-
+ily guiding the decision boundary toward the most representative
+class semantics. By embedding anchors into the classifier, we seam-
+lessly bridge semantic representations and task-specific predictions,
+enabling the model to achieve effective knowledge transfer across
+tasks. Overall, the uncertain-aware anchor generation mechanism
+progressively refines semantic anchors to learn knowledge from
+new samples while retaining the influence of early samples, en-
+hancing the capabilities graph continual learning.
+3.4
+Structural Confluence Modeling
+To further enrich the representation capacity of anchors, we intro-
+duce structural confluence modeling, which explicitly integrates
+graph topology into the anchor space. While semantic instruction
+tuning and uncertain-aware anchor generation focus on textual and
+confidence-weighted representations, this module complements
+them by encoding lightweight structural cues that capture local
+connectivity patterns. This confluence ensures that both semantic
+and structural perspectives jointly contribute to stable classifica-
+tion boundaries under continual learning, resolving the imbalance
+between semantic understanding and structural modeling.
+First, for the node 𝑣𝑖∈V𝑙
+𝑠𝑖, we derive a structural embedding u𝑖
+that summarizes the topological characteristics of its neighborhood.
+Let N (𝑣𝑖) denote the neighbor set of 𝑣𝑖. We represent structural
+information as follows:
+u𝑖= 𝑔©­
+«
+𝑑𝑖,
+1
+|N (𝑣𝑖)|
+∑︁
+𝑘∈N(𝑣𝑖)
+𝑑𝑘, 𝜙(N (𝑣𝑖))ª®
+¬
+,
+(8)
+where 𝑑𝑖= |N (𝑣𝑖)| is the degree of 𝑣𝑖, the second term encodes
+average neighbor degree, and 𝜙(N (𝑣𝑖)) is the clustering coefficient
+capturing local density. The function 𝑔(·) projects quantities into a
+fixed-dimensional embedding space.
+Second, for each class 𝑐in the active class set C𝑠𝑡of task T𝑠𝑖, we
+maintain a structural anchor by aggregating the descriptors of its
+labeled nodes. Formally, given the labeled set Y
+(T𝑠𝑖)
+𝑐
+= {𝑣𝑖| 𝑦𝑖= 𝑐},
+the temporary anchor is defined as:
+a
+(T𝑠𝑖)
+𝑐
+=
+1
+|Y
+(T𝑠𝑖)
+𝑐
+|
+∑︁
+𝑦𝑖∈Y
+(T𝑠𝑖)
+𝑐
+u𝑖.
+(9)
+This aggregation produces a representative vector that captures the
+structural tendencies of class 𝑐in the current task.
+Third, to ensure stability across tasks and avoid abrupt shifts, we
+update the structural anchors with the exponential decay, parallel-
+ing the semantic anchor update. Let a(𝑡−1)
+𝑐
+be the structural anchor
+of class 𝑐from the task 𝑡−1, and let 𝑚(𝑡−1)
+𝑐
+be its effective count.
+After observing task 𝑡, the anchor is updated as:
+a
+(T𝑠𝑖)
+𝑐
+= 𝛾· 𝑚
+(T𝑠𝑖−1 )
+𝑐
+a
+(T𝑠𝑖−1 )
+𝑐
++ |Y
+(T𝑠𝑖)
+𝑐
+| · a
+(T𝑠𝑖)
+𝑐
+𝛾· 𝑚
+(T𝑠𝑖−1 )
+𝑐
++ |Y
+(T𝑠𝑖)
+𝑐
+|
+,
+(10)
+with the effective count maintained as:
+𝑚
+(T𝑠𝑖)
+𝑐
+= 𝛾· 𝑚
+(T𝑠𝑖−1 )
+𝑐
++ |Y
+(T𝑠𝑖)
+𝑐
+|,
+(11)
+where 𝛾∈(0, 1] is the decay factor. This formulation allows the
+model to gradually discount outdated structural evidence while
+adapting to new patterns.
+Finally, we injects the structural anchors into the classifier along-
+side the semantic anchors obtained from uncertain-aware anchor
+generation. Specifically, the classifier weight for class 𝑐is updated
+as a convex combination of the semantic and structural anchors:
+w
+(T𝑠𝑖)
+𝑐
+= 𝛽· p
+(T𝑠𝑖)
+𝑐
++ (1 −𝛽) · a
+(T𝑠𝑖)
+𝑐
+,
+(12)
+where p
+(T𝑠𝑖)
+𝑐
+is the semantic anchor produced by the uncertain-
+aware anchor generation mechanism, a
+(T𝑠𝑖)
+𝑐
+is the structural an-
+chor, and 𝛽∈[0, 1] balances semantic and structural contributions.
+Overall, the structural confluence modeling module enriches the
+anchor space by combining semantic reasoning with structural
+confluence. The combined use of textual and topological anchors
+enables the model to leverage complementary signals by explicitly
+integrating graph topology into semantic representations, mitigat-
+ing the imbalance between semantic understanding and structural
+modeling.
+For the classification inference, each test node 𝑣𝑗∈V𝑢is rep-
+resented by its semantic embedding h𝑗= 𝑓𝜃(Prompt(𝑣𝑗)), and
+classification is performed through the updated classifier:
+𝑧𝑗,𝑐= ⟨h𝑗, w
+(T𝑠𝑖)
+𝑐
+⟩,
+ˆ𝑦𝑗= arg max
+𝑐
+𝑧𝑗,𝑐.
+(13)
+4
+Experiments
+4.1
+Experimental Setup
+Datasets. We evaluate the proposed UNIT and all baseline meth-
+ods on five benchmark datasets including Cora [9], Citeseer [4],
+WikiCS [20], Photo [32], and Products [11]. We follow the settings
+of LLM4GCL benchmark [5] by dividing the datasets into multiple
+tasks and classes per task to conduct a comprehensive analysis of
+the model’s continual learning performance.
+Baselines. We conduct a comprehensive comparison of UNIT with
+fifteen baseline methods, which fall into three categories. The GNN-
+based methods include GCN [15], EWC [16], LwF [18], Cosine [24],
+and TPP [30]. The LLM-based methods include encoder-only BERT
+[7], RoBERTa [21], decoder-only LLaMA [28], and SimpleCIL [40].
+
+Conference ACM MM’26, November 10-14, 2026, Rio de Janeiro, Brazil
+Tairan Huang, Yili Wang, Beibei Hu, Yiting Shi, Qiutong Li, Changlong He, and Jianliang Gao
+Table 1: Performance comparison of UNIT and baselines.
+Methods
+Cora
+Citeseer
+WikiCS
+Photo
+Products
+ACCavg
+ACCN
+ACCavg
+ACCN
+ACCavg
+ACCN
+ACCavg
+ACCN
+ACCavg
+ACCN
+GCN
+57.0 ± 0.6
+38.2 ± 1.2
+52.4 ± 1.9
+30.2 ± 0.6
+54.9 ± 1.8
+34.9 ± 0.9
+46.5 ± 1.3
+19.9 ± 1.7
+25.5 ± 0.8
+5.4 ± 1.5
+EWC
+56.0 ± 1.9
+31.0 ± 0.7
+45.9 ± 1.6
+28.5 ± 1.8
+55.3 ± 0.6
+33.0 ± 1.3
+46.9 ± 0.6
+20.5 ± 2.0
+29.4 ± 1.1
+15.9 ± 0.7
+LwF
+55.7 ± 1.4
+30.8 ± 0.8
+47.8 ± 1.6
+28.2 ± 1.3
+55.0 ± 2.0
+34.0 ± 0.7
+45.8 ± 1.1
+20.4 ± 1.5
+26.0 ± 0.6
+7.5 ± 1.8
+Cosine
+65.4 ± 0.7
+45.2 ± 1.4
+50.7 ± 1.7
+31.0 ± 0.8
+66.5 ± 1.2
+53.5 ± 0.9
+63.6 ± 1.8
+49.6 ± 1.0
+36.1 ± 1.6
+16.1 ± 1.4
+TPP
+45.7 ± 1.2
+13.7 ± 0.9
+45.4 ± 0.5
+9.6 ± 1.7
+35.1 ± 1.5
+9.8 ± 1.0
+36.3 ± 0.8
+5.7 ± 1.9
+15.0 ± 1.2
+0.2 ± 0.3
+BERT
+56.0 ± 1.3
+29.9 ± 0.9
+53.8 ± 1.4
+28.7 ± 1.6
+58.4 ± 0.7
+30.0 ± 1.2
+43.4 ± 1.9
+18.4 ± 0.8
+26.9 ± 1.3
+4.1 ± 1.6
+RoBERTa
+54.6 ± 1.7
+29.6 ± 1.1
+54.1 ± 0.6
+28.6 ± 1.8
+55.1 ± 1.8
+30.8 ± 0.7
+43.5 ± 1.1
+19.1 ± 1.4
+27.6 ± 1.0
+3.2 ± 1.3
+LLaMA
+65.6 ± 0.8
+53.8 ± 1.6
+55.7 ± 2.0
+31.7 ± 0.9
+55.5 ± 1.4
+30.9 ± 1.1
+44.6 ± 0.7
+19.1 ± 1.7
+29.8 ± 1.5
+0.4 ± 0.2
+SimpleCIL
+70.8 ± 1.9
+58.3 ± 1.0
+66.4 ± 1.3
+49.5 ± 0.7
+71.4 ± 1.5
+57.3 ± 1.2
+62.1 ± 0.8
+52.5 ± 1.5
+66.8 ± 1.8
+52.6 ± 0.7
+GCNLLMEmb
+59.1 ± 1.5
+31.1 ± 1.7
+53.6 ± 1.0
+30.4 ± 1.1
+53.4 ± 1.6
+27.5 ± 0.9
+47.7 ± 1.0
+21.0 ± 1.5
+26.9 ± 1.9
+0.1 ± 0.2
+ENGINE
+59.2 ± 1.2
+31.3 ± 1.4
+53.5 ± 1.8
+29.8 ± 0.7
+56.4 ± 0.9
+30.1 ± 1.9
+47.9 ± 1.7
+21.0 ± 1.1
+27.2 ± 0.8
+1.1 ± 0.4
+GraphPrompter
+61.9 ± 1.0
+46.8 ± 1.5
+60.2 ± 1.3
+30.6 ± 1.8
+59.6 ± 1.7
+38.3 ± 0.8
+51.5 ± 1.4
+31.0 ± 0.9
+29.0 ± 1.6
+0.8 ± 0.3
+GraphGPT
+55.5 ± 1.7
+31.6 ± 1.0
+60.0 ± 1.4
+30.1 ± 1.3
+62.0 ± 0.9
+49.2 ± 1.6
+50.8 ± 1.2
+30.2 ± 1.8
+35.5 ± 2.0
+3.2 ± 0.5
+LLaGA
+58.2 ± 1.6
+30.2 ± 1.9
+51.3 ± 0.7
+27.8 ± 1.4
+53.7 ± 1.3
+27.6 ± 1.7
+47.2 ± 1.8
+20.7 ± 0.9
+25.7 ± 1.1
+0.2 ± 0.1
+SimGCL
+84.6 ± 0.5
+80.0 ± 2.0
+77.1 ± 1.3
+66.3 ± 0.8
+73.5 ± 1.9
+61.9 ± 1.1
+82.1 ± 1.2
+72.6 ± 0.9
+71.1 ± 1.6
+60.2 ± 1.1
+UNIT (ours)
+88.7 ± 0.4
+85.9 ± 1.0
+79.4 ± 0.7
+68.5 ± 0.9
+76.1 ± 0.3
+65.0 ± 0.7
+83.9 ± 1.1
+76.5 ± 0.7
+73.2 ± 1.1
+62.5 ± 1.3
+Performance(%)
+40
+55
+70
+85
+100
+1
+2
+3
+4
+Tasks
+Performance(%)
+0
+20
+40
+60
+80
+100
+1
+2
+3
+4
+5
+6
+7
+8
+Tasks
+(d) Photo
+(e) Products
+1
+2
+3
+Tasks
+45
+60
+75
+90
+Performance(%)
+1
+2
+3
+Tasks
+1
+2
+3
+Tasks
+Performance(%)
+Performance(%)
+40
+55
+70
+85
+100
+40
+55
+70
+85
+100
+25
+(a) Cora
+(b) Citeseer
+(c) WikiCS
+Coine
+SimpleCIL
+SimGCL
+UNIT
+Coine
+SimpleCIL
+SimGCL
+UNIT
+Coine
+SimpleCIL
+SimGCL
+UNIT
+Coine
+SimpleCIL
+SimGCL
+UNIT
+Coine
+SimpleCIL
+SimGCL
+UNIT
+Figure 3: The performance comparison between UNIT and state-of-the-art methods in three baseline categories with ACCN.
+The GLM-based methods include two LLM-as-Enhancer methods
+GCNLLMEmb [31] and ENGINE [43], and three LLM-as-Predictor
+methods GraphPrompter [22], GraphGPT [27], LLaGA [3], and
+SimGCL [5].
+Metrics. We employ accuracy as the evaluation metric for the
+node classification task in graph continual learning. Following the
+standard setting established continual learning benchmark [25], we
+define ACC𝑖as the accuracy after the 𝑖-th training task. We adopt
+the final metrics ACCavg = 1
+𝑁
+Í𝑁
+𝑖=1ACC𝑖and ACCN, which refer to
+the average accuracy across all tasks and the accuracy of the last
+task, respectively.
+Implementations. To ensure fairest possible comparison across
+LLM-driven baseline methods, we use same LLM backbone LLaMA3-
+8B in main experiment. The hyperparameters decay factors 𝜆and
+𝛾are set to the size of 𝜆= 0.7 and 𝛾= 0.6, respectively.
+4.2
+Main Results
+The evaluation results of UNIT and the state-of-the-art baselines
+on five public datasets are presented in Table 1 and the following
+conclusions can be derived. First, integrating semantic information
+is effective to improve graph continual learning performance. For
+evaluation models, the methods incorporating semantic informa-
+tion achieve an overall superiority, compared to traditional graph
+continual learning methods that merely rely on structural informa-
+tion. Compared with the best traditional graph continual learning
+method TPP, UNIT ameliorates the classification performance up
+to 58.2% in ACCavg and 62.3% in ACCN metric. Second, specific
+instruction tuning for semantic information is crucial. LLM-based
+methods demonstrate competitive performance in graph continual
+learning tasks even without explicitly leveraging graph structure,
+while GLM-based methods typically design specific instructions tai-
+lored to structural information for LLM tuning. Compared with the
+state-of-the-art LLM-based method for graph continual learning,
+UNIT achieves an average improvement of 12.8% in ACCavg and
+14.6% in ACCN metric, which reveals the importance of specially
+customized tuning in the confluence of semantic-structural model-
+ing. Third, the proposed method UNIT unleashes LLMs potential for
+graph continual learning. In general, the proposed UNIT constantly
+outperforms the comparison baselines across the five datasets. The
+superiority demonstrates that UNIT unleashes the LLMs potential
+for graph continual learning.
+
+UNIT: Unleash Large Language Models Potential for Graph Continual Learning
+Conference ACM MM’26, November 10-14, 2026, Rio de Janeiro, Brazil
+Table 2: Performance comparison of UNIT and baselines in the few-shot scenarios.
+Methods
+Cora
+Citeseer
+WikiCS
+Photo
+Products
+ACCavg
+ACCN
+ACCavg
+ACCN
+ACCavg
+ACCN
+ACCavg
+ACCN
+ACCavg
+ACCN
+GCN
+68.0 ± 0.5
+38.1 ± 1.3
+39.5 ± 1.2
+17.4 ± 0.4
+62.4 ± 1.2
+47.4 ± 0.4
+58.5 ± 1.6
+32.3 ± 1.2
+36.0 ± 0.9
+14.1 ± 1.0
+EWC
+59.0 ± 1.4
+36.3 ± 0.8
+49.2 ± 1.4
+21.2 ± 1.3
+58.4 ± 0.8
+40.4 ± 1.2
+62.0 ± 0.7
+28.4 ± 1.7
+45.7 ± 1.3
+31.5 ± 0.5
+LwF
+63.3 ± 1.6
+43.5 ± 0.2
+45.1 ± 1.3
+20.7 ± 1.6
+59.4 ± 1.6
+41.0 ± 0.4
+60.1 ± 1.2
+29.4 ± 1.3
+50.3 ± 0.7
+38.7 ± 1.6
+Cosine
+72.6 ± 0.8
+57.8 ± 1.3
+49.1 ± 1.6
+25.7 ± 0.7
+68.0 ± 1.3
+50.7 ± 0.7
+67.9 ± 1.4
+50.5 ± 1.2
+50.9 ± 1.3
+33.6 ± 1.5
+TEEN
+60.9 ± 1.3
+40.3 ± 0.7
+59.0 ± 0.7
+39.5 ± 1.8
+59.3 ± 1.3
+42.4 ± 1.2
+59.3 ± 0.9
+35.5 ± 1.7
+49.6 ± 1.1
+28.4 ± 1.8
+TPP
+39.0 ± 1.1
+9.1 ± 0.7
+37.3 ± 1.2
+12.6 ± 1.3
+37.3 ± 0.6
+12.4 ± 1.0
+40.0 ± 1.2
+14.0 ± 0.9
+14.0 ± 1.2
+0.2 ± 0.1
+BERT
+56.4 ± 1.5
+34.7 ± 1.2
+61.1 ± 0.7
+38.8 ± 1.7
+61.7 ± 1.9
+33.0 ± 0.9
+47.7 ± 1.2
+25.8 ± 1.5
+22.4 ± 1.1
+3.8 ± 1.0
+RoBERTa
+59.6 ± 0.7
+41.9 ± 1.5
+54.0 ± 1.8
+29.2 ± 0.8
+67.2 ± 1.3
+42.3 ± 1.2
+58.2 ± 0.8
+29.6 ± 1.5
+38.8 ± 1.4
+6.9 ± 1.1
+LLaMA
+72.6 ± 1.7
+55.6 ± 1.1
+75.9 ± 1.2
+55.5 ± 0.8
+65.2 ± 1.3
+43.9 ± 1.4
+61.4 ± 0.9
+32.3 ± 1.2
+43.5 ± 1.6
+13.7 ± 0.8
+SimpleCIL
+69.6 ± 1.2
+53.6 ± 1.4
+64.1 ± 1.2
+49.9 ± 1.0
+73.2 ± 1.6
+63.1 ± 0.8
+66.3 ± 1.2
+53.0 ± 1.3
+65.6 ± 1.4
+53.6 ± 1.6
+GCNLLMEmb
+68.2 ± 1.3
+40.1 ± 1.6
+54.3 ± 1.7
+28.7 ± 0.6
+54.7 ± 0.8
+31.0 ± 1.7
+66.0 ± 1.5
+34.2 ± 1.0
+30.6 ± 0.9
+0.2 ± 0.3
+ENGINE
+52.2 ± 1.1
+28.3 ± 1.2
+47.6 ± 1.1
+25.5 ± 1.7
+46.8 ± 1.5
+23.7 ± 0.6
+48.0 ± 1.2
+21.5 ± 0.7
+20.9 ± 1.3
+0.1 ± 0.2
+GraphPrompter
+63.2 ± 1.6
+37.3 ± 1.1
+65.3 ± 1.5
+34.5 ± 1.4
+69.5 ± 0.8
+51.6 ± 1.3
+69.7 ± 1.4
+51.0 ± 1.6
+37.9 ± 1.2
+2.2 ± 0.4
+GraphGPT
+62.4 ± 1.7
+39.6 ± 0.6
+65.0 ± 1.2
+41.7 ± 1.3
+71.2 ± 1.1
+61.6 ± 1.5
+62.2 ± 1.3
+38.9 ± 0.7
+43.2 ± 1.8
+16.2 ± 1.6
+LLaGA
+62.0 ± 1.2
+39.6 ± 1.1
+52.2 ± 0.9
+28.0 ± 1.2
+49.4 ± 1.3
+30.4 ± 1.6
+48.8 ± 1.0
+18.0 ± 0.6
+28.0 ± 0.7
+0.2 ± 0.1
+SimGCL
+78.0 ± 0.5
+67.6 ± 1.0
+78.0 ± 1.3
+63.8 ± 0.8
+68.8 ± 1.9
+64.1 ± 1.1
+81.2 ± 1.2
+71.3 ± 0.9
+69.7 ± 1.6
+62.7 ± 1.1
+UNIT (ours)
+81.4 ± 0.4
+71.0 ± 0.7
+79.7 ± 1.1
+65.3 ± 0.6
+72.5 ± 1.2
+65.9 ± 0.8
+82.9 ± 1.0
+74.6 ± 0.6
+71.1 ± 1.2
+64.2 ± 0.7
+Table 3: Performance comparison of UNIT with variant LLM
+backbones on five datasets. Note that in comparative experi-
+ments with other baseline methods, we adopt Llama3-8B as
+the LLM backbone of UNIT.
+Backbone
+ACCavg
+Cora
+Citeseer
+WikiCS
+Photo
+Products
+Llama3-3B
+87.1±0.6
+77.9±0.5
+74.8±1.2
+82.3±1.4
+72.1±0.7
+Llama3-8B
+88.7±0.4
+79.4±0.7
+76.1±0.3
+83.9±1.1
+73.2±0.4
+GPT-3
+89.5±0.3
+80.6±1.1
+77.2±0.6
+84.5±0.8
+74.3±0.5
+GPT-3.5
+90.2±1.2
+81.3±0.4
+79.2±0.8
+85.2±0.9
+75.1±1.2
+Backbone
+ACCN
+Cora
+Citeseer
+WikiCS
+Photo
+Products
+llama3-3B
+84.1±0.5
+66.9±1.1
+64.8±1.2
+75.3±0.6
+61.1±0.8
+llama3-8B
+85.9±1.0
+68.5±0.9
+65.0±0.7
+76.5±0.7
+62.5±1.3
+GPT-3
+86.7±0.7
+69.4±1.3
+66.1±0.4
+77.9±1.1
+63.2±0.8
+GPT-3.5
+87.6±0.9
+70.2±0.4
+67.4±1.2
+78.7±0.8
+64.3±0.6
+4.3
+Empirical Results
+Qualitative Results. To demonstrate the superiority of the pro-
+posed UNIT in each task, we conduct the additional experiment
+to present the accuracy performance of each task across the five
+datasets. We choose the state-of-the-art methods from three base-
+line categories for comparative experiments, including Cosine, Sim-
+pleCIL, and SimGCL. The results are shown in Figure 3. Based on
+the observations in the figure, we make several conclusions. First,
+the proposed UNIT outperforms other methods across all tasks in
+the five datasets, indicating the effectiveness of unleashing LLMs po-
+tential for graph continual learning. Second, the performance of all
+methods declines during backward execution, with Cosine exhibit-
+ing the most severe degradation. This indicates that GNN-based
+methods struggle to achieve knowledge transfer between continual
+tasks with structural information only. Third, UNIT demonstrates
+stable performance in long-range tasks on the Products dataset,
+presenting that the proposed method can effectively accomplish
+graph continual learning tasks. The proposed UNIT outperforms
+other methods across all tasks in the five datasets, indicating the
+effectiveness of unleashing LLMs potential for graph continual
+learning.
+Few-Shot Study. We conduct specialized experiments to demon-
+strate the superiority of the proposed method UNIT in few-shot
+graph continual learning tasks. The scenario configuration for few-
+shot graph continual learning aligns with the LLM4GCL benchmark
+[5], with results shown in Table 2. The results demonstrate that
+UNIT still outperforms most existing methods in few-shot sce-
+narios. Compared to the state-of-the-art methods, UNIT achieves
+performance improvements of up to 9.1% in ACCavg and 14.6% in
+ACCN metric, respectively. Moreover, in few-shot scenarios, LLM-
+driven methods still outperform those relying solely on GNNs, even
+though most GNN-based methods demonstrate promising perfor-
+mance. This demonstrates the effectiveness and necessity of the
+proposed method UNIT in unleashing the LLMs potential for graph
+continual learning.
+Varying LLM Backbones. We conduct additional experiments
+to assess the impact of different LLM backbones on the UNIT and
+validate whether the capability of LLMs affect semantic comprehen-
+sion. The experiments investigate UNIT with four LLM backbones,
+including Llama3-3B, Llama3-8B, GPT-3, and GPT-3.5, as shown in
+
+Conference ACM MM’26, November 10-14, 2026, Rio de Janeiro, Brazil
+Tairan Huang, Yili Wang, Beibei Hu, Yiting Shi, Qiutong Li, Changlong He, and Jianliang Gao
+Cora
+Citeseer
+WikiCS
+Photo
+Products
+65
+Performance(%)
+70
+75
+80
+85
+90
+Cora
+Citeseer
+WikiCS
+Photo
+Products
+(b) ACCN
+(a) ACCavg
+60
+Performance(%)
+70
+80
+90
+UNIT
+w/o Sem
+w/o Unc
+w/o Str
+UNIT
+w/o Sem
+w/o Unc
+w/o Str
+Figure 4: Ablation study results on various UNIT variants
+across five datasets with ACCavg and ACCN metrics.
+Table 3. In general, all LLM backbones improve the performance of
+graph continual learning task, but the extent of improvement varies
+between models. Besides, it can be seen that GPT-3.5 achieves the
+highest performance gains on all datasets, highlighting the critical
+importance of LLM scale and reasoning capability in UNIT. The
+proposed UNIT method can more sufficiently unleash LLMs poten-
+tial for graph continual learning when it employs LLMs with more
+advanced semantic understanding and knowledge coverage.
+4.4
+Ablation Study
+To explore how each component contributes to the performance
+of UNIT, we conduct a series of ablation experiments on the five
+datasets by excluding each module, as shown in Figure 4. This
+analysis aims to assess the contribution of individual modules by
+iteratively removing them and observing their impact on model
+performance. We compare UNIT with its variants for graph con-
+tinual learning: w/o Sem indicates that the semantic instruction
+tuning module is removed, and use pre-trained LLM models with-
+out semantic fine-tuning for model training. w/o Unc indicates
+that after semantic instruction tuning, the uncertain-aware anchor
+generation module is removed, and only the structural confluence
+modeling module is used. w/o Str denotes the removal of the struc-
+tural confluence modeling module after semantic instruction tuning,
+and only the uncertain-aware anchor generation module is used.
+UNIT represents the use of the semantic instruction tuning module,
+the uncertain-aware anchor generation module, and the structural
+confluence modeling module, corresponding to our complete model.
+From the results, we make several conclusions. Firstly, we can ob-
+serve that the complete model consistently outperforms its single-
+module counterparts in all evaluation metrics. Besides, without
+specific fine-tuning of pre-trained LLM models, the classification
+capabilities of UNIT are compromised, indicating that specific in-
+struction tuning for semantic information is crucial. Moreover, it
+is noticeable that the uncertain-aware anchor generation module
+Performance(%)
+0.9
+0.7
+0.5
+0.3
+0.2
+0.1
+0.1
+0.2
+0.4
+0.6
+0.8
+0.9
+γ
+λ
+(a) ACC
+60
+70
+80
+90
+Performance(%)
+0.9
+0.7
+0.5
+0.3
+0.2
+0.1
+0.1
+0.2
+0.4
+0.6
+0.8
+0.9
+γ
+λ
+(b) ACC
+60
+70
+80
+90
+avg
+N
+Figure 5: Parameter analysis of 𝜆and 𝛾on Cora dataset with
+ACCavg and ACCN metrics. Note that the values of 𝜆and 𝛾
+range from [0.1, . . ., 0.9].
+and structural confluence modeling module play critical roles in
+UNIT and their combination greatly benefits the graph continual
+learning. In general, each component within UNIT contributes to
+unleashing LLMs potential for graph continual learning.
+4.5
+Parameter Analysis
+The proposed UNIT framework contains two main hyperparame-
+ters, i.e., 𝜆and𝛾, which indicate the decay factor of uncertain-aware
+anchor generation and structural confluence modeling, respectively.
+To evaluate the robustness of UNIT under varying hyperparame-
+ter configurations, we conduct a parameter sensitivity analysis on
+the Cora dataset with ACCavg and ACCN metrics. This experiment
+aims to analyze the impact of the two hyper-parameters on graph
+continual learning performance. Specifically, we vary the values of
+𝜆and 𝛾within the range of [0.1, . . ., 0.9] and Figure 5 presents the
+experimental results. Based on the observations in the figure, we
+make several conclusions. Firstly, UNIT tends to exhibit suboptimal
+performance when 𝜆and 𝛾are set to low values, e.g., 0.1 and 0.2.
+This emphasizes the critical role historical knowledge plays within
+the UNIT framework and highlights its effectiveness. Secondly, we
+can observe that excessively high values of 𝜆and 𝛾also adversely
+affect performance, as they may obscure the importance of new
+knowledge. Finally, UNIT demonstrates relatively stable ACCavg
+and ACCN performance across a wide range of 𝜆and 𝛾values,
+which proves its robustness.
+5
+Conclusion
+In this paper, we investigate the systematic exploration of LLMs
+based on graph continual learning tasks and propose a novel frame-
+work, Unleash Large Language Models Potential for Graph Con-
+tinual Learning (UNIT). Accordingly, we design specific prompt
+instructions to fine-tune pre-trained LLMs to facilitate the LLM
+comprehension ability to graph continual learning tasks. Moreover,
+UNIT proposes uncertainty-aware anchor generation and struc-
+tural confluence modeling to achieve comprehensive knowledge
+transfer and sufficient integration of semantic and structural infor-
+mation. The experimental results show that UNIT can effectively
+accomplish the graph continual learning task, which verifies the
+its effectiveness and robustness.
+
+UNIT: Unleash Large Language Models Potential for Graph Continual Learning
+Conference ACM MM’26, November 10-14, 2026, Rio de Janeiro, Brazil
+Acknowledgments
+The work is supported by the National Natural Science Foundation
+of China (No. 62272487 and 62433016).
+References
+[1] Tom Brown, Benjamin Mann, Nick Ryder, Melanie Subbiah, Jared D Kaplan,
+Prafulla Dhariwal, Arvind Neelakantan, Pranav Shyam, Girish Sastry, Amanda
+Askell, et al. 2020. Language models are few-shot learners. Advances in Neural
+Information Processing Systems 33 (2020), 1877–1901.
+[2] Qiang Chen, Zhongze Wu, Xiu Su, Xi Lin, Zhe Qu, Shan You, Shuo Yang, and
+Chang Xu. 2025. Stable Fair Graph Representation Learning with Lipschitz
+Constraint. In Proceedings of the International Conference on Machine Learning.
+[3] Runjin Chen, Tong Zhao, Ajay Jaiswal, Neil Shah, and Zhangyang Wang. 2024.
+Llaga: Large language and graph assistant. arXiv preprint arXiv:2402.08170 (2024).
+[4] Zhikai Chen, Haitao Mao, Hang Li, Wei Jin, Hongzhi Wen, Xiaochi Wei,
+Shuaiqiang Wang, Dawei Yin, Wenqi Fan, Hui Liu, et al. 2024. Exploring the
+potential of large language models (llms) in learning on graphs. ACM SIGKDD
+Explorations Newsletter 25, 2 (2024), 42–61.
+[5] Ziyang Cheng, Zhixun Li, Yuhan Li, Yixin Song, Kangyi Zhao, Dawei Cheng, Jia
+Li, and Jeffrey Xu Yu. 2025. Can LLMs Alleviate Catastrophic Forgetting in Graph
+Continual Learning? A Systematic Study. arXiv preprint arXiv:2505.18697 (2025).
+[6] Seungyoon Choi, Wonjoong Kim, Sungwon Kim, Yeonjun In, Sein Kim, and
+Chanyoung Park. 2024. DSLR: diversity enhancement and structure learning
+for rehearsal-based graph continual learning. In Proceedings of the ACM Web
+Conference 2024. 733–744.
+[7] Jacob Devlin, Ming-Wei Chang, Kenton Lee, and Kristina Toutanova. 2019. Bert:
+Pre-training of deep bidirectional transformers for language understanding. In
+Proceedings of the Conference of the North American Chapter of the Association
+for Computational Linguistics: human language technologies, volume 1 (long and
+short papers). 4171–4186.
+[8] Xiaolin Han, Yikun Zhang, Chenhao Ma, Lingyun Song, Reynold Cheng, and
+Xuequn Shang. 2025. TempASD: Temporal Anomalous Subgraph Discovery in
+Large-Scale Dynamic Financial Networks. In Proceedings of the ACM SIGKDD
+Conference on Knowledge Discovery and Data Mining V. 2. 826–837.
+[9] Xiaoxin He, Xavier Bresson, Thomas Laurent, Adam Perold, Yann LeCun, and
+Bryan Hooi. 2023. Harnessing explanations: Llm-to-lm interpreter for enhanced
+text-attributed graph representation learning. arXiv preprint arXiv:2305.19523
+(2023).
+[10] Edward J Hu, Yelong Shen, Phillip Wallis, Zeyuan Allen-Zhu, Yuanzhi Li, Shean
+Wang, Lu Wang, Weizhu Chen, et al. 2022. Lora: Low-rank adaptation of large
+language models.. In International Conference on Learning Representations. 3.
+[11] Weihua Hu, Matthias Fey, Marinka Zitnik, Yuxiao Dong, Hongyu Ren, Bowen Liu,
+Michele Catasta, and Jure Leskovec. 2020. Open graph benchmark: Datasets for
+machine learning on graphs. Advances in Neural Information Processing Systems
+33 (2020), 22118–22133.
+[12] Huang, Wang Tairan, Li Yili, He Qiutong, Gao Changlong, and Jianliang. 2025.
+Can LLMs Find Fraudsters? Multi-level LLM Enhanced Graph Fraud Detection.
+In Proceedings of the ACM International Conference on Multimedia.
+[13] Ching-Yi Hung, Cheng-Hao Tu, Cheng-En Wu, Chien-Hung Chen, Yi-Ming Chan,
+and Chu-Song Chen. 2019. Compacting, picking and growing for unforgetting
+continual learning. Advances in Neural Information Processing Systems 32 (2019).
+[14] Pengyue Jia, Jingtong Gao, Yejing Wang, Yuhao Wang, Xiaopeng Li, Qidong Liu,
+Yichao Wang, Bo Chen, Huifeng Guo, and Ruiming Tang. 2025. Joint Modeling
+in Deep Recommender Systems. In Companion Proceedings of the ACM on Web
+Conference. 17–20.
+[15] Thomas N Kipf and Max Welling. 2017. Semi-supervised classification with graph
+convolutional networks. In International Conference on Learning Representations.
+1031–1049.
+[16] James Kirkpatrick, Razvan Pascanu, Neil Rabinowitz, Joel Veness, Guillaume
+Desjardins, Andrei A Rusu, Kieran Milan, John Quan, Tiago Ramalho, Agnieszka
+Grabska-Barwinska, et al. 2017. Overcoming catastrophic forgetting in neural
+networks. Proceedings of the National Academy of Sciences 114, 13 (2017), 3521–
+3526.
+[17] Yuhan Li, Peisong Wang, Xiao Zhu, Aochuan Chen, Haiyun Jiang, Deng Cai,
+Victor W Chan, and Jia Li. 2024. Glbench: A comprehensive benchmark for graph
+with large language models. Advances in Neural Information Processing Systems
+37 (2024), 42349–42368.
+[18] Zhizhong Li and Derek Hoiem. 2017. Learning without forgetting. IEEE Transac-
+tions on Pattern Analysis and Machine Intelligence 40, 12 (2017), 2935–2947.
+[19] Yan-Shuo Liang and Wu-Jun Li. 2024. Inflora: Interference-free low-rank adapta-
+tion for continual learning. In Proceedings of the IEEE/CVF Conference on Computer
+Vision and Pattern Recognition. 23638–23647.
+[20] Hao Liu, Jiarui Feng, Lecheng Kong, Ningyue Liang, Dacheng Tao, Yixin Chen,
+and Muhan Zhang. 2023. One for all: Towards training one graph model for all
+classification tasks. arXiv preprint arXiv:2310.00149 (2023).
+[21] Yinhan Liu, Myle Ott, Naman Goyal, Jingfei Du, Mandar Joshi, Danqi Chen, Omer
+Levy, Mike Lewis, Luke Zettlemoyer, and Veselin Stoyanov. 2019. Roberta: A
+robustly optimized bert pretraining approach. arXiv preprint arXiv:1907.11692
+(2019).
+[22] Zheyuan Liu, Xiaoxin He, Yijun Tian, and Nitesh V Chawla. 2024. Can we soft
+prompt llms for graph learning tasks?. In Companion Proceedings of the ACM Web
+Conference. 481–484.
+[23] Yao Ma and Jiliang Tang. 2021. Deep learning on graphs. Cambridge University
+Press.
+[24] Chaoxi Niu, Guansong Pang, Ling Chen, and Bing Liu. 2024. Replay-and-forget-
+free graph class-incremental learning: A task profiling and prompting approach.
+Advances in Neural Information Processing Systems 37 (2024), 87978–88002.
+[25] Sylvestre-Alvise Rebuffi, Hakan Bilen, and Andrea Vedaldi. 2017. Learning mul-
+tiple visual domains with residual adapters. Advances in Neural Information
+Processing Systems 30 (2017).
+[26] Yanchao Tan, Hang Lv, Pengxiang Zhan, Shiping Wang, and Carl Yang. 2025.
+Graph-oriented Instruction Tuning of Large Language Models for Generic Graph
+Mining. IEEE Transactions on Pattern Analysis and Machine Intelligence (2025).
+[27] Jiabin Tang, Yuhao Yang, Wei Wei, Lei Shi, Lixin Su, Suqi Cheng, Dawei Yin,
+and Chao Huang. 2024. Graphgpt: Graph instruction tuning for large language
+models. In Proceedings of the 47th International ACM SIGIR Conference on Research
+and Development in Information Retrieval. 491–500.
+[28] Hugo Touvron, Louis Martin, Kevin Stone, Peter Albert, Amjad Almahairi, Yas-
+mine Babaei, Nikolay Bashlykov, Soumya Batra, Prajjwal Bhargava, Shruti Bhos-
+ale, et al. 2023. Llama 2: Open foundation and fine-tuned chat models. arXiv
+preprint arXiv:2307.09288 (2023).
+[29] Duo Wang, Yuan Zuo, Fengzhi Li, and Junjie Wu. 2024. Llms as zero-shot graph
+learners: Alignment of gnn representations with llm token embeddings. Advances
+in Neural Information Processing Systems 37 (2024), 5950–5973.
+[30] Qi-Wei Wang, Da-Wei Zhou, Yi-Kai Zhang, De-Chuan Zhan, and Han-Jia Ye.
+2023. Few-shot class-incremental learning via training-free prototype calibration.
+Advances in Neural Information Processing Systems 36 (2023), 15060–15076.
+[31] Xixi Wu, Yifei Shen, Fangzhou Ge, Caihua Shan, Yizhu Jiao, Xiangguo Sun, and
+Hong Cheng. 2025. A comprehensive analysis on llm-based node classification
+algorithms. arXiv preprint arXiv:2502.00829 (2025).
+[32] Hao Yan, Chaozhuo Li, Ruosong Long, Chao Yan, Jianan Zhao, Wenwen Zhuang,
+Jun Yin, Peiyan Zhang, Weihao Han, Hao Sun, et al. 2023. A comprehensive study
+on text-attributed graphs: Benchmarking and rethinking. Advances in Neural
+Information Processing Systems 36 (2023), 17238–17264.
+[33] Hao Yan, Chaozhuo Li, Jun Yin, Zhigang Yu, Weihao Han, Mingzheng Li,
+Zhengxin Zeng, Hao Sun, and Senzhang Wang. 2025. When Graph Meets Multi-
+modal: Benchmarking and Meditating on Multimodal Attributed Graph Learning.
+In Proceedings of the ACM SIGKDD Conference on Knowledge Discovery and Data
+Mining V. 2. 5842–5853.
+[34] Mengmei Zhang, Mingwei Sun, Peng Wang, Shen Fan, Yanhu Mo, Xiaoxiao Xu,
+Hong Liu, Cheng Yang, and Chuan Shi. 2024. Graphtranslator: Aligning graph
+model to large language model for open-ended tasks. In Proceedings of the ACM
+Web Conference 2024. 1003–1014.
+[35] Peiyan Zhang, Yuchen Yan, Chaozhuo Li, Senzhang Wang, Xing Xie, Guojie Song,
+and Sunghun Kim. 2023. Continual learning on dynamic graphs via parameter
+isolation. In Proceedings of the international ACM SIGIR conference on research
+and development in information retrieval. 601–611.
+[36] Taiyan Zhang, Renchi Yang, Yurui Lai, Mingyu Yan, Xiaochun Ye, and Dongrui
+Fan. 2025. Leveraging large language models for effective label-free node classifi-
+cation in text-attributed graphs. In Proceedings of the International ACM SIGIR
+Conference on Research and Development in Information Retrieval. 698–708.
+[37] Xikun Zhang, Dongjin Song, and Dacheng Tao. 2022. Hierarchical prototype
+networks for continual graph representation learning. IEEE Transactions on
+Pattern Analysis and Machine Intelligence 45, 4 (2022), 4622–4636.
+[38] Xikun Zhang, Dongjin Song, and Dacheng Tao. 2022. Sparsified subgraph memory
+for continual graph representation learning. In 2022 IEEE International Conference
+on Data Mining. 1335–1340.
+[39] Xikun Zhang, Dongjin Song, and Dacheng Tao. 2023. Ricci curvature-based graph
+sparsification for continual graph representation learning. IEEE Transactions on
+Neural Networks and Learning Systems (2023).
+[40] Da-Wei Zhou, Zi-Wen Cai, Han-Jia Ye, De-Chuan Zhan, and Ziwei Liu. 2025.
+Revisiting class-incremental learning with pre-trained models: Generalizability
+and adaptivity are all you need. International Journal of Computer Vision 133, 3
+(2025), 1012–1032.
+[41] Fan Zhou and Chengtai Cao. 2021. Overcoming catastrophic forgetting in graph
+neural networks with experience replay. In Proceedings of the AAAI conference
+on artificial intelligence, Vol. 35. 4714–4722.
+[42] Hao Zhu, Yifei Zhang, Junhao Dong, and Piotr Koniusz. 2025. BiLoRA: Almost-
+Orthogonal Parameter Spaces for Continual Learning. In Proceedings of the Com-
+puter Vision and Pattern Recognition Conference. 25613–25622.
+[43] Yun Zhu, Yaoke Wang, Haizhou Shi, and Siliang Tang. 2024.
+Efficient tun-
+ing and inference for large language models on textual graphs. arXiv preprint
+arXiv:2401.15569 (2024).

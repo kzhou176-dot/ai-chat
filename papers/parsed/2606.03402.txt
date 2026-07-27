@@ -1,0 +1,981 @@
+Mamba-Enhanced Implicit Motion Learning for
+Audio-Driven Portrait Animation
+Xuan Wei1, †, Jiahui Chen1, †, Kaiheng Li1, Mingyu Shao1, Qingqi Hong1, 2, 3, *
+1Department of Digital Media Technology, School of Film, Xiamen University, Xiamen, China
+2National Institute for Data Science in Health and Medicine, Xiamen University, Xiamen, China
+3Institute of Artificial Intelligence, Xiamen University, Xiamen, China
+Email: hongqq@xmu.edu.cn
+Abstract—Audio-driven human motion video generation aims
+to synthesize realistic and temporally coherent human animations
+from a single static image, with applications in talking-head
+synthesis, co-speech gesture generation, and dynamic presenta-
+tions. Moving beyond conventional keypoint-based methods that
+often struggle to capture subtle motion dynamics, We propose
+a novel implicit-motion framework for generating realistic and
+temporally coherent human motion videos from a single static
+image and audio. Our approach uses a two-stage pipeline that
+decouples motion prediction from rendering. The first stage
+integrates appearance priors and hierarchical depth cues into
+a region-aware attention mechanism to model latent motion
+features. The second stage employs a Mamba-enhanced diffusion
+model to directly predict these features from audio and the
+source image, enabling unsupervised learning of fine-grained
+motion patterns. This decoupled architecture enhances flexibility
+and efficiency. Trained on a new 380-hour high-quality dataset,
+our method outperforms prior work across multiple public
+benchmarks and our collected data in accuracy, naturalness, and
+temporal coherence, setting a new state-of-the-art.
+Index Terms—Implicit Motion Learning, Video Generation,
+Portrait Animation
+I. INTRODUCTION
+In recent years, generative models like GANs and diffusion
+models have significantly advanced portrait animation, en-
+abling the synthesis of dynamic videos from static images and
+audio. However, generating high-quality videos with sustained
+visual coherence remains challenging, as existing methods
+struggle with computational cost, stability, and generaliza-
+tion—especially under significant pose variations.
+To address this, we propose a novel two-stage framework
+based on unsupervised implicit motion representation. For
+Stage 1, we first train a motion feature encoder-decoder
+network on video frame sequences to capture implicit motion
+deviations. These deviations are combined with the source
+image’s appearance and depth features to produce coherent
+output. The core innovation is our Deviation Image Trans-
+former (DIT), which fundamentally rethinks motion represen-
+tation by generating spatial motion offsets through 3D con-
+volution and adaptive normalization, effectively eliminating
+† Equal contribution.
+* Corresponding author. This work was supported in part by the National
+Natural Science Foundation of China under Grant 62471418 and Fujian
+Provincial Natural Science Foundation of China under Grant 2024J01058,
+and the Giant Interactive Group Inc.
+landmark artifacts. Subsequently, our Latent Motion Deviation
+Decoder (LMDD) achieves stratified motion control through
+depth-aware feature layering, coordinating deviation maps via
+softmax-based probability weighting to dynamically prioritize
+motion regions and resolve occlusion artifacts. For Stage 2, our
+enhanced diffusion model synthesizes motion features during
+inference by integrating global/local audio features and motion
+priors from preceding frames, replacing the motion encoder to
+improve generation stability.
+In summary, this work makes three key contributions:
+• We propose a novel implicit multimodal perception-
+based cross-domain generative framework for human por-
+trait generation, overcoming the limitations of traditional
+explicit keypoint modeling and single-modality driven
+approaches.
+• An unsupervised implicit motion representation learning
+framework is developed with the integration of a latent
+motion-region attention mechanism, which is further en-
+hanced by a diffusion model using Mamba features to
+synthesize stable, long-duration human motion videos.
+• We build a 380-hour high-quality audio-visual dataset
+for a two-stage training paradigm, where Stage 1 learns
+motion deviations from video frames and Stage 2 in-
+tegrates Mamba-enhanced diffusion with audio-temporal
+conditioning for long-term coherence.
+II. RELATED WORK
+A. Co-Speech Gesture Generation
+Co-speech gesture generation aims to produce natural
+gestures that complement speech. Early end-to-end regres-
+sion methods [1] struggled with the complex speech-gesture
+relationship. Later, GANs and diffusion models [2], [3]
+were adopted for higher fidelity. Recent advances focus on
+diffusion-based architectures [4] proposed MDM, a diffusion
+transformer architecture that directly synthesizes gestures from
+text inputs using classifier-free guidance to enhance motion
+diversity. Concurrently, [5] explores realistic human motion
+synthesis using kinematic descriptors within a diffusion frame-
+work, aiming to mitigate limb deformation artifacts common in
+generative models. For video generation, ANGIE [6] employs
+MRAA features [7], VQ-VAE [8] quantization, and a GPT-like
+arXiv:2606.03402v2  [cs.CV]  3 Jun 2026
+
+network for predicting motion patterns, but its linear motion
+modeling is limited. To address this, DiffTED [9] and S2G-
+MDDiffusion [10] introduce a motion decoupling strategy,
+using the thin-plate spline (TPS) [11] to generate keypoints
+for rendering. Yet, this can lead to unnatural deformations
+and ghosting, due to limited influence of edge control points
+on the deformation field. TANGO [12] presents CLIP-like
+embedding space between audio-motion modalities, which
+enhances the generalization potential of model. Consequently,
+we propose an implicit motion with latent attention deviation
+module aimed at enabling accurate representation for enhanced
+generation quality.
+B. Talking Head and Lip-syncing
+Talking head generation aims to synthesize a talking por-
+trait video given the driving condition. Due to the complex
+motions the real videos contain, some talking head generation
+models [13] typically adopt facial landmarks as intermediate
+representations for video frames generation. Alternatively,
+some methods [14] process head pose and lip synchronization
+in the latent space. But these methods face the problem of
+vagueness and inconsistency of the generated output videos.
+Meanwhile, contemporary methods [15], [16] integrate condi-
+tional control unit with UNet to achieve highly realistic facial
+renderings. Although these approaches achieve a fair degree
+of alignment between lip movements and audio, diffusion
+models still struggle to capture desirable motion and identity
+information, and generate a wide array of diverse outputs.
+Recent approach [17] explore implicit keypoint-based video-
+driven frameworks, using the scalable motion transformation.
+However, it struggles with cross-reenactment involving signif-
+icant pose changes and shows jitter with pronounced shoulder
+movements in the input video.
+III. METHOD
+We propose a novel audio-driven human motion generation
+framework based on a full-scene deviation strategy. Unlike
+traditional methods that rely on explicit keypoints or 3D
+models, our approach learns an implicit motion representation
+to capture complex dynamics. The generation pipeline takes
+as input an audio signal a and a source image IS.
+Our two-stage training framework (Fig. 1) decouples motion
+prediction from image decoding for efficiency. Stage 1 trains
+a base model using a source image IS and driving sequence
+ID. It includes a Deviation Image Transformer (DIT) to ensure
+temporal continuity and a Latent Motion Deviation Decoder
+(LMDD) for frame consistency. Stage 2 employs a Latent
+Motion Appearance Diffusion module to generate realistic
+motion features from audio a and motion features MFj.
+These features are processed by the pre-trained base model for
+final inference, reducing computational cost while improving
+generation quality.
+A. Training Stage 1: Base Model Learning
+We generate realistic human motion by mapping images
+to a latent space, rather than relying on traditional keypoint
+prediction. The core goal of this first stage is to learn a robust
+mapping from motion features to pixel space, establishing
+a foundation for generating coherent and identity-preserving
+video frames. While keypoint-based methods offer precise
+motion representation, they often struggle with constrained
+motion areas, coherence, and diversity. Our approach over-
+comes these limitations, enabling more natural and diverse
+motion generation.
+Implicit Depth Feature Estimation. Human motion shows
+depth-dependent characteristics: proximal parts (e.g., fingers)
+exhibit larger displacements and higher velocities, while distal
+regions (e.g., torso) follow smoother paths. To handle this
+hierarchical scaling, we introduce a depth axis for motion
+stratification, using Sd sectioning planes perpendicular to it.
+The image encoder E processes the source image IS by
+first extracting an initial feature map F0 ∈RH×W ×C0, then
+convolves and expands it along the depth axis to produce
+Fm ∈RH×W ×C×Sd, thereby creating Sd discretely stratified
+depth layers. These depth-partitioned features undergo global
+pooling along the depth axis to produce compact spatial repre-
+sentations, which is then transformed through fully connected
+layers and normalized via Sigmoid activation to generate the
+final set of depth-wise weighting coefficients ωm.
+ωm = σ
+ 
+FC
+ 
+1
+Sd × H × W
+Sd
+X
+s=1
+H
+X
+h=1
+W
+X
+w=1
+Fm
+!!
+(1)
+These weights refine the features via a ResNet3D module,
+outputting the depth-aware representation Fid = ωm · Fm.
+We propose an Appearance Extractor to address the issue
+of conventional displacement fields incorrectly transferring
+identity features (e.g., moles, wrinkles). It encodes biometric
+details from IS into a compact vector FA, preserving identity
+while minimizing artifact interference for fusion.
+Deviation Image Transformer. To address jitter artifacts
+inherent in traditional keypoint-based methods during large
+motions while enabling robust conversion from motion fea-
+tures to spatial deformation deviations, we propose the De-
+viation Image Transformer (DIT) which explicitly capture
+deformation details of driving images relative to the source
+image. The implementation begins by feeding source image
+IS and driving sequence {ID} into a Motion Encoder to
+output motion features {M i
+D}N
+i=0 ∈R768×(N+1) (with M 0
+D
+corresponding to IS). Following this, each M i
+D is reshaped
+into tensor V i
+D ∈R8×8×12 and normalized to standardized
+space representation V i
+nor. We then apply n layers of 3D
+convolution to V i
+nor. Then scaling/shifting parameters ki
+sc, ki
+sh
+decomposed from k enable computation of the i-th deviation
+map:
+∆i = V i
+nor −V 0
+nor
+√
+δ2 + ϵ
+· ki
+sc + ki
+sh,
+(2)
+where δ is standard deviation and ϵ = 10−5 prevents di-
+vision by zero. To model independent motion in multiple
+regions, we generate λ deviation maps per frame {{∆j}i}
+(i = 1, . . . , N; j = 1, . . . , λ, where λ denotes the number
+
+Source Image I𝒔
+T
+Implicit Depth 
+Feature 𝐹𝐹𝑖𝑖𝑖𝑖
+ℰ
+Image 
+Encoder
+Appearance 
+Extractor
+Latent Motion 
+Deviation Decoder
+(LMDD)
+Driving Image 
+Sequence {ID}
+Training Stage 1:
+Implicit 
+Depth 
+Feature 
+Estimation
+(IDFE)
+𝑁𝑁 images
+Deviation Image 
+Sequence {Δ}
+ME
+MD
+Deviation Image Transformer (DIT)
+Motion Feature 
+Sequence {MD}
+Motion 
+Encoder
+Motion 
+Decoder
+𝒲𝒲
+Warping 
+Calculator
+𝒟𝒟
+Image 
+Decoder
+Mask Map
+Deformation {ϕ}
+Appearance Feature F𝐴𝐴
+Feature F0
+…
+output image sequence {𝑰𝑰𝑹𝑹}
+C0
+Sd
+𝜆𝜆×  N 
+Source Image I𝒔𝒔
+concat
+Sd  × 𝑁𝑁
+Sd  × 𝑁𝑁
+Fig. 1. Training stage 1: base model learning. The image encoder E, the deviation image transformer, the warping calculator w and the image decoder D
+are learnable. In this stage, the model is trained from scratch. CS denotes the channels of feature, while DF represents the layer of depth.
+Motion 
+Appearance 
+Decoder
+(MAD)
+Latent Motion Deviation Decoder(LMDD)
+Attention
+Appearance 
+Feature F𝐴𝐴
+deviation image 
+sequence {Δ}
+Mask Module
+Deformation 𝜙𝜙
+Mask Map
+𝜎𝜎Δ
+𝜆𝜆
+Attention Map
+Depth-Aware  
+Deviation {Δ𝑖d}
+𝜆𝜆
+implicit depth 
+Feature 𝐹𝐹𝑖𝑖𝑖𝑖
+Implicit Depth 
+Fig. 2. The structure of Latent Motion Deviation Decoder. The attention
+module is used to focus on the regions of interest for motion, while the mask
+module is employed to mask the range of motion.
+of motion regions of interest), denoted {∆}, providing pixel-
+level guidance for deformations through implicitly represented
+motion displacement fields.
+Latent Motion Deviation Decoder. This module addresses
+motion-depth decoupling and attention-guided deformation
+by fusing depth information, motion deviations, and identity
+features into hierarchical deformation parameters, making the
+movement of the characters more natural. Motion deviations
+{∆} decode depth features Fid to produce depth-aware devi-
+ation sequences {∆id} where each element aligns with Sd
+depth layers, forming RH×W ×Sd structures. The attention
+mechanism processes {∆id} to generate focus attention maps
+that highlight priority motion regions. By applying softmax
+σ∆across the λ motion regions, it computes probability
+distributions for precise motion control, ultimately integrating
+these regions of interest to produce N frames of deformation
+features {ϕ} ∈RH×W ×Sd×N. In parallel, the mask module
+generates per-layer motion region masks to provide spatial
+constraints.
+Image Decoder. Before feeding the depth deviation features
+into the decoder for final prediction, we enhance the current
+features through a multi-stage process. Deformation informa-
+tion ϕ is first warped with depth features Fid to produce
+ϕ′, improving inter-frame deformation realism. Using a mask
+δϕ, we then compute ϕm = δϕϕ′ + (1 −δϕ)Fid to handle
+occlusions. Next, a nonlinear activation ϕr = max(0, ϕm) +
+β · min(0, ϕm) modulates negative values, where β controls
+articulation intensity. Finally, ϕr is fed into decoder U to
+generate the output frame IR = U(ϕr).
+Loss. Following [7], we use a pre-trained VGG-19 network
+to compute the multi-resolution perceptual reconstruction loss
+Lper between the generated image IR and ground truth ID.
+For realism, a patch-based discriminator is trained with the
+adversarial loss Ldiscr. Additionally, we propose a novel
+threshold mask loss: a binary mask lmask is generated by
+thresholding (τ) the mean absolute difference between ground
+truth features vgt and source deviation features vdev, i.e.,
+lmask = mean(|vgt −vdev|) > τ. This mask is then used
+to compute a weighted perceptual-geometric loss Lpg
+=
+p
+mean((vgt −vdev)2) · lmask, which ensures that only the
+differences exceeding the threshold contribute to the loss.
+Therefore, the total loss in stage 1 is as follows, where αi
+is a hyperparameter:
+LStage1
+total
+= α1Lper + α2LG
+adv + α3Lpg
+(3)
+B. Training Stage 2: Motion Feature Generating
+Building upon the foundational image prediction frame-
+work, we achieve video generation by directly predicting mo-
+tion feature sequences from audio inputs and source images,
+thereby decoupling the task and accelerating inference. To this
+end, we adapt the latent motion diffusion model from [10].
+As shown in Fig. 3, this model is trained on motion fea-
+ture sequences MD—encoded from driving image sequences
+ID—that are perturbed by noise ϵt at diffusion timestep t. We
+further incorporate multiple conditioning signals to regulate
+the synthesis.
+Firstly, the appearance feature FA extracted from source
+image IS preserves identity consistency between generated
+frames and the original portrait. For audio conditioning, hier-
+archical embeddings are derived through dual-path processing:
+global features Fag obtained from raw speech a via a Mamba
+global extractor maintain cross-segment stylistic consistency,
+while local features Fal captured from audio slices a1:T
+using a Mamba local extractor model intra-segment dynamic
+variations. This fuzzy inference strategy enables implicit con-
+tinuous feature learning without explicit classification, ensur-
+ing motion sequences closely approximate real-image-encoded
+dynamics for enhanced temporal coherence.
+
+audio 𝒂𝒂
+WavLM
+Mamba-g
+WavLM
+Mamba-l
++𝝐𝝐𝒕𝒕
+motion feature 
+sequence{MD}
+LN
+MA
+MA
+Linear
+𝐴𝐴
+time step 𝒕𝒕
+generated feature 
+sequence {MD}
+motion features 
+MD[𝑖−4,𝑖−1]
+AN
+audio 𝒂𝒂𝟏𝟏:𝑻𝑻
+LN: Layer Normalization
+AN: Adaptive Normalization
+Mamba-g: Mamba global
+Mamba-l: Mamba local
+driving image
+sequence {𝑰𝑰𝑫𝑫}
+Training Stage 2:
+Latent Motion Appearance Diffusion
+…
+Trans
+former
+LN
+AN
+MLP
+Fig. 3. Training stage 2: latent motion appearance diffusion training. Global and local features are extracted from the audio by Mamba global extractor
+(Mamba-g) and Mamba local extractor (Mamba-l), and a Transformer-based Diffusion model is used to train the generation of motion features.
+Additionally, predicted motion features MD[i−4,i−1] from
+four preceding frames serve as weakly supervised conditions
+for the i-th target frame (initialized as zero vectors for i < 0).
+This leverages inherent temporal continuity to stabilize gen-
+eration by suppressing frame skipping and motion jitter while
+enhancing coherence during audio transitions.
+The diffusion model thus predicts denoised motion features
+{MD} from noisy inputs {MD} + ϵt under composite con-
+ditioning c = (Fag, Fal, MD[i−4,i−1], FA). Training incorpo-
+rates a mean squared error (MSE) loss for motion prediction:
+LMSE = ∥MD −MD∥2
+2
+(4)
+supplemented by implicit velocity and acceleration constraints
+to ensure physical plausibility:
+Limpvel =
+1
+M −1
+M−1
+X
+m=1
+∥fm+1(MD) −fm+1(MD)∥2
+2
+(5)
+Laccel =
+1
+M −2
+M−2
+X
+m=1
+
+ fm+2(MD) −fm+1(MD)
+
+−
+ fm+2(MD) −fm+1(MD)
+
+
+2
+2
+,
+(6)
+where fk(x) = x(k) −x(k−1) denotes frame-wise motion
+differences [18], and M is the number of predicted frames.
+Our diffusion model ϵθ is trained to predict the noise ϵ that
+was added to the motion featuresMD at timestep t, following
+the ϵ-prediction parameterization. The training objective is:
+The composite training objective is as follows:
+Lsimple =EMD,t,ϵ∼N(0,I)
+
+∥ϵ −ϵθ(√¯αtMD
++
+√
+1 −¯αtϵ, t, c)∥2
+(7)
+This integrated loss function preserves biometric identity while
+ensuring natural articulation of hands, lips, and head through-
+out generated sequences.
+IV. EXPERIMENTS
+A. Implementation Details
+Datasets. Experiments for the talking-head task are con-
+ducted on multiple datasets: CREMA-D, RAVDESS, HDTF,
+ 
+ 
+ 
+ 
+Fig. 4. Qualitative comparisons of talking head task. We used different
+datasets for comparison. Our model preserves lip movements and eye gaze,
+handles large poses more stably, and better maintains the identity of the source
+portrait.
+MEAD, CMLR, and our self-collected 380-hour ”Diverse-
+Heads” dataset (covering diverse speaking scenarios, 380
+hours). For co-speech gesture generation, we use the PATS
+dataset ( 84k clips, 250 hours). We follow S2G-MDDiffusion’s
+standard preprocessing for four individuals (Chemistry, Oliver,
+Jon, Seth) in PATS.
+Evaluation metrics. We comprehensively evaluate human
+motion video generation using both image-based and motion-
+specific metrics. Image quality is assessed via FID, while
+video quality and temporal coherence are measured using FVD
+and Temporal Gesture Distance (TGD). Motion naturalness is
+evaluated with Headpose error, and gesture diversity via DIV.
+Audio-visual synchronization is quantified using LSE-C and
+LSE-D, where a lower LSE-D indicates higher consistency.
+B. Comparisons with Other Methods
+For the talking-head task, we compare our method with
+state-of-the-art approaches including AniPortrait [19], Da-
+GAN [20], FOMM [21], LivePortrait [17], MCNet [22],
+TPSMM [11], and X-Portrait [23]. Using a driving video
+
+TABLE I
+QUANTITATIVE RESULTS ON TALKING HEAD TASK. THE TABLE LISTS THE METRIC RESULTS FOR THE MEAD DATASET AND OUR SELF-COLLECTED
+DATASET. BOLD INDICATES THE BEST AND UNDERLINE INDICATES THE SECOND.
+Method
+MEAD
+DiverseHeads
+Headpose↓
+PSNR↑
+SSIM↑
+FID↓
+FVD↓
+LSE-D↓
+LSE-C↑
+Headpose↓
+PSNR↑
+SSIM↑
+FID↓
+FVD↓
+LSE-D↓
+LSE-C↑
+AniPortrait [19]
+1.476
+27.446
+0.880
+64.755
+218.258
+10.430
+1.408
+1.920
+23.245
+0.804
+42.941
+225.998
+10.040
+1.605
+DaGAN [20]
+8.008
+31.811
+0.934
+34.834
+129.180
+10.775
+1.214
+5.159
+26.119
+0.863
+31.567
+115.952
+10.177
+1.579
+FOMM [21]
+7.977
+29.236
+0.899
+37.022
+143.790
+10.437
+1.447
+5.134
+22.990
+0.803
+33.465
+150.046
+10.177
+1.608
+LivePortrait [17]
+1.348
+32.518
+0.941
+34.125
+102.980
+10.463
+1.048
+1.339
+26.216
+0.872
+25.401
+108.540
+9.814
+2.098
+MCNet [22]
+7.397
+32.804
+0.940
+33.141
+135.458
+10.038
+1.812
+4.207
+27.759
+0.885
+27.730
+113.583
+10.075
+1.739
+TPSMM [11]
+7.874
+31.924
+0.940
+34.619
+136.075
+10.486
+1.370
+5.148
+26.997
+0.879
+27.389
+121.976
+10.096
+1.717
+Ours
+1.465
+34.661
+0.953
+30.501
+92.179
+9.025
+2.672
+1.826
+29.213
+0.908
+23.718
+77.267
+9.248
+2.777
+TABLE II
+QUANTITATIVE RESULTS ON CO-SPEECH GESTURE TASK. BOLD INDICATES THE BEST AND UNDERLINE INDICATES THE SECOND.
+Method
+Headpose↓
+PSNR↑
+SSIM↑
+LPIPS↓
+FID↓
+FVD↓
+DIV↑
+TGD↓
+LSE-D↓
+LSE-C↑
+S2G-MDDiffusion [10]
+1.333
+28.500
+0.894
+0.040
+25.325
+109.424
+6.280
+6.610
+11.010
+0.971
+TANGO [12]
+-
+-
+-
+-
+42.863
+168.313
+5.217
+1.883
+10.365
+1.736
+Ours
+1.115
+28.835
+0.905
+0.027
+19.246
+54.456
+7.159
+5.027
+10.257
+1.531
+w/o Appearance
+1.694
+26.299
+0.869
+0.043
+28.194
+90.955
+6.511
+6.887
+11.260
+0.721
+w/o Trans. in DIT
+1.576
+24.790
+0.854
+0.057
+32.234
+153.641
+5.800
+7.213
+11.692
+0.309
+w/o attention map
+1.500
+25.801
+0.863
+0.047
+29.148
+133.441
+6.405
+6.597
+11.780
+0.296
+w/o mamba-g
+-
+-
+-
+-
+31.136
+70.773
+6.139
+6.697
+11.038
+1.230
+w/o mamba-l
+-
+-
+-
+-
+30.587
+71.032
+4.706
+5.593
+11.000
+1.090
+TABLE III
+THE INFERENCE TIME FOR GENERATING A ONE-SECOND, 25-FPS VIDEO
+IN IMG2IMG AND AUDIO2VIDEO SCENARIOS.
+Method
+img2img (s)
+audio2video (s)
+X-Portrait [23]
+36.973
+-
+Hallo2 [24]
+-
+22.088
+FOMM [21]
+0.828
+-
+LivePortrait [17]
+1.127
+-
+AniPortrait [19]
+11.498
+11.816
+DaGAN [20]
+2.126
+-
+MCNet [22]
+2.663
+-
+TPSMM [11]
+2.752
+-
+Ours
+1.322
+1.515
+and a source portrait, all models generate videos at 256×256
+resolution and 25 fps. As shown in Fig. 4, our method produces
+more consistent and realistic results compared with other
+methods. It exhibits higher similarity to the driving image,
+particularly in terms of head position and rotation angle, as
+well as the extent of lip movement.
+On both MEAD and our DiverseHeads dataset (Table I),
+our method achieves the best performance in most metrics.
+It is only slightly outperformed by LivePortrait on Headpose,
+which explicitly optimizes for this metric, demonstrating our
+approach’s effectiveness without task-specific supervision.
+For co-speech gesture generation on the PATS test set
+(256×256, 25fps), our method outperforms S2G-MDDiffusion
+across all metrics and performs comparably to TANGO on
+TGD and LSE-C (Table II). A fair comparison on metrics
+like Headpose or PSNR is not applicable to TANGO, as
+its pipeline relies on driving video frames and Wav2Lip for
+synthesis; this use of interpolated frames also limits its motion
+diversity. Our method produces clearer gestures and richer
+expressions, even with cross-identity inputs, highlighting its
+strong generalization. This capability stems from our frame-
+work’s disentangled motion–appearance representation, where
+the LMDD models motion dynamics separately from identity
+features. Our method also demonstrates competitive efficiency,
+particularly in audio-driven generation (Table III).
+Fig. 5.
+Visualization results of the ablation study. Red box and green
+box indicate the gesture and facial results generated by different models
+respectively within the same frame.
+TABLE IV
+THE ABLATION STUDEY ON MAMBA EXTRACTORS. WE COMPARE THE
+FULL MODEL (OURS) WITH VARIANTS EXCLUDING THE GLOBAL (W/O
+MAMBA-G) OR LOCAL EXTRACTORS (W/O MAMBA-L) EXTRACTORS.
+Method
+FID ↓
+FVD ↓
+DIV ↑
+TGD ↓
+LSE-D ↓
+LSE-C ↑
+w/o mamba-g
+31.136
+70.773
+6.139
+6.697
+11.038
+1.230
+w/o mamba-l
+30.587
+71.032
+4.706
+5.593
+11.000
+1.090
+Ours
+19.246
+54.456
+7.159
+5.027
+10.257
+1.531
+C. Ablation Study and Analysis
+The ablation studies (Fig. 5, Table II) validate the necessity
+of each component. Removing appearance features causes
+stiff motions, loss of hand details, and degrades Headpose
+accuracy. Omitting the Transformer in the DIT module leads
+to loss of motion details (Fig. 5, red box) and lowers PSNR,
+SSIM, and FVD scores. Without the attention map, lip and
+
+gesture details deteriorate, harming the LSE metric. Thus, both
+appearance features and the DIT-encoded motion features are
+indispensable for high-quality, consistent generation.
+Similarly, ablating audio feature extraction in Mamba’s
+second stage (Table II) shows that enhanced audio features,
+particularly global ones, substantially improve video quality
+and gesture metrics, confirming our design’s effectiveness.
+Inference Efficiency. We also evaluate inference efficiency
+across model configurations (Table IV). Compared to ablated
+variants without the global (w/o mamba-g) or local (w/o
+mamba-l) Mamba branch, our full model achieves the best per-
+ceptual quality (lowest FID/FVD, highest DIV/LSE-C) while
+maintaining competitive speed in generating 1-second, 25-FPS
+videos (both img2img and audio2video). This demonstrates
+that integrating both Mamba modules provides an effective
+quality-efficiency trade-off.
+V. CONCLUSION
+This paper presents a novel method for generating realistic
+and temporally consistent human motion videos from static
+portraits. Our model employs an implicit motion representa-
+tion combined with a latent appearance-motion bias attention
+mechanism. Extensive experiments confirm its high-quality
+output and strong generalization. Future directions aim to
+enhance realism: first, by decoupling facial animation control
+using physiological signals and expert-network submodules;
+second, by integrating neural radiance fields for dynamic,
+real-time rendering; and third, by developing a multimodal
+affective cognition model to drive naturalistic emotional ex-
+pression. These developments will enable cinematic-quality
+digital humans for immersive communication.
+REFERENCES
+[1] Shiry Ginosar, Amir Bar, Gefen Kohavi, Caroline Chan, Andrew Owens,
+and Jitendra Malik,
+“Learning individual styles of conversational
+gesture,”
+in Proceedings of the IEEE/CVF Conference on Computer
+Vision and Pattern Recognition, June 2019, pp. 3497–3506.
+[2] Chaitanya Ahuja, Dong Won Lee, Ryo Ishii, and Louis-Philippe
+Morency,
+“No gestures left behind: Learning relationships between
+spoken language and freeform gestures,” in Findings of the Association
+for Computational Linguistics: EMNLP 2020, Trevor Cohn, Yulan He,
+and Yang Liu, Eds. 2020, vol. EMNLP 2020 of Findings of ACL, pp.
+1884–1895, Association for Computational Linguistics.
+[3] Lingting Zhu, Xian Liu, Xuanyu Liu, Rui Qian, Ziwei Liu, and Lequan
+Yu,
+“Taming diffusion models for audio-driven co-speech gesture
+generation,” in Proceedings of the IEEE/CVF Conference on Computer
+Vision and Pattern Recognition, June 2023, pp. 10544–10553.
+[4] Guy Tevet, Sigal Raab, Brian Gordon, Yonatan Shafir, Amit H Bermano,
+and Daniel Cohen-Or, “Human motion diffusion model,” arXiv preprint
+arXiv:2209.14916, 2022.
+[5] Bohong Chen, Yumeng Li, Youyi Zheng, Yao-Xiang Ding, and Kun
+Zhou, “Motion-example-controlled co-speech gesture generation lever-
+aging large language models,” in ACM SIGGRAPH 2025 Conference
+Papers, New York, NY, USA, 2025, SIGGRAPH Conference Papers ’25,
+Association for Computing Machinery.
+[6] Xian Liu, Qianyi Wu, Hang Zhou, Yuanqi Du, Wayne Wu, Dahua Lin,
+and Ziwei Liu,
+“Audio-driven co-speech gesture video generation,”
+Advances in Neural Information Processing Systems, pp. 21386–21399,
+2022.
+[7] Aliaksandr Siarohin, Oliver J. Woodford, Jian Ren, Menglei Chai, and
+Sergey Tulyakov, “Motion representations for articulated animation,”
+in Proceedings of the IEEE/CVF Conference on Computer Vision and
+Pattern Recognition, Jun 2021, pp. 13653–13662.
+[8] Aaron Van Den Oord, Oriol Vinyals, et al., “Neural discrete represen-
+tation learning,” Advances in Neural Information Processing Systems,
+vol. 30, pp. 6309–6318, 2017.
+[9] Steven Hogue, Chenxu Zhang, Hamza Daruger, Yapeng Tian, and
+Xiaohu Guo,
+“Diffted: One-shot audio-driven ted talk video genera-
+tion with diffusion-based co-speech gestures,”
+in Proceedings of the
+IEEE/CVF Conference on Computer Vision and Pattern Recognition
+Workshops, June 2024, pp. 1922–1931.
+[10] Xu He, Qiaochu Huang, Zhensong Zhang, Zhiwei Lin, Zhiyong Wu,
+Sicheng Yang, Minglei Li, Zhiyi Chen, Songcen Xu, and Xiaofei Wu,
+“Co-speech gesture video generation via motion-decoupled diffusion
+model,”
+in Proceedings of the IEEE/CVF Conference on Computer
+Vision and Pattern Recognition, 2024, pp. 2263–2273.
+[11] Jian Zhao and Hui Zhang, “Thin-plate spline motion model for image
+animation,” in Proceedings of the IEEE/CVF Conference on Computer
+Vision and Pattern Recognition, 2022, pp. 3647–3656.
+[12] Haiyang Liu, Xingchao Yang, Tomoya Akiyama, Yuantian Huang,
+Qiaoge Li, Shigeru Kuriyama, and Takafumi Taketomi, “Tango: Co-
+speech gesture video reenactment with hierarchical audio motion em-
+bedding and diffusion interpolation,” 2024.
+[13] Lele Chen, Ross K. Maddox, Zhiyao Duan, and Chenliang Xu, “Hi-
+erarchical cross-modal talking face generation with dynamic pixel-wise
+loss,” in Proceedings of the IEEE/CVF Conference on Computer Vision
+and Pattern Recognition, 2019, pp. 7824–7833.
+[14] Enric Corona, Andrei Zanfir, Eduard Gabriel Bazavan, Nikos Kolo-
+touros, Thiemo Alldieck, and Cristian Sminchisescu, “Vlogger: Mul-
+timodal diffusion for embodied avatar synthesis,”
+arXiv preprint
+arXiv:2403.08764, 2024.
+[15] Chenpeng Du, Qi Chen, Tianyu He, Xu Tan, Xie Chen, Kai Yu, Sheng
+Zhao, and Jiang Bian, “Dae-talker: High fidelity speech-driven talking
+face generation with diffusion autoencoder,” in Proceedings of the 31st
+ACM International Conference on Multimedia, New York, NY, USA,
+2023, MM ’23, p. 4281–4289.
+[16] Shuai Shen, Wenliang Zhao, Zibin Meng, Wanhua Li, Zheng Zhu, Jie
+Zhou, and Jiwen Lu, “Difftalk: Crafting diffusion models for generalized
+audio-driven portraits animation,”
+in Proceedings of the IEEE/CVF
+Conference on Computer Vision and Pattern Recognition, June 2023,
+pp. 1982–1991.
+[17] Jianzhu Guo, Dingyun Zhang, Xiaoqiang Liu, Zhizhou Zhong, Yuan
+Zhang, Pengfei Wan, and Di Zhang,
+“Liveportrait: Efficient portrait
+animation with stitching and retargeting control,”
+arXiv preprint
+arXiv:2407.03168, 2024.
+[18] Li Siyao, Weijiang Yu, Tianpei Gu, Chunze Lin, Quan Wang, Chen
+Qian, Chen Change Loy, and Ziwei Liu, “Bailando: 3d dance generation
+by actor-critic gpt with choreographic memory,”
+in 2022 IEEE/CVF
+Conference on Computer Vision and Pattern Recognition, 2022, pp.
+11040–11049.
+[19] Huawei Wei, Zejun Yang, and Zhisheng Wang, “Aniportrait: Audio-
+driven synthesis of photorealistic portrait animation,”
+arXiv preprint
+arXiv:2403.17694, 2024.
+[20] Fa-Ting Hong, Longhao Zhang, Li Shen, and Dan Xu, “Depth-aware
+generative adversarial network for talking head video generation,” in
+Proceedings of the IEEE/CVF Conference on Computer Vision and
+Pattern Recognition, 2022, pp. 3387–3396.
+[21] Aliaksandr Siarohin, St´ephane Lathuili`ere, Sergey Tulyakov, Elisa Ricci,
+and Nicu Sebe, “First order motion model for image animation,” in
+Conference on Neural Information Processing Systems, December 2019.
+[22] Fa-Ting Hong and Dan Xu, “Implicit identity representation conditioned
+memory compensation network for talking head video generation,” in
+Proceedings of the IEEE/CVF International Conference on Computer
+Vision, 2023, pp. 23062–23072.
+[23] You Xie, Hongyi Xu, Guoxian Song, Chao Wang, Yichun Shi, and Linjie
+Luo, “X-portrait: Expressive portrait animation with hierarchical motion
+attention,” in ACM SIGGRAPH 2024 Conference Papers, 2024, pp. 1–
+11.
+[24] Jiahao Cui, Hui Li, Yao Yao, Hao Zhu, Hanlin Shang, Kaihui Cheng,
+Hang Zhou, Siyu Zhu, and Jingdong Wang, “Hallo2: Long-duration and
+high-resolution audio-driven portrait image animation,” 2024.

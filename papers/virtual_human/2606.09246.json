@@ -1,0 +1,22 @@
+{
+  "arxiv_id": "2606.09246",
+  "title": "SOMA: From Surface Observations to Muscle Anatomy",
+  "authors": [
+    "Eduardo Alvarado",
+    "Emily Kim",
+    "Gerrit Nolte",
+    "Friedemann Runte",
+    "Mario Botsch",
+    "Marc Habermann",
+    "Christian Theobalt"
+  ],
+  "abstract": "With the growing demand for realistic virtual humans, parametric body models have become a cornerstone of modern medicine, sports, and entertainment applications. However, most of these models are inherently limited: they only capture the 3D surface of the skin, offering no insight into the complex bio-mechanical structures that generate motion. As more applications expand towards biomechanics, the need for virtual human models that go beyond the skin has become increasingly evident. Traditional soft-tissue simulations, such as FEM, are accurate but non-scalable and too computationally expensive for most common applications. Alternatively, existing biomechanical tools can simulate muscular forces and activations, but do not model changes in external shape, restricting how activations correlate with actual observable anatomy. This motivates a novel inverse research problem: recovering muscle deformations directly from visible surface observations - i.e., from the skin, and thus the pose. In this work, we present SOMA (from Surface Observations to Muscle Anatomy), a person-specific model that infers spatio-temporal muscle behavior from surface signals obtained using RGB cameras, and SKIM, a subject-specific soft-tissue deformation dataset. To the best of our knowledge, this is the first method that attempts to recover muscle deformations from multi-view RGB data. We show how our method provides anatomically grounded animations without the complexity of traditional simulations, leading to a scalable and cost-effective solution. Data and code are available.",
+  "published": "2026-06-08T09:20:46Z",
+  "categories": [
+    "cs.CV"
+  ],
+  "keyword": "virtual_human",
+  "fetched_at": "2026-07-21T04:01:33Z",
+  "abs_url": "https://arxiv.org/abs/2606.09246",
+  "pdf_url": "https://arxiv.org/pdf/2606.09246"
+}

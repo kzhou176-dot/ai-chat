@@ -1,0 +1,36 @@
+#!/bin/sh
+# postinst script for aichat-hub
+set -e
+
+case "$1" in
+    configure)
+        chmod +x /usr/lib/aichat-hub/scripts/*.py 2>/dev/null || true
+        chmod +x /usr/bin/aichat-hub 2>/dev/null || true
+
+        if [ ! -f /etc/aichat-hub/config.env ]; then
+            mkdir -p /etc/aichat-hub
+            cat > /etc/aichat-hub/config.env <<'EOF'
+# aichat-hub configuration
+OPENAI_API_KEY=
+DEEPSEEK_API_KEY=
+ZHIPU_API_KEY=
+DASHSCOPE_API_KEY=
+MOONSHOT_API_KEY=
+ANTHROPIC_API_KEY=
+AICHAT_HOST=127.0.0.1
+AICHAT_PORT=8765
+EOF
+            chmod 644 /etc/aichat-hub/config.env
+        fi
+
+        echo "================================================================"
+        echo "  aichat-hub v1.0.2 installed!"
+        echo "  Run: aichat-hub                    (start server on :8765)"
+        echo "  Edit /etc/aichat-hub/config.env    (add LLM API keys)"
+        echo "  Docs: /usr/share/doc/aichat-hub/"
+        echo "================================================================"
+        ;;
+esac
+
+#DEBHELPER#
+exit 0

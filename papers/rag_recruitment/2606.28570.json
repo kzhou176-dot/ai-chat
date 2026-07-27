@@ -1,0 +1,14 @@
+{
+  "arxiv_id": "2606.28570",
+  "title": "Digitizing Coaching Intelligence: An Agentic Framework for Holistic Athlete Profiling using VLM and RAG",
+  "summary": "Athlete assessment is a critical process for tracking physical progress and identifying elite talent. However, during mass recruitment drives, traditional methods rely on manual observation, which is inherently subjective and unscalable, or basic computer vision (CV) systems limited to quantitative repetition counting. These standard approaches lack the \"coaching intelligence\" required to evaluate qualitative physiological markers such as form degradation, spinal articulation, and fatigue. This paper presents a novel, LLM-based hybrid agentic framework for automated, holistic athlete profiling that strictly aligns with the Sports Authority of India (SAI) assessment protocols. Orchestrated via LangGraph, our dual-pipeline architecture synthesizes the geometric precision of CV (MediaPipe) fo",
+  "authors": [
+    "Deep Ghosal",
+    "Ishani Sen",
+    "Wazib Ansar",
+    "Amlan Chakrabarti"
+  ],
+  "published": "2026-06-26",
+  "category": "cs.CV",
+  "keyword": "rag_recruitment"
+}

@@ -1,0 +1,19 @@
+{
+  "arxiv_id": "2607.17243",
+  "title": "LenGuard-GPC: Length Guarding with Guided-Prompt Consistency for Spatial Reasoning Reinforce Learning",
+  "authors": [
+    "Xingjian Tao",
+    "Yiwei Wang",
+    "Yujun Cai",
+    "Jing Tang"
+  ],
+  "abstract": "Multi-view spatial reasoning requires vision-language models to compare visual evidence across images, align object correspondences, and infer spatial relations over long visual contexts, a setting where chain-of-thought reasoning tends to grow verbose without becoming more accurate. Reinforcement learning with verifiable rewards is a natural fit for this task, but standard GRPO reward relies on sparse outcome-level feedback and gives no signal about where a reasoning trajectory goes wrong, nor any control over its length. We propose LenGuard-GPC, a dense reward framework that addresses both problems together. For each sampled trajectory, it compares the token-wise predictive distributions under a standard prompt and a guided prompt, and uses the resulting token-sum KL divergence as a dense reward signal. Since this KL penalty accumulates over tokens and would otherwise reward shorter responses regardless of their quality, we introduce a staged length bonus that keeps reasoning length within a controlled range without simply encouraging brevity. On six multi-view spatial reasoning benchmarks, LenGuard-GPC improves accuracy over vanilla GRPO while reducing average response length.",
+  "published": "2026-07-19T13:24:40Z",
+  "categories": [
+    "cs.AI"
+  ],
+  "keyword": "reasoning",
+  "fetched_at": "2026-07-21T05:45:38Z",
+  "abs_url": "https://arxiv.org/abs/2607.17243",
+  "pdf_url": "https://arxiv.org/pdf/2607.17243"
+}

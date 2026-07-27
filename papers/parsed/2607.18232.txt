@@ -1,0 +1,1372 @@
+It’s Not What You Say, It’s How You Say It: Evaluating LLM Responses to
+Expressions of Belief
+Kevin Du∗
+ETH Zürich
+kevin.du@inf.ethz.ch
+Clara Kümpel∗
+ETH Zürich
+ckuempel@ethz.ch
+Michelle Wastl
+University of Zurich
+michelle.wastl@uzh.ch
+Alex Warstadt
+UC San Diego
+awarstadt@ucsd.edu
+Abstract
+Users frequently express their beliefs to large
+language models (LLMs). In some situations,
+it is ideal for the LLM to accept this contextual
+information as true, while in others, it is ideal
+to stick to prior knowledge. Users’ expres-
+sions of belief (EoBs) can take linguistically di-
+verse forms—using presuppositions, evidential
+and certainty markers, or varied tones—each of
+which may have a different persuasiveness over
+the LLMs. We introduce EoBench, a bench-
+mark to systematically evaluate how different
+EoBs affect whether models follow context ver-
+sus prior knowledge. We propose a typology
+grounded in four linguistically motivated di-
+mensions: form, evidentiality, epistemic stance,
+and tone, spanning 19 fine-grained types. By
+pairing these EoBs with world knowledge facts,
+we generate controlled EoB–query pairs that
+isolate the effect of linguistic variation. We use
+our benchmark to evaluate 18 LLMs that dif-
+fer in architecture (Llama3, Qwen3, Gemma3),
+scale (1B-30B parameters), and training stages
+(base vs. instruct). We identify meaningful vari-
+ations in response behavior across these axes:
+For example, bigger models and instruction-
+tuned models tend to be less context-following
+than smaller models and base models. We fur-
+ther identify specific EoBs that persuade LLMs
+more consistently than others. Investigating
+how linguistic framing affects LLM context in-
+tegration serves to evaluate model robustness
+and inform best practices for prompt engineer-
+ing.
+§
+github.com/clarakuempel/EoB
+hf.co/datasets/kdu4108/EoBench
+1
+Introduction
+The exchange of beliefs from one agent to another
+is one of the primary goals of language (Wittgen-
+stein, 1953; Grice, 1975; Tomasello, 2008). Hu-
+mans, often intuitively, can express their beliefs
+*These authors contributed equally to this work.
+Figure 1: Certain expressions of belief (EoBs) are sta-
+tistically significantly more or less likely to persuade a
+model to agree with its belief than others. Particularly
+persuasive ways include using child-directed tones*,
+imperative forms†, formal tones, and appeals to au-
+thority. Meanwhile, particularly unconvincing ways
+include using counterfactuals‡, belief reports§, and
+weak epistemic stance. Our work suggests that when
+studying how LLMs are influenced by context, the EoB
+should be considered an important factor. Stars indi-
+cate statistical significance at different levels of false-
+discovery rate.
+in various linguistically distinct ways, such as pre-
+supposing information, citing sources, questioning,
+or adjusting their tone. A speaker might explic-
+itly state The Eiffel Tower is located in Berlin, or
+presuppose it through a question, When was the
+Eiffel Tower relocated to Berlin?. Human listeners
+often subconsciously interpret the belief based on
+how it is expressed, i.e., its explicitness, tone, or
+contextual cues.
+*e.g., Okay sweetie, so the capital of France is London.
+†e.g., Remember that London is the capital of France.
+‡e.g., If Berlin weren’t the capital of Germany, London
+would be the capital of France.
+§e.g., My brother believes the capital of France is London.
+arXiv:2607.18232v1  [cs.CL]  20 Jul 2026
+
+When prompting a large language model
+(LLM) with natural language, especially in a
+conversational setting, humans also inevitably
+convey information in a variety of subtle ways.
+Users may leave assumptions implicit or make
+them explicit; information needed to establish
+common ground may be presupposed, implicated,
+asserted with confidence, described as hearsay, or
+phrased informally, and these properties may vary
+across speakers. These different variations, i.e.,
+different expressions of belief (EoBs), can and
+should influence the output of a model.
+Existing work on the sensitivity of LLMs to in-
+context information has explored direct knowledge
+conflicts (Longpre et al., 2021; Du et al., 2024),
+persuasive framing effects (Xu et al., 2024), and
+selected aspects of pragmatic reasoning such as
+implicature and presupposition (Jeretic et al., 2020;
+Parrish et al., 2021). Yet, we lack a systematic un-
+derstanding of how form, tone, and other aspects
+of an EoB affect how LLMs integrate contextual
+information. Better understanding the influence
+of EoBs can be especially important for down-
+stream applications in which a model’s context-
+sensitivity depends on the setting, e.g., chat assis-
+tants should adapt more to user beliefs in context
+than knowledge-grounded tasks to resist misinfor-
+mation propagation.
+We address this gap by introducing EoBench,
+a controlled benchmark grounded in four linguis-
+tic dimensions and using it to analyze how a wide
+range of LLMs respond to EoBs. Specifically, we
+develop a typology spanning multiple linguistic di-
+mensions: form, evidentiality, epistemic stance,
+and tone, with each incorporating fine-grained
+types; and construct a synthetic dataset of ≈66, 000
+expressions of belief, embedding similar factual
+content in various linguistic forms. Empirically, we
+evaluate 18 models spanning multiple architectures
+(Gemma, Llama, Qwen), scales (1B-30B), and
+training paradigms (base- and instruction-tuned)
+in how they respond to these different EoBs. No-
+tably, we find that bigger models tend to be less
+context–following than smaller models, instruction-
+tuned models tend to be less context–following
+than base models, and the Llama3 family tends
+to be less context–following than Gemma3 and
+Qwen3. Further, we identify specific EoBs, such as
+imperative forms, e.g., Don’t forget that the capital
+of France is London., which are statistically sig-
+nificantly more persuasive than other EoBs when
+averaged across all models.
+Our work underscores the importance of align-
+ment techniques like instruction-tuning in altering
+human-model interactions. Such fine-grained eval-
+uations are an important step in benchmarking and
+refining how LLMs update their beliefs in context.
+2
+Linguistically-Grounded Evaluation of
+LLMs
+2.1
+Expressions of Belief in Linguistics &
+Philosophy
+In linguistics, expressions of belief range from ex-
+plicit assertion, i.e., the act of publicly committing
+to the truth of a proposition, to more indirect forms
+such as the pragmatic phenomena of presupposi-
+tion and implicature, or hedged and evidentially
+marked utterances (Grice, 1975; Stalnaker, 1978;
+Pagin and Marsili, 2021). These expressions differ
+in how directly they commit the speaker to a propo-
+sition and how they function within discourse.
+Across these expression forms, beliefs can be
+conveyed with varying evidential basis, epistemic
+strength (certainty), and register.1 Linguistic re-
+search documents how these dimensions affect
+linguistic structure and interpretation: informa-
+tion source is grammatically encoded in many lan-
+guages (Aikhenvald, 2004), certainty markers mod-
+ulate how strongly claims are accepted (Palmer,
+2001), and register shapes how expressions of be-
+lief are received (Biber and Conrad, 2019).
+Because all four dimensions (form, evidentiality,
+epistemic stance and tone) affect claim interpreta-
+tion in human communication, we include them
+in our typology of EoBs through which we evalu-
+ate LLMs (detailed overview in Section 3). While
+linguistics identifies these as functionally distinct
+in human communication, we propose a unified
+framework to study their effects on LLM interpre-
+tation.
+2.2
+Studying Language Models through
+Knowledge Conflicts
+LLMs exhibit remarkable capabilities at both an-
+swering questions stored in their prior parametric
+knowledge and using external information. From
+their parameters, they can retrieve facts acquired
+from training data (Brown et al., 2020; Petroni
+et al., 2019; Roberts et al., 2020; Geva et al., 2021)
+or fall prey to jailbreaking attacks and reveal sen-
+1Register refers to linguistic variation based on context
+and formality, including tone (formal vs. casual), style, and
+appropriateness to the communicative situation.
+
+sitive information (Yu et al., 2024). From the con-
+text, they can solve novel tasks through in-context
+learning (Brown et al., 2020), perform retrieval-
+augmented generation (Lewis et al., 2020), or con-
+duct long-form chats in which they adapt to the
+user (Vinyals and Le, 2015; OpenAI, 2023).
+When both sources of knowledge are present,
+the model must integrate information from these
+two potentially conflicting sources:
+prior and
+context knowledge.
+A knowledge conflict is a
+straightforward setting in which a factual query is
+preceded with a context that provides conflicting
+information, e.g., The capital of France is London.
+What’s the capital of France? (Longpre et al.,
+2021; Xie et al., 2024; Nguyen et al., 2025;
+Minder et al., 2025). Prior work has shown that
+LLMs often rely on prior knowledge even when
+conflicting knowledge is introduced—models fail
+to override memorized facts when presented with
+contradictions in-context (Longpre et al., 2021).
+Similarly, Du et al. (2024) explore traits of a query
+or context which influences whether a model
+agrees with the context or its prior knowledge, such
+as the salience of a queried entity in pretraining
+data and the epistemic stance of a context. Both
+of the aforementioned works dealt with knowledge
+conflicts where the expression of belief was
+explicit. Furthermore, Zheng et al. (2023) explore
+editing an LLM’s prior knowledge by evaluating
+different prompting methods. Unlike our work
+though, they do not control for linguistic features.
+Several recent datasets test LLM behavior un-
+der presuppositional, counterfactual, or contradic-
+tory EoBs. Yu et al. (2023b) introduce CREPE for
+false presupposition handling; Yu et al. (2023a)
+propose IFQA for reasoning under counterfactual
+premises. CONFLICTBANK (Su et al., 2024) and
+BOARDGAMEQA (Kazemi et al., 2023) target con-
+tradictions and epistemic inconsistencies. While
+these datasets test isolated phenomena, our dataset
+spans multiple linguistic dimensions grounded in a
+theoretically motivated typology of EoBs.. Our pro-
+grammatic data generation approach isolates the ef-
+fect of linguistic form while holding propositional
+content constant, enabling systematic analysis of
+EoB processing across 19 expression types.
+2.3
+Do Human Persuasion Sensitivities
+Transfer to LLMs?
+We build on a series of existing work that takes
+human behavior as inspiration for analyzing and
+evaluating LLMs. For example, given the effective-
+ness of rhetorical framing in persuading humans
+to commit to certain beliefs, Xu et al. (2024) ex-
+plore how such framings influence LLM belief at-
+tribution and find that, similar to humans, LLMs
+are substantially influenced by aspects like persua-
+sive tone. Similarly, prior work also shows that
+LLMs exhibit some human-like sensitivities to se-
+mantic content and plausibility (Lampinen et al.,
+2024; Webson et al., 2023), suggesting partially
+overlapping heuristics for processing information
+in humans and LLMs.
+3
+Typology of Expressions of Belief
+Building on the linguistic dimensions established in
+Section 2.1, we define a typology for systematically
+analyzing how LLMs respond to different expres-
+sions of belief (EoBs), along four linguistic axes:
+form, evidentiality, epistemic stance, and tone (Fig-
+ure 2). We systematically vary how the same propo-
+sitional content is presented across these dimen-
+sions, enabling a controlled evaluation of whether
+the linguistic form affects model responses.
+Our design choices for the four dimensions draw
+on Lyons (1977) and subsequent work building
+on their tradition: Form (§ 3.1) captures the syn-
+tactic and illocutionary variation through which
+a belief can be expressed (Lyons, 1977). Eviden-
+tiality (§ 3.2) reflects whether a proposition is pre-
+sented as firsthand or indirect knowledge (Pomer-
+antz, 1980), with source marking shown to mod-
+ulate credibility (Lyons, 1977; Aikhenvald, 2004;
+Heritage, 2012). Epistemic stance (§ 3.3) captures
+the degree of speaker commitment or certainty, sim-
+plified here into weak and strong categories (Lyons,
+1977; Nuyts and van der Auwera, 2016). Tone
+(§ 3.4) reflects register-based variation in how epis-
+temic content is expressed (Carretero, 2002).
+We selected the specific dimensions and types
+within them based on their theoretical prominence
+and experimental tractability. Because some of
+these linguistic categories exist along continua
+rather than as discrete categories, we use represen-
+tative instances, e.g., “might” for a weak epistemic
+stance, “definitely” for strong) rather than attempt-
+ing general definitions. While not exhaustive, this
+typology is extensible to additional phenomena. In
+the following, we detail each dimension with ex-
+amples. A tabular overview of all dimensions with
+more examples is provided in Appendix C.
+
+Expression of Belief Typology
+Form
+Explicit
+Not at-issue
+Suppositions
+Counterfactuals
+Material conditionals
+Imperative
+Interrogative
+Evidentiality
+Authority
+Belief reports
+Hearsay
+Epistemic Stance
+Strong
+Weak
+Tone
+Formal
+Informal
+Sarcasm
+Social media
+Child-directed
+Emotional-appeal
+Poetic
+Figure 2: Our EoB typology spanning four linguistic dimensions (19 total types). Each dimension varies in how
+propositional content is expressed while holding semantic meaning constant.
+3.1
+Form
+This dimension captures the syntactic/discourse
+structure through which a proposition is presented.
+We identify several key forms:
+• Explicit EoBs directly state a proposition in
+the form X is Y., e.g., The capital of France is
+London..
+• Not at-issue statements, such as presupposi-
+tions, embed the proposition as background
+information. Notably, such content is not can-
+celed by embedding under negation or a ques-
+tion (Stalnaker, 1978). For example, Did the
+Queen cheer because London is the capital
+of France? presupposes London is France’s
+capital even if the main clause is a question.
+• Conditionals present the proposition within
+hypothetical structures:
+– Suppositions invite consideration of a
+hypothetical (Suppose London is the cap-
+ital of France.).
+– Counterfactuals pair the proposition
+with a false antecedent (If Berlin weren’t
+the capital of Germany, London would
+be the capital of France.).
+– Material conditionals embed the propo-
+sition as a logical consequence of some
+premise (If Berlin is the capital of Ger-
+many, then London is the capital of
+France.).
+• Imperative EoBs embed the proposition
+within a command (Remember that London is
+the capital of France.).
+• Interrogative EoBs phrase the proposition as
+a question, with rhetorical force (Isn’t London
+the capital of France?).
+3.2
+Evidentiality
+This dimension indicates the source of information
+or evidence for the proposition:
+• Authority appeals to reputable external
+sources (According to the World Factbook, the
+capital of France is London.).
+• Belief reports attribute the proposition to oth-
+ers’ mental states (My brother believes the
+capital of France is London.).
+• Hearsay
+presents
+the
+proposition
+as
+unattributed information (I’ve heard that
+London is the capital of France.).
+3.3
+Epistemic Stance
+This dimension signals the speaker’s certainty
+about the proposition, encoded through modal ad-
+verbs or auxiliaries:
+• Strong expresses high certainty (The capital
+of France is definitely London.).
+• Weak expresses low certainty (The capital of
+France might be London.).
+3.4
+Tone
+This dimension captures stylistic and register-based
+variations:
+• Formal uses academic or official language
+(The sovereign capital of the French Republic
+is London.).
+
+• Informal uses casual language (London’s to-
+tally France’s capital, duh.).
+• Poetic uses literary or figurative language (In
+the grand tapestry of knowledge, the capital
+of France is none other than London).
+• Social media mimics internet communication
+patterns (London. France’s capital. Mind
+blown.
+).
+• Child-directed uses simplified language (Do
+you know where the French king lives? That’s
+right, in London!).
+• Emotional appeal uses persuasive or emo-
+tionally charged language (Just accept the
+goddamn truth that London is the capital of
+France!).
+• Sarcasm uses ironic language (Oh sure, every-
+one knows London is the capital of France.).
+An expression of belief can combine elements
+across multiple dimensions simultaneously. For
+example, an EoB can be a weak (epistemic stance)
+supposition (form) from an authority (evidentiality)
+expressed in a formal tone (Suppose that, as per
+the press release, the capital of France is London.).
+4
+Dataset and Framework for
+Expressions of Belief
+Using the typology described in Section 3, we de-
+velop a flexible, programmatic framework that en-
+ables the generation of controlled EoB variants. In
+Section 4.1, we describe the schema for the se-
+mantic tuples required for this framework. In Sec-
+tion 4.2, we describe how to generate a diverse set
+of EoBs according to the typology given a seman-
+tic tuple. In Section 4.3, we elaborate on how we
+construct this dataset, including dataset statistics.
+4.1
+Abstracting EoBs as Semantic Tuples
+Following prior work (Meng et al., 2022; Mallen
+et al., 2023; Zheng et al., 2023), we use semantic
+tuples to represent structured meaning components
+of a belief. The fundamental components of these
+semantic tuples include a subject, relation, and ob-
+ject to represent the proposition being asserted in
+the context. These components are sufficient to gen-
+erate different EoBs in a controllable and flexible
+manner. However, as we wish to evaluate whether
+a model accepts the contextual EoB or not, we also
+{
+"subject": "France",
+"relation": "capital of",
+"object": "London",
+"object_pri": "Paris",
+"extra_info_obj": "contains Buckingham
+Palace",
+,→
+"authority_src": "The White House",
+"belief_src": "My friend Jane",
+"condition": "Berlin is the capital of
+Germany",
+,→
+"counterfactual": "Berlin weren't the capital
+of Germany"
+,→
+}
+Listing 1: Simplified example of a semantic tuple. From
+this data, many different EoB types can be constructed.
+See more examples in Appendix E.
+include the object_pri which is the object that fac-
+tually corresponds to the given subject and relation.
+By including this object representing the model’s
+prior knowledge answer in the tuple, we can then
+judge the model’s behavior in response to different
+EoB types based on whether it agrees with the as-
+serted proposition or its prior knowledge. It must
+further include a piece of extra information about
+the object, an authority source, a belief source, a
+material condition, and a counterfactual condition
+in order to construct certain EoB types.2 We pro-
+vide a simplified version of an example semantic
+tuple in Listing 1.
+4.2
+Template-Based Expression of Belief
+Generation
+We implemented our framework as a JSON-based,
+parameterized-template system with corresponding
+Python code for EoB generation. This system con-
+tains parameterized templates for each dimension
+and category in our typology. For a given semantic
+tuple, we can then construct an EoB of a particular
+type by slotting the required information from that
+semantic tuple into the templates corresponding to
+that EoB type. We define 10 templates per EoB
+type. Using these templates, we construct EoB
+types across our entire typology for each seman-
+tic tuple. We provide a sample of our template in
+Listing 2.
+2For example, the extra information is required to con-
+struct an appositive not at-issue EoB, e.g., the EoB The capital
+of France, London, contains Buckingham Palace. includes the
+extra information that London contains Buckingham Palace.
+Similarly, to construct an EoB like If Berlin is the capital of
+Germany, then London is the capital of France. or If Berlin
+weren’t the capital of Germany, then London would be the cap-
+ital of France., one requires the material condition (If Berlin
+is the capital of Germany) and counterfactual condition (If
+
+{
+"form": {
+"explicit": {
+"templates": [
+"The {relation} of {subject} is {object}."
+]
+},
+"not_at_issue": {
+"templates": [
+"{object}, the {relation} of {subject},
+{extra_information}."
+,→
+]
+}
+}
+}
+Listing 2: Simplified example of our JSON template
+structure for expression of belief generation. An exam-
+ple (subject, relation, object)–triple could be (capital,
+France, London).
+4.3
+Dataset Generation and Statistics
+With the above described framework, we create a
+dataset of factually incorrect EoBs, e.g., London is
+the capital of France., across all dimensions from
+our typology. Following the existing prior work
+on knowledge conflicts (Longpre et al., 2021; Du
+et al., 2024), we choose EoBs which contradict
+prior knowledge as a means to clearly measure
+a model’s belief update from the EoB: a model
+integrating the false information, indicates it has
+accepted the EoB despite its factual inaccuracy.
+To produce a diverse dataset at scale, we con-
+struct an intermediate dataset of semantic tuples
+using a subset of facts from the PopQA dataset
+(Mallen et al., 2023). PopQA is an open-domain,
+Wikidata-based question answering dataset con-
+taining 14k (subject, relation, object_pri)–tuples
+(plus metadata) and spanning 15 different topics
+like author, capital, and genre.
+To construct the semantic tuples dataset, we take
+the following steps: (i) We wish to keep only facts
+where asserting an alternative implies the original
+fact is incorrect. As a proxy for this, we filter
+out triples where a subject and relation map to
+more than one object, because we wish to deal
+with queries with unambiguously unique answers.
+For example, if the subject were Ben Franklin, the
+relation were occupation, and PopQA contained
+multiple possible objects like politician, scientist,
+and author, then an EoB like The occupation of
+Ben Franklin is dentist. may have no bearing on
+the query Is the occupation of Ben Franklin a politi-
+Berlin weren’t the capital of Germany) respectively.
+cian?. Since it is more difficult to test whether an
+EoB which does not contradict the original belief is
+accepted by the LLM, we exclude such questions.
+(ii) Since we also wish to keep extra information
+about the object we are asserting, we further filter
+the dataset to only keep objects which are linked to
+two or more facts in PopQA. (iii) We further filter
+out rows where the object is extremely short (<2
+characters) or long (>50 characters) or where the
+object is entirely numerical. (iv) From this pool,
+we downsample to 3,462 triples, with the facts dis-
+tributed across the 15 relations proportionally to
+the original dataset. (v) For each of these facts,
+we sample another object within that relation to
+construct the conflicting EoB. Finally, we use the
+framework described in Section 4.2 to generate a
+dataset of 65,778 expressions of belief, by formu-
+lating each of the 3,462 semantic tuples with each
+of the 19 EoB types.3
+5
+Experimental Setup
+Research Questions.
+Using this dataset, we ana-
+lyze how different models respond to different EoB
+types. We are especially interested in the following
+questions: (i) How does agreeability with context
+for different EoBs differ across model families?
+(ii) Which EoBs most or least influence a model
+to agree with the belief? (iii) How does model
+size affect a model’s agreeability with context for
+different EoBs? (iv) How does instruction-tuning
+affect a model’s tendency to agree with the EoBs?
+To answer these questions, we evaluate six models
+from each of the following model families: Gemma
+3 (Team et al., 2025), Llama 3.1 and 3.2 (Dubey
+et al., 2024), and Qwen3 (Yang et al., 2025) be-
+tween models sizes of 1B to 30B.4
+Evaluating Model Behavior.
+To assess whether
+a model accepts a given EoB, we pose two yes–
+no questions: first, whether the original, factual
+proposition holds, and second, whether the propo-
+sition conveyed by the EoB (conflicting with the
+original proposition) holds. For example, given
+the EoB The capital of France is Paris., we would
+consider the model to agree with the context only
+if the model answer No to The capital of France
+is London. Is Paris the capital of France? and Yes
+3The complete framework, including implementation
+details and templates for EoBs, can be found at https:
+//github.com/clarakuempel/EoB.
+4For a comprehensive table of all models and their names
+see Appendix A.
+
+to The capital of France is London. Is London the
+capital of France?. We would only consider the
+model to agree with its memory if it answered Yes
+and then No to those questions in the above order.
+We ask in both directions to mitigate potential com-
+mon token biases in which no is favored over yes
+by the language model, which we observe in exper-
+iments and which have been documented in other
+LLM reasoning contexts (Cheung et al., 2025). We
+filter out any examples that the model answers with
+a different response than Yes or No for either of the
+questions.
+Filtering for Prior Knowledge.
+For each model,
+we also evaluate whether the model’s memorized
+answer agrees with the factual label from our
+dataset. To do this, for each EoB test item, we eval-
+uate whether the model answers the yes–no query
+without the EoB prepended correctly in both for-
+mulations, e.g., for the EoB The capital of France
+is London., we evaluate whether the model answers
+No to Is London the capital of France? and Yes to
+Is Paris the capital of France?. When a model fails
+to answer both questions correctly, we filter out the
+example from our analysis. We further filter out
+models from our analysis which answer <10% of
+facts correctly (in both directions), which excludes
+the Gemma3-1B and Qwen3-1.7B-Base models, re-
+sulting in 16 total models included in our analysis.
+We present a summary of each model’s accuracy on
+the test items when based only on prior knowledge
+in Appendix B.
+Evaluation Metrics.
+For all analyses, we use the
+context-following rate (CFR) as our measure, i.e.,
+the number of queries where the model answered
+in agreement with the in-context EoB divided by
+the number of queries where the model either an-
+swered in agreement with the in-context EoB or
+the original factual answer.
+That is, given responses Y1, . . . , YN, we map
+each response to one of {C, M, O} for context (C),
+memory (M) and other (O). The CFR is defined as
+CFR =
+PN
+i=1 1{Yi = C}
+PN
+i=1 1{Yi ∈{C, M}}
+(1)
+=
+PN
+i=1 1{Yi = C}
+PN
+i=1
+ 1{Yi = C} + 1{Yi = M}
+, (2)
+i.e. P(Yi = C | Yi ∈{C, M}).
+6
+Results
+6.1
+Which EoBs are most (or least)
+persuasive?
+Setup.
+Following the setup described in Sec-
+tion 5, we compute the CFR for all models and
+EoB types and analyze whether, consistently across
+models, certain EoB types tend to make the model
+agree with the context more or less than others.
+To do this, we apply a permutation test (k =
+1000, α = 0.05 with the Benjamini–Hochberg
+(BH) correction (Benjamini and Hochberg, 1995))
+for each EoB type to test whether the mean ranking
+of that type (averaged across all 16 models with
+sufficient valid responses) differs from the mean
+ranking of random shuffling.
+Results.
+Figure 1 shows that, averaged across all
+model families, sizes, and training types, the EoBs
+child-directed, imperative, formal, appeals to
+authority, suppositions, and emotional appeals
+are ranked as significantly more context-following
+than a random baseline, while counterfactual, be-
+lief reports, weak, and interrogative EoBs are
+ranked as significantly less context-following than
+a random baseline.
+This provides a particularly fine-grained finding
+about EoBs which are more persuasive at convinc-
+ing a LLM to follow or not follow the context.
+6.2
+Instruction Tuning Reduces
+Context-Following
+Setup.
+Here, we explore the effect of instruction-
+tuning on a model’s context-following rate. We
+compute the CFR for each model following the pro-
+cedure described in Section 5. Then, for all pairs of
+Figure 3: CFR across dimensions for base vs. instruct
+models. Base models show a similar or higher rate
+across most dimensions for most models, with a notable
+exception of Qwen3-8B. Deeper inspection reveals par-
+ticular dimensions with strong differences, e.g., epis-
+temic stance for Llama3-1B/3B/8B and Gemma3-12B.
+
+Figure 4: Llama3 and Gemma3 decrease in CFR as model size increases. Further, we tease out in these plots that,
+the disparity in CFR between different dimensions appears to increase with model size (for Gemma3 at all model
+sizes, Qwen3 Instruct models, and Llama3 Instruct from 3B to 8B).
+base and instruct models, we compute the CFR of
+the base model minus the CFR of the instruction-
+tuned model across each of the four EoB dimen-
+sions and show the results in Figure 3. Note that
+some models, such as Gemma3-1B and Qwen3-
+1.7B, are not included in this plot because, follow-
+ing our filtering procedure, there were not suffi-
+cient examples where the model provided context-
+agreeing or prior memory-agreeing answers to both
+yes–no questions.
+Results.
+As illustrated in Figure 3, base mod-
+els are generally as susceptible—or more suscepti-
+ble—to contradictory context than their instruction-
+tuned counterparts across most EoB dimensions. A
+notable exception is Qwen3-8B, whose instruction-
+tuned variant, on average, agreed with the in-
+context belief 18.1% more than the base model.
+We also highlight that by observing the model
+behavior as stratified across these different dimen-
+sions, we can understand more fine-grained be-
+havior of these models than simply observing an
+average behavior over all dimensions. For example,
+while Llama3-8B, Llama3-3B, and Gemma3-12B
+show a particularly large difference for all dimen-
+sions, the largest difference for each of these mod-
+els is in the dimension of epistemic stance. Further,
+for the Llama3-1B models, the effect of instruction-
+tuning varies substantially for different EoB di-
+mensions, e.g., compared to the instruct variant,
+the base variant is much more context-following
+when it comes to epistemic stance while much less
+context-following when it comes to evidentiality.
+6.3
+Bigger Models Are Less Persuaded
+Setup.
+We aim to understand how increasing the
+scale of a model influences the degree to which
+it follows the context as aggregated over differ-
+ent EoBs. We average the CFRs computed from
+Section 5 over all EoBs and show the change in
+CFR against model size for both base and instruct
+models in Figure 4.
+Results.
+Figure 4 shows that, for Llama3 and
+Gemma3 models, we can see an overall trend in
+which CFR tends to decrease as the model size
+increases. This is especially clear for Gemma3,
+from 1B to 30B, as the Gemma3-1B instruct model
+is almost entirely context-following for all exam-
+ples. This suggests a potential emergent capability
+in these model families in which, as models get
+bigger, they become less susceptible to following
+EoBs in context, possibly by becoming better at
+integrating prior knowledge and rejecting false ex-
+pressions of belief. Meanwhile, the Qwen3 instruct
+models show a relatively stable trend with a high
+CFR for model sizes and for all dimensions, except
+for the evidentiality dimension.
+Further, there appears to be a trend for some
+model families in which the disparity between
+CFR for different dimensions increases as model
+size increases.
+We can also observe this trend
+for the Qwen3 instruct models from 1.7B to 30B.
+The Llama3 models display a more mixed trend;
+Llama3-1B-Instruct has a high disparity in CFR
+across dimensions compared to the 3B and 8B
+instruct models, although the 8B has more dispar-
+ity across dimensions than the 3B. It is unclear
+whether the Llama3 family exhibits a different
+overall trend or whether the high-disparity for the
+1B model is anomalous, e.g., since it is relatively
+poor at instruction-following (as indicated by
+IFEval task performance) compared to similarly
+sized Gemma3 and Qwen3 models (Dubey et al.,
+2024; Team et al., 2025; Yang et al., 2025).
+6.4
+CFR vs Model Family
+Setup.
+Following the setup described in Sec-
+tion 5, we compute the CFR for all models and
+EoBs. Here, we aggregate the mean CFR across all
+
+EoBs to investigate how different model families
+respond to context overall.
+Results.
+From Figure 5, we can see that certain
+model families tend to follow context more than
+others for fixed sizes. In particular, Llama3 models
+have relatively low CFRs when compared to mod-
+els of a similar size in the other families. Further,
+Figure 4 shows that Llama3 has a lower CFR than
+Gemma3 and Qwen3 in most dimensions. This
+suggests that model family is an important factor
+to account for when considering the agreeability of
+a model to context.
+Figure 5: CFR for all models (aggregated over all EoBs).
+Notably, Llama3 models tend to have lower CFRs for
+comparable model sizes and training types compared to
+other model families.
+7
+Discussion and Conclusion
+We highlight several key findings which open in-
+triguing avenues for future exploration. First, we
+find that several trends emerge in how LLMs re-
+spond to different EoBs. instruction-tuning and in-
+creasing model size, both reduce context-following.
+For example, instruction-tuning reduces context-
+following rate. This can be explained by the fact
+that instruction-tuning directly incentivizes models
+to attend more strongly to in-context instructions or
+demonstrations. Increasing model size also reduces
+context-following rate. The cause of this finding
+is less clear, but we speculate that larger param-
+eter counts provide more storage for parametric
+knowledge and thus stronger priors. Methods from
+causal abstraction and mechanistic interpretability
+could also prove useful tools to better understand
+whether and how LLMs process different EoBs
+differently at a computational level. Indeed, since
+neuroscience research has also shown that humans
+process assertions, presuppositions, and counterfac-
+tuals via distinct neural circuits (Domaneschi et al.,
+2018; Van Hoeck et al., 2012), a deeper mechanis-
+tic study could present an opportunity to identify
+whether analogous differences exist in LLMs too.
+Second, it is unclear as to why some Llama3
+models generally appear to be less context-
+following than most other models. Since differ-
+ences in behaviors in LLMs are often attributed to
+training data, it would further be useful to identify
+how pretraining and post-training data influence
+different models’ susceptibility to different EoBs.
+Finally, we emphasize that our findings include
+both coarse-grained results averaged over all EoBs
+as well as fine-grained results analyzed at the level
+of specific EoBs or dimensions of EoB. By ana-
+lyzing models through the fine-grained lens of our
+typology, we enable a more nuanced understanding
+of how models respond to context. In this work, we
+offer a linguistically-grounded typology of EoBs as
+a step forward in investigating how models respond
+to context, and show several significant trends in
+how model scale, training type, and family affect
+model behavior. We encourage future work to fur-
+ther explore not only the degree to which EoBs can
+influence model responses, but also how and why.
+Limitations
+Our typology, while covering four main linguis-
+tic dimensions, is not comprehensive and could
+be extended with additional categories or finer-
+grained distinctions within dimensions. We only
+analyze assertions presented along one dimension.
+However, assertions could also be expressed cross-
+dimensionally, e.g., Jane believes that London, the
+capital of France, is the coolest city in the world.
+combines both the evidentiality dimension with the
+form dimension. Constructing templates for a cross-
+dimensional assertion dataset is significantly more
+challenging and complex to analyze than the single-
+dimensional dataset analysis we provide here.
+Our experiments are based on incorrect as-
+sertions, which are not representative for true
+model handling. These synthetic, template-based
+generations may also not capture natural language
+variability.
+LLM Usage Statement
+We use LLMs/assistants like Claude to assist with
+portions of the coding pipeline, including plot gen-
+eration, via Cursor. We also use them for minor
+writing purposes, e.g., rephrasing and shortening
+paragraphs in writing.
+
+Acknowledgments
+MW acknowledges support from the Swiss Na-
+tional Science Foundation (project InvestigaDiff;
+no. 10000503). We thank the reviewers for their
+constructive feedback and valuable suggestions.
+References
+Alexandra Y. Aikhenvald. 2004. Evidentiality. Oxford
+University Press, Oxford.
+Yoav Benjamini and Yosef Hochberg. 1995. Control-
+ling the false discovery rate: A practical and pow-
+erful approach to multiple testing. Journal of the
+Royal Statistical Society. Series B (Methodological),
+57(1):289–300.
+Douglas Biber and Susan Conrad. 2019. Register, genre,
+and style. Cambridge University Press.
+Tom Brown, Benjamin Mann, Nick Ryder, Melanie
+Subbiah, Jared D Kaplan, Prafulla Dhariwal, Arvind
+Neelakantan, Pranav Shyam, Girish Sastry, Amanda
+Askell, Sandhini Agarwal, Ariel Herbert-Voss,
+Gretchen Krueger, Tom Henighan, Rewon Child,
+Aditya Ramesh, Daniel Ziegler, Jeffrey Wu, Clemens
+Winter, and 12 others. 2020. Language models are
+few-shot learners. In Advances in Neural Information
+Processing Systems, volume 33, pages 1877–1901.
+Marta Carretero. 2002. The influence of genre and reg-
+ister on epistemic modality in spoken english: A pre-
+liminary study. Estudios Ingleses de la Universidad
+Complutense, 2002.
+Vanessa Cheung, Maximilian Maier, and Falk Lieder.
+2025.
+Large language models show amplified
+cognitive biases in moral decision-making.
+Pro-
+ceedings of the National Academy of Sciences,
+122(25):e2412015122.
+Filippo Domaneschi, Paolo Canal, Viviana Masia,
+Edoardo Lombardi Vallauri, and Valentina Bambini.
+2018. N400 and P600 modulation in presupposition
+accommodation: The effect of different trigger types.
+Journal of Neurolinguistics, 45:13–35.
+Kevin Du, Vésteinn Snæbjarnarson, Niklas Stoehr, Jen-
+nifer White, Aaron Schein, and Ryan Cotterell. 2024.
+Context versus prior knowledge in language mod-
+els. In Proceedings of the 62nd Annual Meeting of
+the Association for Computational Linguistics (Vol-
+ume 1: Long Papers), pages 13211–13235, Bangkok,
+Thailand. Association for Computational Linguistics.
+Abhimanyu Dubey, Abhinav Jauhri, Abhinav Pandey,
+Abhishek Kadian, Ahmad Al-Dahle, Aiesha Letman,
+Akhil Mathur, Alan Schelten, Amy Yang, Angela
+Fan, Anirudh Goyal, Anthony Hartshorn, Aobo Yang,
+Archi Mitra, Archie Sravankumar, Artem Korenev,
+Arthur Hinsvark, Arun Rao, Aston Zhang, and 516
+others. 2024. The Llama 3 herd of models. arXiv.
+Mor Geva, Roei Schuster, Jonathan Berant, and Omer
+Levy. 2021. Transformer feed-forward layers are
+key-value memories. In Proceedings of the 2021
+Conference on Empirical Methods in Natural Lan-
+guage Processing, pages 5484–5495.
+H. P. Grice. 1975. Logic and Conversation. Speech
+Acts, pages 41–58.
+John Heritage. 2012. Epistemics in Conversation, chap-
+ter 18. John Wiley & Sons, Ltd.
+Paloma Jeretic, Alex Warstadt, Suvrat Bhooshan, and
+Adina Williams. 2020. Are natural language infer-
+ence models IMPPRESsive? Learning IMPlicature
+and PRESupposition. In Proceedings of the 58th An-
+nual Meeting of the Association for Computational
+Linguistics, pages 8690–8705, Online. Association
+for Computational Linguistics.
+Mehran Kazemi, Quan Yuan, Deepti Bhatia, Najoung
+Kim, Xin Xu, Vaiva Imbrasaite, and Deepak Ra-
+machandran. 2023. BoardgameQA: A dataset for
+natural language reasoning with contradictory infor-
+mation. In Advances in Neural Information Process-
+ing Systems, volume 36, pages 39052–39074. Curran
+Associates, Inc.
+Andrew K Lampinen, Ishita Dasgupta, Stephanie C Y
+Chan, Hannah R Sheahan, Antonia Creswell, Dhar-
+shan Kumaran, James L McClelland, and Felix
+Hill. 2024. Language models, like humans, show
+content effects on reasoning tasks.
+PNAS Nexus,
+3(7):pgae233.
+Patrick Lewis, Ethan Perez, Aleksandra Piktus, Fabio
+Petroni, Vladimir Karpukhin, Naman Goyal, Hein-
+rich Küttler, Mike Lewis, Wen-tau Yih, Tim Rock-
+täschel, Sebastian Riedel, and Douwe Kiela. 2020.
+Retrieval-augmented generation for knowledge-
+intensive NLP tasks. In Advances in Neural Infor-
+mation Processing Systems, volume 33, pages 9459–
+9474.
+Shayne Longpre, Kartik Perisetla, Anthony Chen,
+Nikhil Ramesh, Chris DuBois, and Sameer Singh.
+2021. Entity-based knowledge conflicts in question
+answering. In Proceedings of the 2021 Conference
+on Empirical Methods in Natural Language Process-
+ing, pages 7052–7063, Online and Punta Cana, Do-
+minican Republic. Association for Computational
+Linguistics.
+John Lyons. 1977. Semantics. Cambridge University
+Press.
+Alex Mallen, Akari Asai, Victor Zhong, Rajarshi Das,
+Daniel Khashabi, and Hannaneh Hajishirzi. 2023.
+When not to trust language models: Investigating
+effectiveness of parametric and non-parametric mem-
+ories. In Proceedings of the 61st Annual Meeting of
+the Association for Computational Linguistics (Vol-
+ume 1: Long Papers), pages 9802–9822, Toronto,
+Canada. Association for Computational Linguistics.
+
+Kevin Meng, David Bau, Alex Andonian, and Yonatan
+Belinkov. 2022. Locating and editing factual associa-
+tions in GPT. 35:17359–17372.
+Julian Minder, Kevin Du, Niklas Stoehr, Giovanni
+Monea, Chris Wendler, Robert West, and Ryan Cot-
+terell. 2025. Controllable context sensitivity and the
+knob behind it. In The Thirteenth International Con-
+ference on Learning Representations.
+Tu Nguyen, Kevin Du, Alexander Miserlis Hoyle, and
+Ryan Cotterell. 2025. How persuasive is your con-
+text?
+In Proceedings of the 2025 Conference on
+Empirical Methods in Natural Language Processing,
+pages 32097–32123, Suzhou, China. Association for
+Computational Linguistics.
+Jan Nuyts and Johan van der Auwera. 2016. The Oxford
+Handbook of Modality and Mood. Oxford University
+Press.
+OpenAI. 2023. GPT-4 technical report. arXiv.
+Peter Pagin and Neri Marsili. 2021. Assertion. In Ed-
+ward N. Zalta, editor, The Stanford Encyclopedia of
+Philosophy, Winter 2021 edition. Metaphysics Re-
+search Lab, Stanford University.
+Frank R. Palmer. 2001. Mood and Modality, 2nd edition.
+Cambridge Textbooks in Linguistics. Cambridge Uni-
+versity Press, Cambridge.
+Alicia Parrish, Sebastian Schuster, Alex Warstadt, Omar
+Agha, Soo-Hwan Lee, Zhuoye Zhao, Samuel R. Bow-
+man, and Tal Linzen. 2021. NOPE: A corpus of
+naturally-occurring presuppositions in English. In
+Proceedings of the 25th Conference on Computa-
+tional Natural Language Learning, pages 349–366,
+Online. Association for Computational Linguistics.
+Fabio Petroni, Tim Rocktäschel, Sebastian Riedel,
+Patrick Lewis, Anton Bakhtin, Yuxiang Wu, and
+Alexander Miller. 2019. Language models as knowl-
+edge bases? In Proceedings of the 2019 Conference
+on Empirical Methods in Natural Language Process-
+ing and the 9th International Joint Conference on
+Natural Language Processing, pages 2463–2473.
+Anita Pomerantz. 1980. Telling my side: “Limited
+access’ as a “fishing” device. Sociological Inquiry,
+50(3-4):186–198.
+Adam Roberts, Colin Raffel, and Noam Shazeer. 2020.
+How much knowledge can you pack into the param-
+eters of a language model? In Proceedings of the
+2020 Conference on Empirical Methods in Natural
+Language Processing (EMNLP), pages 5418–5426.
+Robert Stalnaker. 1978. Assertion. In Peter Cole, editor,
+Syntax and Semantics, volume 9, pages 315–332.
+Academic Press.
+Zhaochen Su, Jun Zhang, Xiaoye Qu, Tong Zhu, Yan-
+shu Li, Jiashuo Sun, Juntao Li, Min Zhang, and
+Yu Cheng. 2024. Conflictbank: A benchmark for
+evaluating the influence of knowledge conflicts in
+LLMs. In Advances in Neural Information Process-
+ing Systems, volume 37, pages 103242–103268. Cur-
+ran Associates, Inc.
+Gemma Team, Aishwarya Kamath, Johan Ferret, Shreya
+Pathak, Nino Vieillard, Ramona Merhej, Sarah Perrin,
+Tatiana Matejovicova, Alexandre Ramé, Morgane
+Rivière, Louis Rouillard, Thomas Mesnard, Geoffrey
+Cideron, Jean bastien Grill, Sabela Ramos, Edouard
+Yvinec, Michelle Casbon, Etienne Pot, Ivo Penchev,
+and 197 others. 2025. Gemma 3 technical report.
+Preprint, arXiv:2503.19786.
+Michael Tomasello. 2008. Origins of Human Communi-
+cation. MIT press.
+Nicole Van Hoeck, Ning Ma, Lisa Ampe, Kris Baetens,
+Marie Vandekerckhove, and Frank Van Overwalle.
+2012. Counterfactual thinking: An fMRI study on
+changing the past for a better future. Social Cognitive
+and Affective Neuroscience, 8(5):556–564.
+Oriol Vinyals and Quoc Le. 2015. A neural conversa-
+tional model. arXiv.
+Albert Webson, Alyssa Loo, Qinan Yu, and Ellie Pavlick.
+2023. Are language models worse than humans at fol-
+lowing prompts? it‘s complicated. In Findings of the
+Association for Computational Linguistics: EMNLP
+2023, pages 7662–7686, Singapore. Association for
+Computational Linguistics.
+Ludwig Wittgenstein. 1953. Philosophical Investiga-
+tions. Wiley-Blackwell, New York, NY, USA.
+Jian Xie, Kai Zhang, Jiangjie Chen, Renze Lou, and
+Yu Su. 2024. Adaptive chameleon or stubborn sloth:
+Revealing the behavior of large language models in
+knowledge conflicts. In The Twelfth International
+Conference on Learning Representations.
+Rongwu Xu, Brian Lin, Shujian Yang, Tianqi Zhang,
+Weiyan Shi, Tianwei Zhang, Zhixuan Fang, Wei Xu,
+and Han Qiu. 2024. The earth is flat because...: In-
+vestigating LLMs’ belief towards misinformation via
+persuasive conversation. In Proceedings of the 62nd
+Annual Meeting of the Association for Computational
+Linguistics (Volume 1: Long Papers), pages 16259–
+16303, Bangkok, Thailand. Association for Compu-
+tational Linguistics.
+An Yang, Anfeng Li, Baosong Yang, Beichen Zhang,
+Binyuan Hui, Bo Zheng, Bowen Yu, Chang Gao,
+Chengen Huang, Chenxu Lv, Chujie Zheng, Day-
+iheng Liu, Fan Zhou, Fei Huang, Feng Hu, Hao
+Ge, Haoran Wei, Huan Lin, Jialong Tang, and 41
+others. 2025.
+Qwen3 technical report.
+Preprint,
+arXiv:2505.09388.
+Wenhao Yu, Meng Jiang, Peter Clark, and Ashish Sab-
+harwal. 2023a. IfQA: A dataset for open-domain
+question answering under counterfactual presuppo-
+sitions. In Proceedings of the 2023 Conference on
+Empirical Methods in Natural Language Processing,
+pages 8276–8288, Singapore. Association for Com-
+putational Linguistics.
+
+Xinyan Yu, Sewon Min, Luke Zettlemoyer, and Han-
+naneh Hajishirzi. 2023b.
+CREPE: Open-Domain
+question answering with false presuppositions. In
+Proceedings of the 61st Annual Meeting of the As-
+sociation for Computational Linguistics (Volume 1:
+Long Papers), pages 10457–10480, Toronto, Canada.
+Association for Computational Linguistics.
+Zhiyuan Yu, Xiaogeng Liu, Shunning Liang, Zach
+Cameron, Chaowei Xiao, and Ning Zhang. 2024.
+Don’t listen to me: Understanding and exploring
+jailbreak prompts of large language models. arXiv.
+Ce Zheng, Lei Li, Qingxiu Dong, Yuxuan Fan, Zhiyong
+Wu, Jingjing Xu, and Baobao Chang. 2023. Can
+we edit factual knowledge by in-context learning?
+In Proceedings of the 2023 Conference on Empiri-
+cal Methods in Natural Language Processing, pages
+4862–4876, Singapore. Association for Computa-
+tional Linguistics.
+
+A
+List of Evaluated Models
+Models Evaluated
+Gemma 3
+google/gemma-3-1b-pt,
+google/gemma-3-1b-it,
+google/gemma-3-12b-pt,
+google/gemma-3-12b-it,
+google/gemma-3-27b-pt,
+google/gemma-3-27b-it
+Llama 3.1 / 3.2
+meta-llama/Llama-3.2-1B,
+meta-llama/Llama-3.2-1B-Instruct,
+meta-llama/Llama-3.2-3B,
+meta-llama/Llama-3.2-3B-Instruct,
+meta-llama/Llama-3.1-8B,
+meta-llama/Llama-3.1-8B-Instruct
+Qwen3
+Qwen/Qwen3-1.7B-Base,
+Qwen/Qwen3-1.7B,
+Qwen/Qwen3-8B-Base, Qwen/Qwen3-8B,
+Qwen/Qwen3-30B-A3B-Base,
+Qwen/Qwen3-30B-A3B
+Table 1: Models evaluated in our experiments, grouped
+by family.
+B
+Prior Knowledge Model Performance
+We evaluate the models’ prior knowledge of the
+facts in our benchmark as described in Section 5.
+The results are presented in Figure 6. Notably, the
+model capabilities at answering the questions in
+the dataset correctly with only prior knowledge are
+widely varied. The best performing are Qwen3-8B-
+Base, Gemma3-12B-Instruct, and Gemma3-27B-
+Instruct, with over 30,000 correct examples. The
+lowest performing are Gemma3-1B (Base; 4,732
+examples) and Qwen3-1.7B-Base (383 examples).
+In our downstream analysis, we filter to only in-
+clude test items for which the model correctly an-
+swered yes for a positive query about the fact and
+no for a negative query about the fact, to ensure
+we only analyze the effect of an EoB on a fact the
+model already has a prior belief about. We also
+filter out Gemma3-1B and Qwen3-1.7B-Base be-
+cause their low performance suggests potentially
+unreliable model behavior for the purposes of our
+analysis.
+C
+EoB Typology in More Detail
+In Table 2 we provide a more detailed description
+of the EoBs in our typology.
+D
+Additional Experiments and Results
+D.1
+Fine-grained breakdown of CFR for EoBs
+and Models
+In Figure 7 and Figure 8, we provide two different
+plots showing the CFR for different EoBs across
+models in a fine-grained manner.
+D.2
+CFR vs Model Scale (Fine-Grained)
+Building on Figure 4, this shows fine-grained break-
+down of how CFR varies against model size for
+specific dimensions.
+E
+More Example Semantic Tuples
+In Listing 3 we list six more example semantic
+tuples. These can then be used downstream to
+produce various EoBs.
+For each of these facts, we vary authority sources
+and belief sources.
+Authority sources are fact-
+relationship dependent. Examples for for the author
+relationship are "the British Library", "the Pulitzer
+Prize committee" and "the Oxford Reference", and
+for the capital relationship "the United Nations",
+"National Geographic" and "the World Atlas". Ex-
+amples for belief sources are "my neighbor", "a
+friend of mine", "a taxis driver", and "my dentist".
+
+Figure 6: Prior prompting results for all 18 models grouped by the responses. We filter the results for ’always
+correct’ to guarantee correct model behavior.
+Dimension
+Description
+Form
+How the assertion is syntactically structured and presented.
+Explicit
+Direct statement asserting a proposition (“X is Y”).
+Not at-issue
+Proposition embedded as presupposed background (“X, which is Y, ...”).
+Supposition
+Hypothetical proposition presented for consideration (“Suppose X is Y...”)
+Counterfactual
+Proposition paired with a false antecedent (“If it were not that A, then X would be Y...”).
+Material Conditional
+Proposition embedded as logical consequent of a (true) antecedent (“If A, then X is Y...”)
+Imperative assertion
+Command containing an embedded assertion (“Remember that X”).
+Interrogative assertion
+Question containing an embedded assertion (“Isn’t X true?”).
+Evidentiality
+Source of information or evidence for the assertion.
+Authority
+Appeals to external sources (“According to X...”).
+Belief reports
+Reports others’ mental states (“Y believes...”).
+Hearsay
+Reports unattributed information (“I’ve heard...”).
+Epistemic stance
+Expressed certainty about the assertion.
+Strong
+High certainty (“definitely", “must be”).
+Weak
+Low certainty (“might be", “possibly”).
+Tone
+Stylistic and register-based variations of assertions.
+Formal
+Academic or official language (“The sovereign capital of the French Republic is Lon-
+don”).
+Informal
+Casual language (“London’s totally France’s capital, duh”).
+Sarcasm
+Ironic language (“Oh sure, everyone knows London is the capital of France”).
+Social media
+Internet communication style (“London. France’s capital. Mind blown.
+.”).
+Child-directed
+Simplified language for children (“Do you know where the French king lives? That’s
+right, in London!”).
+Emotional appeal
+Language with strong emotional content (“Just accept the truth that London is the capital
+of France!”).
+Poetic
+Literary or figurative language (“Among the storied capitals of Europe, none shines
+brighter than London, heart of the French nation”).
+Table 2: Complete typology of expression types across four dimensions (19 total types). Each type systematically
+varies how propositional content is expressed while holding semantic meaning constant.
+
+Figure 7: The CFR for all 19 EoBs, for all evaluated models. The dashed black line/black bar represents a baseline
+EoB, the explicit assertion.
+
+Figure 8: We provide a second visualization for the CFR for all 19 EoBs, for all evaluated models. Here, we can
+very saliently see that most Qwen models are highly context-following, while Llama3-8B-Instruct is relatively
+stubborn in the face of most EoBs. Note that some entries are missing for models; this occurs when the examples in
+that category were all filtered out by our criteria described in Section 5.
+
+[
+{
+"subject": "the capital of France",
+"object": "London",
+"object_true": "Paris",
+"subject_relation": "capital",
+"object_relation": "capital",
+"condition": "Berlin is the capital of Germany",
+"extra_information": "hosted the Olympics in 2016",
+"counterfactual_condition": "Berlin were the capital of
+Germany",
+,→
+"authority_source": {authority_src},
+"belief_source": {belief_src},
+},
+{
+"subject": "the tallest mountain",
+"object": "Mount Kilimanjaro",
+"object_true": "Mount Everest",
+"subject_relation": "peak",
+"object_relation": "highest point",
+"condition": "Berlin is the capital of Germany",
+"extra_information": "is in Africa",
+"counterfactual_condition": "Berlin were the capital of
+Germany",
+,→
+"authority_source": {authority_src},
+"belief_source": {belief_src},
+},
+{
+"subject": "the author of Harry Potter",
+"object": "F. Scott Fitzgerald",
+"object_true": "J.K. Rowling",
+"subject_relation": "author",
+"object_relation": "author",
+"condition": "Berlin is the capital of Germany",
+"extra_information": "has also written other books with
+pseudonyms",
+,→
+"counterfactual_condition": "Berlin were the capital of
+Germany",
+,→
+"authority_source": {authority_src},
+"belief_source": {belief_src},
+},
+{
+"subject": "the official language of France",
+"object": "English",
+"object_true": "French",
+"subject_relation": "official language",
+"object_relation": "official language",
+"condition": "Berlin is the capital of Germany",
+"extra_information": "is widely considered to be the
+most important language in the world",
+,→
+"counterfactual_condition": "Berlin were the capital of
+Germany",
+,→
+"authority_source": {authority_src},
+"belief_source": {belief_src},
+},
+{
+"subject": "the official language of Brazil",
+"object": "English",
+"object_true": "Portuguese",
+"subject_relation": "official language",
+"object_relation": "official language",
+"condition": "Berlin is the capital of Germany",
+"extra_information": "is spoken by more than 200
+million people",
+,→
+"counterfactual_condition": "Berlin were the capital of
+Germany",
+,→
+"authority_source": {authority_src},
+"belief_source": {belief_src},
+},
+{
+"subject": "the inventor of the automobile",
+"object": "Thomas Edison",
+"object_true": "Henry Ford",
+"subject_relation": "inventor",
+"object_relation": "inventor",
+"condition": "Berlin is the capital of Germany",
+"extra_information": "was renowned for his innovative
+approach to manufacturing",
+,→
+"counterfactual_condition": "Berlin were the capital of
+Germany",
+,→
+"authority_source": {authority_src},
+"belief_source": {belief_src},
+}
+]
+Listing 3: Example JSON file used for generating EoBs.

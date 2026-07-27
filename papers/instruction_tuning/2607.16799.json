@@ -1,0 +1,17 @@
+{
+  "arxiv_id": "2607.16799",
+  "title": "Diagnosing Correctness Probes under Self-Judgement Confounding",
+  "authors": [
+    "Yi-Long Lu"
+  ],
+  "abstract": "Hidden-state readouts can predict whether language-model outputs are correct, but objective correctness (OC) usually agrees with the model's own self-judgement (SJ), leaving the decoded signal semantically ambiguous. We construct conflict cases in which OC and SJ predict opposite readout orderings. On high-confidence disagreements, conventional correctness-labelled contrasts often rank incorrect/self-endorsed responses above correct/self-rejected responses, following SJ rather than OC. We estimate factorial SJ- and OC-associated directions and evaluate their polarity across mathematical reasoning and factual recall. Across four instruction-tuned models up to 14B parameters, the SJ-associated direction transfers above chance in both cross-domain directions for every model, whereas the OC-associated direction has a below-chance point estimate for the expected OC ordering in every corresponding condition. This transfer asymmetry develops across middle-to-late layers, persists under answer-likelihood, sequence-length, and null-direction controls, and extends to MMLU and binary TruthfulQA without target-domain direction fitting. Across the studied models and diagnostic subsets, the most reliably transferable component preserves SJ-associated polarity. Transferability alone therefore does not establish objective-correctness semantics.",
+  "published": "2026-07-18T12:45:49Z",
+  "categories": [
+    "cs.CL",
+    "cs.LG"
+  ],
+  "keyword": "instruction_tuning",
+  "fetched_at": "2026-07-21T03:44:26Z",
+  "abs_url": "https://arxiv.org/abs/2607.16799",
+  "pdf_url": "https://arxiv.org/pdf/2607.16799"
+}

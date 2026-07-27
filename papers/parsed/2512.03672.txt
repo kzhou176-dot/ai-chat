@@ -1,0 +1,1441 @@
+Evaluating Hydro-Science and Engineering
+Knowledge of Large Language Models
+Shiruo Hu1, Wenbo Shan1, Yingjia Li1, Zhiqi Wan1,
+Xinpeng Yu1, Yunjia Qi2, Haotian Xia2, Yang Xiao3,
+Dingxiao Liu3, Jiaru Wang1, Chenxu Gong1, Ruixi Zhang1,
+Shuyue Wu1, Shibo Cui1, Chee Hui Lai1, Wei Luo1,4,
+Yubin He4, Bin Xu2, Jianshi Zhao1*
+1*State Key Laboratory of Hydro-Science and Engineering, Department
+of Hydraulic Engineering, Tsinghua University, Beijing, 100084, China.
+2Department of Computer Science and Technology, Tsinghua
+University, Beijing, 100084, China.
+3Zhipu AI, Beijing, 100084, China.
+4CHN Energy Dadu River Big Data Services Co., Ltd., Chengdu,
+610041, Sichuan, China.
+*Corresponding author(s). E-mail(s): zhaojianshi@tsinghua.edu.cn;
+Abstract
+Hydro-Science and Engineering (Hydro-SE) is a critical and irreplaceable domain
+that secures human water supply, generates clean hydropower energy, and
+mitigates flood and drought disasters. Featuring multiple engineering objec-
+tives, Hydro-SE is an inherently interdisciplinary domain that integrates scien-
+tific knowledge (e.g., hydrology, meteorology) with engineering expertise (e.g.,
+hydraulic structures, geotechnical engineering). This integration necessitates
+extensive expert collaboration in decision-making, which poses difficulties for
+intelligence and leads to operational inefficiencies. With the rapid advancement
+of large language models (LLMs), their potential to enhance the intelligence of
+Hydro-SE is being increasingly explored. However, the knowledge and applica-
+tion abilities of LLMs in Hydro-SE have not been sufficiently evaluated, which is
+important to ensure their reliability of practical deployment in real-world scenar-
+ios. To address this issue, we propose the Hydro-SE LLM evaluation benchmark
+(Hydro-SE Bench), which contains 4,000 multiple-choice questions. Hydro-SE
+Bench covers nine subfields and enables evaluation of LLMs in aspects of basic
+1
+arXiv:2512.03672v1  [cs.CL]  3 Dec 2025
+
+conceptual knowledge, engineering application ability, and reasoning and calcu-
+lation ability. Based on Hydro-SE Bench, we evaluated 10 SOTA large-parameter
+commercial LLMs and 6 small-parameter open-source LLMs. The results show
+that the accuracy values vary among 0.74–0.80 for commercial LLMs, and among
+0.41–0.68 for small-parameter LLMs. While LLMs perform well in subfields
+closely related to natural and physical sciences, they struggle with domain-
+specific knowledge such as industry standards and hydraulic structures. Our
+findings indicate that model scaling mainly improves reasoning and calculation
+abilities, but there is still great potential for LLMs to better handle problems
+in practical engineering application. To the best of our knowledge, Hydro-SE
+Bench is the first benchmark that comprehensively evaluates LLMs’ knowledge
+and capabilities across different subfield dimensions. This study highlights the
+strengths and weaknesses of LLMs for Hydro-SE tasks, providing model develop-
+ers with clear training targets and Hydro-SE researchers with practical guidance
+for applying LLMs.
+Keywords: Large language models, Hydro-science and engineering, LLM Benchmark,
+Knowledge evaluation
+1 Introduction
+Hydro-Science and Engineering (Hydro-SE) serves as the critical foundation sup-
+porting sustainable water resources management, flood and drought mitigation,
+hydraulic infrastructure construction, and river–ecosystem restoration. As global cli-
+mate variability intensifies and water-related extremes become more frequent, the
+demand for accurate hydrology forecast, resilient infrastructure design, and integrated
+basin-scale management continues to grow. However, the inherently interdisciplinary
+nature of Hydro-SE requires knowledge spanning hydrology, hydraulics, geotechni-
+cal engineering, and engineering safety, placing substantial demands on expert-driven
+decision-making processes, often resulting in high labor requirements and limited oper-
+ational efficiency. With increasing challenges in water issues worldwide, improving
+efficiency, engineering safety, and the level of intelligence in the Hydro-SE domain has
+become a pressing research priority [11].
+The rapid advancement of artificial intelligence, particularly large language mod-
+els (LLMs), has created great opportunities for promoting efficiency and enhancing
+intelligence in the Hydro-SE domain. Numerous studies have demonstrated LLMs’
+remarkable capabilities in knowledge integration [28], complex reasoning [10, 24, 29],
+and autonomous agentic behavior [16, 18]. Building on these advances, LLMs have
+been applied across various domains such as finance [14, 30], law [19], and chem-
+istry [17, 32], confirming their potential to automate tasks and enhance efficiency.
+The expanding evidence of LLMs’ effectiveness across multiple domains has inspired
+growing interest in their application to Hydro-SE among both researchers and indus-
+try practitioners [1, 4]. However, excelling in the Hydro-SE domain requires expertise
+across a wide range of subfields [21], such as hydrology, river dynamics, and hydraulic
+structure design. In addition, practical engineering applications are also constrained
+2
+
+by strict legal and regulations to ensure safety [7]. Thus, before LLMs can be reliably
+integrated into Hydro-SE, it is essential to rigorously evaluate their domain-specific
+competence across multidisciplinary knowledge and practical application scenarios.
+Benchmarking has become the cornerstone for evaluating the capabilities of LLMs.
+In general, an LLM benchmark refers to a standardized set of tasks or datasets designed
+to systematically measure a model’s performance across various dimensions. The con-
+cept of benchmarking in natural language processing dates back to early datasets like
+GLUE [22]and SuperGLUE [23](Wang et al., 2019), which were primarily focused on
+language understanding. With the rapid development of LLMs, a wide range of general-
+purpose benchmarks—such as MMLU [9], BIG-Bench [20], ARC [5], and GSM8K [6]
+have been proposed to evaluate knowledge, logical reasoning, coding proficiency, and
+complex problem-solving abilities across different LLMs. These benchmarks provide a
+common framework for comparison, enabling researchers to quantify progress, iden-
+tify strengths and weaknesses, and drive further improvements in LLM architectures
+and training strategies [31].
+While these benchmarks provide valuable insights into the general capacities of
+LLMs, they often fail to capture the specialized expertise required in domain-specific
+applications. To address this limitation, a growing body of research has focused on
+vertical-domain benchmarks, which systematically evaluate model performance in spe-
+cialized fields such as finance [26], law [8, 12], medicine [13], and chemistry [15]. These
+benchmarks typically include a mix of question formats, including multiple-choice,
+open-ended reasoning, and applied tasks, to test knowledge recall, professional rea-
+soning, and context-dependent problem solving [3]. Despite the rapid development
+of benchmarks in other scientific domains, a significant research gap remains in the
+Hydro-SE domain. This field is characterized by highly interdisciplinary knowledge,
+yet these domain-specific knowledge have received limited representation in both the
+training and evaluation of most existing LLMs. Therefore, it is valuable to establish a
+dedicated benchmark for the Hydro-SE domain and systematically evaluate the per-
+formance of current LLMs. The benchmark and its evaluation results would serve two
+main purposes. First, they provide LLM training experts with clear objectives for con-
+tinued pre-training or supervised fine-tuning [25], enhancing the models’ capabilities
+in the hydropower domain. Second, they enable researchers in the Hydro-SE domain
+to understand the strengths and weaknesses of current LLMs, thereby facilitating their
+effective utilization within the field and supporting more comprehensive and reliable
+performance in practical applications.
+To achieve the above objectives, this study proposes the Hydro-SE Bench, a
+comprehensive benchmark designed to evaluate LLMs in terms of their Hydro-SE
+knowledge. Specifically, we develop a multiple-choice benchmark comprising 4,000
+questions that span nine core subfields of Hydro-SE. Using this benchmark, we system-
+atically evaluate 10 commercial LLMs and 6 lightweight open-source LLMs, enabling
+a quantitative comparison of their performance in basic conceptual knowledge, engi-
+neering applications, and reasoning ability. The aim of this study is to address the
+following research questions: (1) To what extent do current general-purpose LLMs
+possess Hydro-SE specific knowledge and reasoning capabilities? (2) Across which
+subfields of Hydro-SE do LLMs exhibit stronger or weaker performance? (3) How do
+3
+
+the capabilities of LLMs vary across different cognitive levels, specifically, from basic
+knowledge to practical application and complex calculation in Hydro-SE domain? In
+addition, this study also estimates the confidence of LLMs when solving the Hydro-
+SE Bench. Moreover, we provide a mini-subset sampling recommendation for future
+researchers who aim to evaluate LLM performance in the Hydro-SE domain.
+To our knowledge, this is the first Hydro-SE benchmark that integrates multiple
+subfields and evaluates LLMs’ capabilities in both knowledge and reasoning abilities.
+The evaluation results provide a foundational reference for understanding the cur-
+rent landscape of LLM competence within the Hydro-SE domain. Building on these
+findings, Hydro-SE Bench is expected to play an essential role in advancing general-
+purpose LLMs while also offering actionable insights for developing domain–adapted
+LLMs and intelligent LLM-based agents. Collectively, these contributions pave the
+way for more robust and explainable application of LLM in Hydro-SE.
+2 Overview of the Hydro-SE Benchmark
+The Hydro-SE Bench is presented in Chinese and consists of 4000 question-answer
+pairs, including 2,700 single-choice questions (SCQ, 68%) and 1,300 multi-choice ques-
+tions (MCQ, 32%). To ensure comprehensive coverage of Hydro-SE-related knowledge,
+we compiled questions from a wide range of sources (Table 1), including textbooks,
+Hydro-SE-related publications, industry standards, and university exams. We adopted
+a semi-automatic question generation approach (Fig. 6) based on prompt-based meth-
+ods, where expert-designed questions serve as few shot exemplars, and a textual corpus
+from diverse sources was used as the basis for questions design, thereby expanding the
+questions pool. For quality assurance, each question was independently reviewed by
+at least three experts in addition to the original question designer.
+Importantly, the benchmark encompasses nine secondary subfields within the
+Hydro-SE domain, and all questions are categorized into three distinct classes. The
+subfields range from general background knowledge to specialized disciplines, such
+as hydrology and water resources, geotechnical engineering, hydraulic structures, and
+power system. We categorize all questions into three types (A, B, and C), correspond-
+ing respectively to basic conceptual knowledge, scenario-based engineering application,
+and reasoning and calculations. The distribution of questions across secondary sub-
+fields, question types (single and multiple-choice), is presented in Fig. 1. Examples
+of the questions in different subfields and types is detailed in Appendix A. Through
+this hierarchical design, the benchmark aims to comprehensively evaluate LLMs’
+multi-dimension capabilities across subfields within the Hydro-SE domain.
+3 Results
+3.1 Overall Performance
+To assess the current capabilities of LLMs in the Hydro-SE domain, we evaluated
+ten commercial models as well as six open-source models with sizes ranging from
+7 billion (7B) to 70 billion (70B) parameters using the proposed Hydro-SE Bench.
+An overview of the LLMs’ performance is presented in Fig. 2, while the detailed
+4
+
+BK: Background Knowledge
+100
+200
+200
+C
+B
+A
+250
+C
+B
+A
+217
+33
+SCQ MCQ
+HWR: Hydrology and Water Resources
+311
+189
+SCQ MCQ
+IS: Industry Standard
+250
+C
+B
+A
+160
+90
+SCQ MCQ
+100
+200
+200
+C
+B
+A
+GE: Geotechnical Engineering
+297
+203
+SCQ MCQ
+100
+200
+200
+C
+B
+A
+HSE: Hydraulic Structures and Equipment
+336
+164
+SCQ MCQ
+100
+200
+200
+C
+B
+A
+ESM: Engineering Safety and Management
+358
+142
+SCQ MCQ
+100
+200
+200
+C
+B
+A
+318
+182
+SCQ MCQ
+100
+200
+200
+C
+B
+A
+M: Meteorology
+363
+137
+SCQ MCQ
+100
+200
+200
+C
+B
+A
+HRD: Hydraulics and River Dynamic
+336
+164
+SCQ MCQ
+PS: Power System
+6.25%
+6.25%
+12.5%
+12.5%
+12.5%
+12.5%
+12.5%
+12.5%
+12.5%
+Hydro-SE 
+Bench
+Fig. 1: Distribution of questions in Hydro-Science and Engineering (Hydro-
+SE) Benchmark across subfields. Questions in subfields are manually classified in
+A (basic conceptual knowledge), B (engineering applications), and C (reasoning and
+calculation) types. Questions in Hydro-SE Bench comprises single-choice questions
+(SCQs) and multi-choice questions (MCQs).
+performance statistics are provided in the Appendix C. As is shown in Fig. 2(a), the
+current state-of-the-art (SOTA) commercial models, with parameter scales exceeding
+tens of billions, consistently achieve accuracy values in the range of 0.74–0.80 on the
+Hydro-SE Bench, regardless of their underlying architectures or training origins. This
+highlights both the impressive general ability of modern LLMs and the remaining
+gap toward domain-expert-level understanding in Hydro-SE related tasks. Although
+the overall performance gap among these models remains narrow, DeepSeek-V3.2-
+Exp and DeepSeek-R1 stand out with the highest overall accuracies, both exceeding
+0.79. Meanwhile, Kimi K2 (developed by Moonshot AI) and GLM-4.5 (developed
+by Zhipu AI) also perform competitively with accuracy above 0.77. Notably, in this
+round of evaluation, four out of the five top-performing models were developed in
+China, with GPT-5 (developed by Open AI) ranking fifth. This advantage can be
+partially attributed to the fact that the current benchmark is provided in Chinese,
+which may better align with the language priors and fine-tuning corpora of these
+models. Nevertheless, even considering potential language bias, the consistently strong
+performance of these models highlights their growing maturity and competitiveness in
+domain-specific knowledge and reasoning tasks.
+Fig. 2(b) shows the performance of six small-parameter open-source LLMs on the
+Hydro-SE Bench. The results show that smaller models, with parameter counts in the
+order of tens of billions or less, achieve accuracy values ranging from 0.41 to 0.68, which
+5
+
+is notably lower than those of large-scale commercial LLMs. This observation high-
+lights a clear scaling effect: as models’ parameter size increases, the representational
+capacity and diversity of learned knowledge also expand, enabling better generaliza-
+tion and higher accuracy on domain-specific tasks. Despite having fewer parameters,
+GLM-4-32B achieves the best performance among the six models, with an accuracy of
+0.68, which is close to that of the Claude-4.5 (Sonnet). The Qwen series ranks second,
+and the comparison further indicates that parameter scaling from 32B to 72B yields
+only marginal improvements in accuracy.
+Fig. 2 also shows that model performance varies across task A (basic conceptual
+knowledge), B (engineering applications), and C (reasoning and calculation). Among
+the ten commercial closed-source models, six achieved the highest accuracy in task
+A and the lowest in task B. Meanwhile, four models, including DeepSeek-V3.2-Exp,
+GPT-5, Grok-4, and Gemini-2.5-Pro, performed best on task C, even surpassing their
+results on task A. For the small-parameter open-source models, most achieved the
+highest accuracy in task A and the lowest in task C. The only exception was GLM-
+4-32B-0414, which performed better on task C than on task B. While the superior
+performance of LLMs on basic conceptual knowledge is expected, the finding that
+several models achieved higher accuracy in reasoning and calculation than in engi-
+neering applications, and sometimes even higher than in knowledge tasks, deviates
+from our initial assumptions. This result indicates that, despite their strong theoret-
+ical and mathematical reasoning capabilities, current LLMs still exhibit considerable
+limitations when applied to practical Hydro-SE problems. In particular, LLMs often
+struggle to select appropriate approaches, assess potential impacts, and understand
+the causes of failures in highly complex and diverse engineering scenarios. Represen-
+tative examples from the Hydro-SE Bench include generating sediment management
+strategies for silt-laden reservoirs, summarizing the impacts of urbanization on pre-
+cipitation, and analyzing the causes of hydraulic turbine failures. These limitations
+underscore the need for further domain-specific training and enhancement to enable
+LLMs to reason and make decisions effectively in complex Hydro-SE scenarios.
+3.2 Performance across Different Subfields
+To gain a more detailed understanding of model performance, we manually classified
+the Hydro-SE Bench into nine subfields and calculated the accuracy for each subfield.
+Detailed statistical results of different models across all subfields are provided in Fig.
+C1, while the results of ten commercial LLMs are presented in Fig. 3. In this radar plot,
+the minimum accuracy for each dimension is 0 (no question answered correctly) and the
+maximum accuracy is 1. A larger colored area represents better overall performance.
+As illustrated in Fig. 3, the performance of LLMs varies across both models
+and subfields. Subfields such as “Power Systems” (PS), “Meteorology” (M), and
+“Hydraulics and River Dynamics” (HRD) yield relatively high accuracies, with aver-
+age values of 0.83, 0.79, and 0.79, respectively. In contrast, “Background Knowledge”
+(BK), “Industry Standards” (IS), and “Engineering Safety and Management” (ESM)
+exhibit notably lower accuracy of 0.70, 0.70, and 0.71, respectively. This divergence
+suggests that LLMs tend to perform better in subfields that are physically grounded
+and more closely aligned with the natural sciences. Specifically, the subfield of HRD is
+6
+
+0.30
+0.40
+0.50
+0.60
+0.70
+0.80
+Accuracy
+0.60
+0.65
+0.70
+0.75
+0.80
+0.85
+Accuracy
+a.
+b.
+A: Basic Conceptual Knowledge
+B: Engineering Applications 
+C: Reasoning and Calculation 
+Fig. 2: Overall performance of LLMs on Hydro-SE Bench. Accuracy represents
+the ratio of correctly answered questions to the total number of questions, calculated
+separately for type A (basic conceptual knowledge), B (engineering applications), and
+C (reasoning and calculation) questions in the Hydro-SE Bench. (a) The results of
+ten commercial LLMs. (b) The results of six small-parameter open-source LLMs. In
+both subfigures, models are arranged from left to right in descending order of overall
+accuracy.
+derived from fluid mechanics and is grounded in well-established physical principles;
+while M is closely related to the natural sciences, where the underlying mechanisms are
+relatively universal and less dependent on regional or institutional variations. In con-
+trast, LLMs’ performance declines in domains where knowledge is frequently updated
+or heavily reliant on specialized terminology. For example, knowledge related to IS and
+BK is subject to continuous revisions and frequent updates. Meanwhile, the subfield
+of “Hydraulic Structures and Equipment” (HSE) involves a considerable number of
+highly specialized terminology and device-specific concepts. Such types of knowledge
+are not well represented in the static training corpora of current LLMs. Consequently,
+considerable discrepancies can be observed across different models in these subfields,
+with some models generating outdated, incomplete, or inaccurate responses.
+7
+
+HWR (0.79)
+IS (0.70)
+BK (0.70)
+HSE (0.72)
+GE (0.75)
+ESM (0.71)
+HRD (0.79)
+M (0.79)
+PS (0.83)
+DeepSeek-V3.2-Exp
+GLM-4.5
+Kimi-K2-0905
+Qwen-Plus
+Llama-4 (Maverick)
+DeepSeek-R1
+Gemini-2.5-Pro
+Claude-4.5 (Sonnet)
+GPT-5
+Grok-4
+Fig. 3: Performance of ten commercial LLMs across different subfields
+of Hydro-SE Bench. Performance is measured by the ratio of correctly answered
+questions to the total number of questions, calculated by each subfield. A larger col-
+ored area indicates better performance. Subfields are represented by abbreviations
+(BK: Background Knowledge; IS: Industry Standard; HWR: Hydrology and Water
+Resources; GE: Geotechnical Engineering; HSE: Hydraulic Structures and Equipment;
+ESM: Engineering Safety and Management; HRD: Hydraulics and River Dynamic; M:
+Meteorology; PS: Power System). The numbers in parentheses following each abbre-
+viation denote the average accuracy value of the ten models in that subfield.
+3.3 Comparison of LLMs on Different Parameter Scales
+While the scaling law has clearly indicated that increasing model size enhances both
+general and domain-specific capabilities, smaller models still play an important role
+in practical engineering applications where efficiency and cost are key considerations.
+Accordingly, this section presents a comparison between large- and small-parameter
+LLMs in terms of their domain performance, using 10 commercial LLMs evaluated in
+the study as representatives of large-parameter models and six open-source LLMs as
+representatives of small-parameter models.
+Fig. 4 (a) shows the average accuracy of 10 evaluated commercial LLMs and 6
+small-parameter open-source LLMs, with error bars representing the standard devia-
+tions of model accuracy values. With the parameters increasing, the most significant
+improvement is observed in task C, where the average accuracy value rises from 0.50
+to 0.78, representing an increase of 56.0 %. Meanwhile, the improvements in task A
+and task B are relatively modest, with the accuracy value increases of 23.4 % and 32.7
+%, respectively. These results, building on established scaling laws, further reveal that
+in the Hydro-SE domain, increasing model parameters primarily enhances reasoning
+and calculation capabilities. Without incorporating domain-specific knowledge into
+8
+
+0.79 
+0.73 
+0.78 
+0.64 
+0.55 
+0.50 
+0.30
+0.40
+0.50
+0.60
+0.70
+0.80
+0.90
+A: Basic Conceptual
+knowledge
+B: Engineering
+Applications
+C: Reasoning and
+Calucation
+Accuracy
+Average accuracy of 10 large-parameter commercial LLMs
+Average accuracy of 6 small-parameter open-source LLMs
+a.
+b.
+HWR
+IS
+BK
+HSE
+GE
+ESM
+HRD
+M
+PS
+0.17
+0.21
+0.17
+0.23
+0.13
+0.18
+0.22
+0.21
+0.09
+Fig. 4: Comparison of LLMs across different parameter scales. (a) The bar
+chart shows the average accuracy values of large-parameter LLMs and small-parameter
+LLMs, with error bars representing the standard deviations of model accuracy values.
+(b) The radar chart illustrates the average accuracy values of large-parameter and
+small-parameter LLMs across nine Hydro-SE subfields. The numbers marked along the
+arrows indicate the accuracy differences between large- and small-parameter models.
+the training corpus, or performing dedicated continuous pre-training and fine-tuning
+within specialized Hydro-SE contexts, model performance in conceptual knowledge
+and engineering applications tasks remains limited.
+Fig. 4 (b) compares the average accuracy of large-parameter and small-parameter
+LLMs across nine Hydro-SE subfields. As shown in Fig. 4 (b), increasing model size
+yields the most substantial performance gains in “Hydraulics and River Dynamics”
+(HRD) and “Geotechnical Engineering” (GE), where the absolute accuracy improves
+by 0.23 and 0.22, respectively, corresponding to relative improvements exceeding 40 %.
+In contrast, the smallest gains appear in “Industry Standards” (IS) and “Engineering
+Safety and Management” (ESM), with absolute improvements of only 0.09 and 0.13,
+representing 15 % and 21 % relative increases, respectively. This pattern aligns with
+the conclusions drawn from Fig. 4 (a). Tasks in HRD and GE generally contain more
+reasoning-intensive elements, such as multi-step physical inference, numerical approx-
+imation, and stability judgment, where performance tends to scale more directly with
+parameter count. By comparison, IS and ESM rely heavily on the recall of codified
+rules, statutory constraints, and procedural criteria. Without corresponding expan-
+sion of domain-specific materials in the training corpus, merely increasing parameter
+size offers limited benefit, resulting in smaller accuracy gains.
+These findings further highlight the key implication that scaling alone cannot
+compensate for insufficient domain coverage. While larger models improve general rea-
+soning and calculation capabilities, achieving strong performance in Hydro-SE-specific
+conceptual understanding and engineering applications ultimately requires targeted
+domain-adaptive pre-training, curated knowledge integration, or additional supervised
+fine-tuning.
+9
+
+3.4 Confidence Estimation
+LLM confidence reflects the model’s self-evaluated likelihood of the generated output
+being factually correct. Given that hallucination in LLMs constitutes a major obstacle
+in real-world application, quantifying output confidence is essential for reliable model
+evaluation (L Huang et al., 2025). In this study, two top-performing models at different
+parameter scales (DeepSeek-V3.2-Exp and GLM-4-32B) were prompted to investigate
+how LLMs can correctly estimate the accuracy of their own responses in the Hydro-SE
+Bench. For each model, we asked it to output the confidence level for its own answer
+and used these results to draw the calibration curves.
+As shown in Fig. 5, both DeepSeek-V3.2-Exp and GLM-4-32B tend to assign the
+highest confidence score to the majority of their own answers. Specifically, GLM rated
+81.4 % questions with a confidence level of 5, while DeepSeek did so for 71.2 % ques-
+tions. For LLMs, evaluating the correctness of their own sampled responses remains a
+highly challenging task. In Fig. 5, the calibration curve of GLM-4-32B lies consistently
+below the perfect calibration line, indicating that the model tends to overestimate the
+correctness of its answers in most cases. For instance, among the questions where GLM
+assigned a confidence score of 5, its actual accuracy was 74.4 %, whereas for those
+rated with a confidence score of 4, the actual accuracy dropped sharply to only 34.8 %.
+This mismatch between subjective confidence and objective correctness highlights a
+notable miscalibration problem, which can be risky in real-world engineering scenarios
+where misplaced confidence may lead to misleading or unsafe recommendations.
+Compared with GLM-4-32B, DeepSeek-V3.2-Exp shows a substantial improvement
+in calibration performance, which can be partly attributed to its larger parameter
+scale. When the model assigns confidence levels of 3, 4, or 5, its actual accuracy
+increases monotonically with the confidence level, and the calibration curve closely
+aligns with the perfect calibration line, although a slight tendency to overestimate
+can still be observed. This suggests that DeepSeek exhibits a more reliable mapping
+between confidence and correctness in the medium-to-high confidence range. Nonethe-
+less, for lower confidence scores, DeepSeek tends to be underconfident, as its calibration
+curve lies above the perfect line. In this region, the model underestimates its actual
+accuracy, indicating the presence of asymmetric calibration depending on the confi-
+dence level. On average, DeepSeek returns an average confidence score of 4.64 for all
+the correct answers and 4.15 for incorrect ones. These findings emphasize that cali-
+bration quality varies across models and confidence ranges. When deploying LLMs for
+Hydro-SE applications, calibration should also be treated as a first-class evaluation
+dimension, alongside domain knowledge and reasoning accuracy.
+4 Methods
+4.1 Question generated workflow
+To construct Hydro-SE Bench, we utilized a wide board of sources, ranging from text-
+books, industry standards to statistic year books Table 1. We first collect questions
+from textbook exercises and further invite domain experts to manually design addi-
+tional ones. In total, 1,592 questions were compiled and carefully annotated by experts
+10
+
+Fig. 5: Distribution of LLMs’ confidence estimates for Hydro-SE Bench.
+The bar plot shows the distribution of LLMs’ confidence estimates (with the number
+of questions labeled by the height of the bar). The line plot shows the average accu-
+racy for questions in each confidence level. LLMs’ confidence estimate would be well
+calibrated if the average accuracy increases with the confidence. The dash black line
+represents the prefect calibration line, where accuracy increases monotonically with
+the confidence level.
+with their corresponding subfields and categories (A, B, or C). Each question is accom-
+panied by a detailed explanation, and all answers can be verified against authoritative
+sources such as published books and official industry standards.
+Table 1: Source materials for questions generation. The table shows the cate-
+gory and the number of items as well as a brief description.
+Category
+Number of Items
+Description
+Books
+985
+Hydro-SE related books
+(including textbooks, reference books, monographs)
+Industry Standards
+600
+Chinese national standards
+and other industry standards
+Laws and Regulations
+57
+Water management related laws
+and regulations
+Statistical Yearbooks
+1113
+Bulletins on multi-level water resources,
+soil water management, etc.
+Based on these expert-designed questions, we developed a semi-automatic ques-
+tion generation approach as shown in Fig. 6. We first categorized the source materials
+according to nine distinct subfields in the Hydro-SE Bench. The original documents
+were then parsed and segmented into smaller passages, which were subsequently pro-
+vided to LLMs as contextual inputs. Using prompts (see Table B4) and expert-designed
+questions as the few-shot, we guided the models to generate questions directly based
+11
+
+Books
+Industry
+Standards
+Statistical 
+Yearbooks
+Laws
+Background Knowledge
+Engineering Safety and 
+Management
+Industry Standard
+Hydrology and Water 
+Resources
+Geotechnical Engineering
+Hydraulic Structures and 
+Equipment
+Hydraulics and River 
+Dynamic
+Meteorology
+Power System
+Requirements for 
+Question Design
+Examples of 
+Expert Designed 
+Questions
+Knowledge Corpus
+Questions Generation 
+Prompt
+Large Language Model
+Generated 
+Questions
+Expert Check
+Fig. 6: Semi-automatic question generation approach.
+on the content of each knowledge slice. This approach enables convenient future expan-
+sion of the benchmark, as new documents can be parsed and added following the
+same pipeline. In addition, the generated questions have clearly traceable references,
+ensuring the transparency and verifiability of each answer. To guarantee the quality
+of LLM-generated questions, we arranged at least three rounds of expert review and
+refinement to these questions.
+4.2 Model evaluation workflow
+We adopted consistent prompt templates across all evaluated LLMs (see Table B5)
+to ensure the fairness and comparability of the tests. In the first stage, each model
+was prompted to generate its complete reasoning (if applicable) or problem-solving
+process. Subsequently, the response context was provided to another LLM, which was
+then prompted to extract the final choice letters from the original response. This
+two-stage approach was designed to capture the models’ genuine reasoning processes
+rather than merely constraining them to output choice letters in specific format. Its
+main advantage is that complete reasoning chains reduce interpretability and provide
+a more faithful evaluation of the models’ capabilities [24]. In addition, this design
+avoids the constraints of strict instruction-following, which could otherwise bias the
+evaluation of their intrinsic reasoning and Hydro-SE domain knowledge [2].
+For all models, responses were sampled with the temperature set to 0 to ensure
+deterministic outputs. We accessed the models via their official API endpoints or
+through the OpenRouter platform. DeepSeek-V3.2-Exp was employed to extract choice
+letters from the responses, given its strong performance in text understanding. More-
+over, since our primary goal was to evaluate the models’ knowledge capabilities rather
+than their robustness to interface issues, we re-sampled the responses whenever an
+12
+
+API call failed or the output was truncated, instead of marking those cases as incorrect
+answers.
+4.3 Confidence estimation method
+To estimate the models’ confidence, we employed a verbalized confidence estimation
+approach [27]. Specifically, LLMs were prompted with both the question (including
+the answer options for multiple-choice questions) and their own selected answer, and
+then asked to rate their confidence in the proposed answer on a scale from 1 to 5. The
+detailed prompt is provided in Table B6. This method was chosen because most closed-
+source models, such as GPT-5, do not provide access to logits, making the verbalized
+approach more generally applicable. Moreover, this approach is considered closer to
+practical use cases and enables capturing semantic uncertainty [15], which is distinct
+from the probability of a token given a sequence of tokens. Based on the outputs of
+LLMs, the questions in Hydro-SE Bench were first divided into five subsets according
+to the confidence levels reported by the models. For each subset, we then calculated
+the models’ accuracy and plotted calibration curves. When higher predicted confidence
+aligns with higher actual accuracy, it suggests that the models’ self-evaluation is well-
+calibrated and they are less prone to hallucinations.
+5 Discussion
+5.1 Difficulty Consistency Analysis
+In this study, the constructed Hydro-SE Bench comprises a total of 4,000 questions.
+Completing the entire benchmark requires a total of 83.9 million tokens for SOTA
+models and 15.3 million tokens for open-source lightweight models (see Table C8),
+leading to considerable computational and time costs. To enable more efficient rou-
+tine evaluations, we conducted a sampling analysis on Hydro-SE Bench to explore the
+feasibility of constructing smaller benchmark subsets. This analysis examined the diffi-
+culty consistency among questions within types A, B, and C, and provided a reference
+for determining the minimum recommended sampling ratio. The sampling procedure
+was designed to maintain representativeness across all subfields. Specifically, for each
+subfield, questions of types A, B, and C were sampled at the same proportional rate.
+The sampled questions from all subfields were then aggregated to form a subset, on
+which model accuracy was evaluated. Sampling ratios ranged from 10 % to 100 % in
+increments of 10 %, resulting in ten sampling ratio levels. For each level, ten indepen-
+dent random samplings were conducted, and the mean and standard deviation of the
+accuracy were calculated across these repetitions. In this study, DeepSeek-V3.2-Exp
+and Claude-4.5, representing the highest- and lowest-scoring models among the com-
+mercial models evaluated, are used as examples to illustrate how model performance
+varies across subsets with different sampling ratios of the full benchmark.
+Fig. 7 shows the sampling evaluation results of DeepSeek-V3.2-Exp and Claude-4.5.
+The line plots show the model’s accuracy on sampled subsets, with error bars indicating
+the standard deviation of multiple samplings. As shown in Fig. 7, the accuracy of both
+DeepSeek-V3.2-Exp and Claude-4.5 (Sonnet) remain relatively stable across different
+13
+
+sampling ratios of Hydro-SE Bench, indicating good difficulty consistency within the
+benchmark. Across all sampling ratios from 10 % to 100 %, the difference between the
+maximum and minimum average accuracy is less than 1.9 % for DeepSeek-V3.2-Exp
+and 1.5 % for Claude-4.5 (Sonnet). When the sampling ratio ≥30 %, the total range of
+the error bars does not exceed 5 %, which indicates that random sampling introduces
+relatively minor fluctuations. However, when the sampling ratio drops below 30 %, the
+accuracy variation between different samplings becomes more pronounced, particularly
+for type C questions, as reflected by longer error bars. Based on these results, it
+is recommended that when constructing subsets of Hydro-SE Bench for testing, the
+sampling ratio for each question type within subfields should be at least 30 %.
+Fig. 7: LLM performance across subsets with different sampling ratios of
+the full Hydro-SE Bench. Line plots represent model accuracy on question types
+A (basic concepts), B (engineering applications), and C (reasoning and calculations).
+Error bars indicate the standard deviations obtained from ten random sampling rep-
+etitions at each sampling ratio.
+5.2 Limitations and future work
+While this study provides systematic evaluation of LLMs’ Hydro-SE-related capa-
+bilities, several limitations remain. First, Hydro-SE Bench focuses primarily on
+multiple-choice questions, which capture a wide range of knowledge and reasoning
+abilities but still cannot fully reflect the open-ended and dynamic decision-making
+processes required in real engineering applications. Second, although the bench-
+mark covers nine representative subfields, it does not yet incorporate real-time data
+or scenario-based agentic tasks that would more closely resemble practical scenar-
+ios. Third, the evaluation primarily centers on text-based reasoning, whereas many
+Hydro-SE applications rely on multimodal information such as satellite remote sens-
+ing imagery, time-series data collected by stations, and video streams captured by
+surveillance cameras, which future benchmarks should integrate.
+Future research could further expand Hydro-SE Bench to include interactive, mul-
+timodal, and scenario-driven tasks, enabling the evaluation of LLMs both as knowledge
+bases and decision-support agents. In addition, establishing standardized metrics for
+domain reasoning, uncertainty estimation, and human–AI collaboration will also be
+14
+
+crucial for advancing the safe and reliable applications of LLMs in Hydro-SE. Look-
+ing forward, we believe that continuous benchmarking and longitudinal tracking of
+model updates will be essential for revealing performance trajectories, diagnosing per-
+sistent weaknesses, and guiding targeted fine-tuning efforts. Such practices are crucial
+for transforming current LLMs from general-purpose tools into reliable assistants for
+Hydro-SE.
+6 Conclusion
+In this study, we introduce Hydro-SE Bench, the first comprehensive benchmark
+designed to evaluate LLMs’ knowledge and application abilities in the Hydro-SE
+domain. Through evaluating sixteen LLMs (10 commercial LLMs and 6 small-
+parameter open source LLMs) across nine Hydro-SE subfields and three task cate-
+gories, we delineate both the strengths and limitations of current LLMs and provide a
+quantitative comparison between models across different parameter scales. The evalu-
+ation results on Hydro-SE Bench indicate that overall accuracy ranges from 0.74–0.80
+for large-parameter commercial LLMs and 0.41–0.68 for small-parameter open-source
+models. While LLMs demonstrate strong performance in subfields grounded in natural
+and physical sciences, they continue to struggle with knowledge areas characterized by
+frequent updates, specialized terminology, or engineering-specific conventions. Param-
+eter scaling primarily enhances models’ reasoning and calculation abilities, with an
+average improvement of 56.0 %, yet brings far more limited gains in basic conceptual
+knowledge and engineering application. These findings highlight that while current
+LLMs can serve as valuable assistants for Hydro-SE applications, they are not yet
+reliable for practical applications. Moreover, scaling alone cannot compensate for
+insufficient domain-specific training. Targeted domain pre-training and supervise fine-
+tuning remains essential. In addition, this study examined the calibration behavior of
+LLMs and assessed the difficulty consistency of Hydro-SE Bench to support efficient
+sampling-based evaluation.
+The evaluation framework established in this study provides both a baseline and a
+roadmap for improving domain-specific LLMs. By revealing LLMs’ performance gaps
+between conceptual knowledge, engineering applications, and reasoning and calcula-
+tion, Hydro-SE Bench offers clear guidance for model developers seeking to enhance
+domain alignment and for Hydro-SE researchers exploring the integration of LLMs
+into real-world decision processes. Ultimately, Hydro-SE Bench represents an early
+but important step toward building reliable, domain-specialized LLMs capable of
+supporting sustainable and intelligent Hydro-SE management.
+Supplementary information.
+Appendix A: Example questions in Hydro-SE
+Bench; Appendix B: Prompts applied in this study; Appendix C: Model performance
+statistics;
+15
+
+Acknowledgements.
+This study was supported by the National Natural Science
+Foundation of China (Grant No. 52539001).
+Competing interests.
+The authors declare no competing interests.
+Data availiability.
+The Hydro-SE Bench and implementation code is released
+under the MIT license and can be accessed at: https://github.com/sheishijun/Hydro-
+SE-Bench
+References
+[1] Bhattacharyya A, Mukherjee S (2025) Using artificial intelligence to improve
+reliability and operational efficiency of small-scale hydroelectric distributed gen-
+eration. In: 2025 IEEE Rural Electric Power Conference (REPC). IEEE, pp
+48–53
+[2] Bommasani R, Liang P, Lee T (2023) Holistic evaluation of language models.
+Annals of the New York Academy of Sciences 1525(1):140–146
+[3] Chang Y, Wang X, Wang J, et al (2024) A survey on evaluation of large language
+models. ACM transactions on intelligent systems and technology 15(3):1–45
+[4] Choudhary SK, Mondal A (2025) Impact of large language models (llms) and
+artificial intelligence (ai) on renewable and sustainable energy. In: Large Language
+Models for Sustainable Urban Development. Springer, p 3–43
+[5] Clark P, Cowhey I, Etzioni O, et al (2018) Think you have solved question
+answering? try arc, the ai2 reasoning challenge. arXiv preprint arXiv:180305457
+[6] Cobbe K, Kosaraju V, Bavarian M, et al (2021) Training verifiers to solve math
+word problems. arXiv preprint arXiv:211014168
+[7] Guan X, Svoboda A, Li Ca (1999) Scheduling hydro power systems with restricted
+operating zones and discharge ramping constraints. IEEE transactions on Power
+Systems 14(1):126–131
+[8] Guha N, Nyarko J, Ho D, et al (2023) Legalbench: A collaboratively built bench-
+mark for measuring legal reasoning in large language models. Advances in neural
+information processing systems 36:44123–44279
+[9] Hendrycks D, Burns C, Basart S, et al (2020) Measuring massive multitask
+language understanding. arXiv preprint arXiv:200903300
+[10] Huang J, Chang KCC (2023) Towards reasoning in large language models: A
+survey. In: Findings of the Association for Computational Linguistics: ACL 2023,
+pp 1049–1065
+16
+
+[11] Jeroen C, Pettersen J, Hyysalo K (2024) Enhancing hydropower management
+through artificial intelligence: Insights from norway’s experience. International
+Journal of Artificial Intelligence 11(1):1–11
+[12] Li H, Chen J, Yang J, et al (2025) Legalagentbench: Evaluating llm agents in
+legal domain. In: Proceedings of the 63rd Annual Meeting of the Association for
+Computational Linguistics (Volume 1: Long Papers), pp 2322–2344
+[13] Li J, Deng Y, Sun Q, et al (2024) Benchmarking large language models in
+evidence-based medicine. IEEE Journal of Biomedical and Health Informatics
+[14] Li Y, Wang S, Ding H, et al (2023) Large language models in finance: A survey.
+In: Proceedings of the fourth ACM international conference on AI in finance, pp
+374–382
+[15] Mirza A, Alampara N, Kunchapu S, et al (2025) A framework for evaluating the
+chemical knowledge and reasoning abilities of large language models against the
+expertise of chemists. Nature Chemistry 17(7):1027–1034
+[16] Park JS, O’Brien J, Cai CJ, et al (2023) Generative agents: Interactive simulacra
+of human behavior. In: Proceedings of the 36th annual acm symposium on user
+interface software and technology, pp 1–22
+[17] Ramos MC, Collison CJ, White AD (2025) A review of large language models
+and autonomous agents in chemistry. Chemical science
+[18] Schick T, Dwivedi-Yu J, Dess`ı R, et al (2023) Toolformer: Language models can
+teach themselves to use tools. Advances in Neural Information Processing Systems
+36:68539–68551
+[19] Siino M, Falco M, Croce D, et al (2025) Exploring llms applications in law: A
+literature review on current legal nlp approaches. IEEE Access
+[20] Srivastava A, Rastogi A, Rao A, et al (2023) Beyond the imitation game: Quan-
+tifying and extrapolating the capabilities of language models. Transactions on
+machine learning research
+[21] Vogel RM, Lall U, Cai X, et al (2015) Hydrology: The interdisciplinary science
+of water. Water Resources Research 51(6):4409–4430
+[22] Wang A, Singh A, Michael J, et al (2018) Glue: A multi-task benchmark and
+analysis platform for natural language understanding. In: Proceedings of the 2018
+EMNLP workshop BlackboxNLP: Analyzing and interpreting neural networks for
+NLP, pp 353–355
+[23] Wang A, Pruksachatkun Y, Nangia N, et al (2019) Superglue: A stickier bench-
+mark for general-purpose language understanding systems. Advances in neural
+17
+
+information processing systems 32
+[24] Wei J, Wang X, Schuurmans D, et al (2022) Chain-of-thought prompting elicits
+reasoning in large language models. Advances in neural information processing
+systems 35:24824–24837
+[25] Wu S, Irsoy O, Lu S, et al (2023) Bloomberggpt: A large language model for
+finance. arXiv preprint arXiv:230317564
+[26] Xie Q, Han W, Zhang X, et al (2023) Pixiu: A comprehensive benchmark, instruc-
+tion dataset and large language model for finance. Advances in Neural Information
+Processing Systems 36:33469–33484
+[27] Xiong M, Hu Z, Lu X, et al (2023) Can llms express their uncertainty? an empir-
+ical evaluation of confidence elicitation in llms. arXiv preprint arXiv:230613063
+[28] Yang J, Jin H, Tang R, et al (2024) Harnessing the power of llms in practice: A
+survey on chatgpt and beyond. ACM Transactions on Knowledge Discovery from
+Data 18(6):1–32
+[29] Yao S, Zhao J, Yu D, et al (2022) React: Synergizing reasoning and act-
+ing in language models. In: The eleventh international conference on learning
+representations
+[30] Yu Y, Yao Z, Li H, et al (2024) Fincon: A synthesized llm multi-agent system with
+conceptual verbal reinforcement for enhanced financial decision making. Advances
+in Neural Information Processing Systems 37:137010–137045
+[31] Zhao WX, Zhou K, Li J, et al (2023) A survey of large language models. arXiv
+preprint arXiv:230318223 1(2)
+[32] Zhao Z, Chen B, Li J, et al (2024) Chemdfm-x: towards large multimodal model
+for chemistry. Science China Information Sciences 67(12):220109
+18
+
+Appendix A
+Example questions in Hydro-SE Bench
+Table A1: Basic Conceptual Knowledge Questions (Type A)
+Subfield
+Question and Options
+Background Knowledge
+Which of the following is the largest freshwater lake in China?
+A. Qinghai Lake; B. Dongting Lake; C. Poyang Lake; D. Tai Lake.
+Hydrology and Water
+Resources
+During the hydrological cycle, which process serves as the primary
+linkage for the interaction between surface water and groundwa-
+ter, and its rate is significantly influenced by factors such as soil
+types, vegetation covers, and rainfall characteristics?
+A. Evaporation; B. Infiltration; C. Runoff; D. Precipitation.
+Geotechnical Engineering
+What is the primary function of a settlement joint?
+A. To prevent differential settlement of the foundation;
+B. To enhance the overall stability of the foundation;
+C. To improve the load-bearing capacity of the foundation;
+D. All of the above.
+Hydraulic Structure and
+Equipment
+When a hydropower station is characterized by high water head,
+low flow, and a long penstock, which of the following water con-
+veyance schemes is typically adopted?
+A. Unit conveyance; B. Combined conveyance;
+C. Group conveyance; D. All of the above.
+Engineering Safety and
+Management
+In China, after completing a water conservancy construction
+project, which of the following is not included in the content of
+the final acceptance?
+A. Project quality;
+B. Record of project schedule implementation;
+C. Project investment;
+D. Environmental protection measures.
+Hydraulics and River
+Dynamic
+An ideal fluid is defined as a fluid that ( ) .
+A. neglects gravitational effects;
+B. exhibits uniform internal pressure under static conditions;
+C. experiences no viscous resistance during flow;
+D. maintains uniform internal pressure during flow.
+Meteorology
+An increase in atmospheric moisture content due to the evapora-
+tion of surface water will cause the dew point temperature to ( ).
+A. rise; B. fall; C. remain unchanged; D. be indeterminable.
+Power System
+In the Chinese power system, how is the grounding of the neutral
+point in the primary winding of a voltage transformer typically
+classified?
+A. Working grounding; B. Protective grounding
+C. Safety grounding; D. Neutral grounding connection.
+19
+
+Table A2: Engineering Application Questions (Type B)
+Subfield
+Question and Options
+Industry Standard
+According to the Flood Control Law of the People’s Republic of
+China, which of the following is the correct classification of flood
+control zones?
+A. Flood basins, flood storage and detention basins, and areas
+protected against floods;
+B. Waterlogging-prone areas, drought-prone areas, and saline-
+alkaline areas;
+C. Mountain torrent area, plain areas, and coastal areas;
+D. Major protected areas and general protected areas.
+Hydrology and Water
+Resources
+In urban flood forecasting, which of the following models is gen-
+erally not adopted?
+A. SWMM model; B. SCS model;
+C. MIKEURBAN model; D. Xinanjiang model.
+Geotechnical Engineering
+During the construction of a filter layer for an earth-rock dam,
+which of the following represents a correct quality control require-
+ment?
+A. One sample shall be taken for every 100 m² of filled area;
+B. For a strip-shaped filter layer, one sampling cross-section shall
+be arranged every 20 meters;
+C. Verify whether the filter coefficient D50/d50 complies with the
+design requirements;
+D. Allow minor amounts of extraneous matter that do not affect
+performance;
+E. The deviation in placement thickness shall be controlled within
+±5 cm.
+Hydraulic Structure and
+Equipment
+During the hydraulic design of a metal spiral case, what is the
+key step that must be completed first?
+A. Determine the connection structure between the spiral case
+and the stay ring;
+B. Select the wrap angle Φ0 and the average flow velocity ¯v0 at
+the inlet section;
+C. Calculate the hydraulic coefficient C of the spiral case;
+D. Draw the single-line plan of the spiral case;
+E. Determine the specific dimensions of the butterfly transition
+section of the stay ring.
+Engineering Safety and
+Management
+In China, which of the following nondestructive testing techniques
+is commonly used for quality inspection of internal concrete
+defects in sluice structures?
+A. Ground-penetrating radar detection technology;
+B. Core drilling sampling method;
+C. Ultrasonic testing technology;
+D. All of the above.
+20
+
+Table A2 – continued from previous page
+Subfield
+Question and Options
+Hydraulics and River
+Dynamic
+A city in the middle reaches of the Yangtze River plans to ren-
+ovate the flood control levee of its riverside park. The levee
+structure must meet two requirements: it should have the capacity
+to withstand a 50-year flood event, while also creating a suitable
+ecological environment for fish spawning. Among the following
+options, which type of levee design best fulfills both requirements?
+A. Vertical reinforced concrete floodwall;
+B. Gently-sloped ecological bag revetment;
+C. Stepped-fishway composite ecological levee;
+D. Elevated pile-supported viewing platform levee.
+Meteorology
+During August, when the Western Pacific Subtropical High Ridge
+Line stably maintained between 30°N and 35°N, which of the
+following typical weather phenomena is most likely to occur in
+the region?
+A. Jiang -Huai Meiyu (Plum Rains);
+B. North China rainy season;
+C. Autumn crisp weather in South China;
+D. Western China autumn rains.
+Power System
+In the Chinese power system, which category of equipment has its
+insulation level primarily determined by lightning overvoltage?
+A. 220 kV substation equipment;
+B. Substation equipment rated 330 kV and above;
+C. Ultra-high voltage equipment after switching overvoltage lim-
+itation;
+D. Valve groups in DC converter stations.
+Table A3: Reasoning and Calculation Questions (Type C)
+Subfield
+Question and Options
+Hydrology and Water
+Resources
+For a basin area of 2916 km², the sum of the ordinates of its 6-
+hour unit hydrograph is known to be 11475 m³/s. What is the
+runoff depth corresponding to this unit hydrograph?
+A. 10 mm; B. 85 mm; C. 22.25 mm; D. 15 mm; E. 50 mm.
+Geotechnical Engineering
+For a foundation pit requiring a dewatering depth of 6 m, the
+thickness of the unconfined aquifer is 15 m, the permeability coef-
+ficient k = 15 m/d, the radius of influence R = 150 m and the
+equivalent radius r0 = 30 m. According to the calculation for
+a fully penetrating well in an unconfined aquifer, which of the
+following options is closest to the total water inflow of the foun-
+dation pit?
+A. 2240 m³/d; B. 2580 m³/d; C. 3024 m³/d; D. 3787 m³/d.
+21
+
+Table A3 – continued from previous page
+Subfield
+Question and Options
+Hydraulic Structure and
+Equipment
+For a Kaplan turbine operating under a design head of 18.6 m
+with a discharge of 825 m³/s, the turbine efficiency is 0.86 and the
+generator efficiency is 0.968. Neglecting the influence of hydraulic
+losses, which of the following options provide correct calculation
+results?
+A. Water power output is 150,500 kW;
+B. Turbine output is 129,430 kW;
+C. Unit output is 125,288 kW;
+D. Overall efficiency is 83.2%;
+E: Input power to the turbine is 150,500 kW.
+Engineering Safety and
+Management
+The supervision contract for a certain project stipulates that the
+supervision service fee shall be calculated as 3.5% of the project
+budget estimate, with the design phase accounting for 30%, the
+construction phase for 60%, and the acceptance phase for 10%.
+Given that the total project budget estimate is 280 million yuan
+and the actual investment during the construction phase is 160
+million yuan, which of the following calculation results is correct?
+A. The supervision fee for the design phase is 29.4 million yuan;
+B. The supervision fee for the construction phase is 168 million
+yuan;
+C. The supervision fee for the acceptance phase is calculated as
+10% of the actual cost during the construction phase;
+D. The total supervision contract amount is 9.8 million yuan.
+Hydraulics and River
+Dynamic
+In the calculation of the water surface profile for a natural river
+channel, given a reach length ∆s = 800 m, downstream water level
+zd = 85.3 m, cross-sectional area Ad = 120 m², wetted perimeter
+χd = 45 m, and discharge Q = 650 m³/s, what is the correct
+calculated value of the average hydraulic radius for this reach?
+A. 2.67 m; B. 5.34 m; C. 1.33 m; D. Cannot be calculated.
+Meteorology
+Under neutrally stratified conditions, given a wind speed of 2.8
+m/s at 2 m height in the surface layer and 4.9 m/s at 10 m height,
+the friction velocity u∗is approximately ( ).
+A. 0.2 m/s; B. 0.4 m/s; C. 0.5 m/s; D. 0.8 m/s.
+Power System
+In power system short-circuit calculations, if the system base
+power is set at 125 MVA and the short-circuit power provided by
+the generator unit is 228.35 MVA, what is the short-circuit power
+supplied by the system side?
+A. 771.65 MVA; B. 875.35 MVA;
+C. 950.65 MVA; D. 1028.35 MVA
+0Note: These example questions are translated from Chinese.
+22
+
+Appendix B
+Prompts applied in this study.
+Table B4: Question Generation Prompts
+Content
+You are a highly capable knowledge-question generation assistant. Please create <number>
+<multiple-choice> questions strictly based only on the knowledge points mentioned in the
+given passage.
+Requirements:
+1. The options of each question should cover difficult, easily confused, or high-discrimination
+points in the passage.
+2. Avoid absolute terms such as “always” or “all”.
+3. Neither the questions nor the explanations may include expressions like “according to
+the formula/example in the passage”, “as shown in Figure xx”, or “based on the passage’s
+equation/example”. The questions must stand alone and be understandable without the
+passage.
+4. The <number> questions should be distributed across different sections of the passage,
+covering its core knowledge points.
+5. Questions must focus on assessing <basic conceptual knowledge>, similar in difficulty to
+the given examples.
+Examples:
+<Question: For the same river reach, how does the propagation speed of a large flood compare
+to that of a small flood? A. Faster; B. Slower; C. About the same; D. Cannot be determined.
+Answer: A
+Analysis: . . . . . . >
+Output format:
+Output the results in strict json format.
+The content within < > brackets represents a replaceable input variable.
+Note: This prompt has been translated from Chinese.
+23
+
+Table B5: Model Evaluation Prompts
+Content
+Response generation prompt:
+You are an expert in the Hydro-Science and Engineering domain. Please answer the following <single-
+choice> question from a professional perspective and provide all correct answer options.
+Question: <Question>
+Answer extraction prompt:
+You are a professional answer-analysis assistant. Extract the correct choice letters from the following
+<single-choice> question response.
+1. Return only the choice letters, such as A, B, C, D.
+2. For multiple-choice questions, arrange letters in alphabetical order, e.g., AB, ACD.
+3. If no explicit option letters are present in the answer, return “Unrecognizable”.
+4. Return letters only, without any other text or symbols.
+Response content: <Response Content>
+Please directly return the option letters:
+The content within < > brackets represents a replaceable input variable.
+Note: This prompt has been translated from Chinese.
+Table B6: Confidence Estimation Prompts
+Content
+You are a professional answer evaluation expert. Please assess the confidence level of the given answer.
+Question: <Question>
+Question type: <Single-choice>.
+Question: <Answer>
+Please provide a confidence score for this answer as an integer from 1 to 5, where 5 indicates the
+highest confidence and 1 the lowest.
+Return only the integer score without any additional text.
+The content within < > brackets represents a replaceable input variable.
+Note: This prompt has been translated from Chinese.
+24
+
+Appendix C
+Model performance statistics
+Table C7: Performance of LLMs on the Hydro-SE Bench
+Model Name
+Accuracy on
+question A
+Accuracy on
+question B
+Accuracy on
+question C
+Overall Accuracy
+DeepSeek-V3.2-Exp
+0.809
+0.770
+0.826
+0.796
+DeepSeek-R1
+0.818
+0.765
+0.806
+0.794
+Kimi-K2-0905
+0.804
+0.744
+0.769
+0.773
+GLM-4.5
+0.792
+0.741
+0.797
+0.772
+GPT-5
+0.774
+0.734
+0.803
+0.763
+Grok-4
+0.775
+0.716
+0.807
+0.757
+Qwen-Plus
+0.781
+0.699
+0.770
+0.746
+Gemini-2.5-Pro
+0.767
+0.691
+0.781
+0.738
+Llama-4 (Maverick)
+0.773
+0.701
+0.741
+0.738
+Claude-4.5 (Sonnet)
+0.770
+0.699
+0.744
+0.736
+GLM-4-32B-0414
+0.727
+0.630
+0.677
+0.679
+Qwen2.5-32B-Instruct
+0.721
+0.629
+0.549
+0.653
+Qwen2.5-72B-Instruct
+0.698
+0.628
+0.593
+0.651
+Qwen2.5-7B-Instruct
+0.635
+0.516
+0.436
+0.551
+Llama-3-70B-Instruct
+0.584
+0.493
+0.421
+0.518
+Llama-3-8B-Instruct
+0.462
+0.392
+0.319
+0.408
+Question A: basic conceptual knowledge; question B: engineering applications; question C: reasoning
+and calculation.
+Table C8: LLM Token Consumption on the Hydro-SE Bench
+Model Name
+Token Consumption
+Model Name
+Token Consumption
+DeepSeek-V3.2-Exp
+4.057 M
+Llama-4 (Maverick)
+4.798 M
+DeepSeek-R1
+8.296 M
+Claude-4.5 (Sonnet)
+4.465 M
+Kimi-K2-0905
+2.707 M
+GLM-4-32B
+3.733 M
+GLM-4.5
+14.70 M
+Qwen-2.5-72B
+3.005 M
+GPT-5
+6.334 M
+Qwen-2.5-32B
+2.329 M
+Grok-4
+16.284 M
+Qwen-2.5-7B
+2.676 M
+Qwen-Plus
+5.959 M
+Llama-3-70B
+2.228 M
+Gemini-2.5-Pro
+16.278 M
+Llama-3-8B
+2.486 M
+M: Million
+25
+
+BK
+IS
+HWR
+GE
+HSE
+ESM
+HRD
+M
+PS
+DeepSeek-V3.2-Exp
+0.72 
+0.71 
+0.84 
+0.79 
+0.77 
+0.75 
+0.83 
+0.82 
+0.85 
+DeepSeek-R1
+0.74 
+0.74 
+0.82 
+0.78 
+0.77 
+0.74 
+0.82 
+0.81 
+0.87 
+Kimi-K2-0905
+0.68 
+0.78 
+0.80 
+0.78 
+0.72 
+0.72 
+0.78 
+0.83 
+0.83 
+GLM 4.5
+0.70 
+0.64 
+0.81 
+0.79 
+0.75 
+0.74 
+0.83 
+0.78 
+0.82 
+GPT-5
+0.70 
+0.71 
+0.80 
+0.74 
+0.75 
+0.70 
+0.80 
+0.77 
+0.84 
+Grok-4
+0.70 
+0.71 
+0.80 
+0.73 
+0.72 
+0.71 
+0.78 
+0.80 
+0.81 
+Qwen-Plus
+0.67 
+0.65 
+0.76 
+0.74 
+0.69 
+0.71 
+0.78 
+0.78 
+0.84 
+Gemini-2.5-Pro
+0.72 
+0.68 
+0.76 
+0.71 
+0.67 
+0.70 
+0.79 
+0.78 
+0.79 
+Llama-4 (Maverick)
+0.70 
+0.69 
+0.76 
+0.72 
+0.68 
+0.70 
+0.78 
+0.77 
+0.81 
+Claude-4.5 (Sonnet)
+0.68 
+0.70 
+0.75 
+0.71 
+0.69 
+0.68 
+0.77 
+0.78 
+0.82 
+GLM-4-32B-0414
+0.62 
+0.69 
+0.69 
+0.67 
+0.63 
+0.67 
+0.69 
+0.68 
+0.74 
+Qwen2.5-32B-Instruct
+0.60 
+0.67 
+0.68 
+0.61 
+0.60 
+0.68 
+0.63 
+0.69 
+0.68 
+Qwen2.5-72B-Instruct
+0.58 
+0.64 
+0.68 
+0.58 
+0.61 
+0.67 
+0.63 
+0.71 
+0.73 
+Qwen2.5-7B-Instruct
+0.52 
+0.59 
+0.53 
+0.47 
+0.53 
+0.59 
+0.53 
+0.62 
+0.59 
+Llama-3-70B-Instruct
+0.47 
+0.60 
+0.51 
+0.47 
+0.49 
+0.51 
+0.50 
+0.58 
+0.55 
+Llama-3-8B-Instruct
+0.39 
+0.46 
+0.41 
+0.37 
+0.38 
+0.41 
+0.40 
+0.45 
+0.42 
+Fig. C1: Performance of LLMs on Hydro-SE Bench across nine subfields.
+(BK: Background Knowledge; IS: Industry Standard; HWR: Hydrology and Water
+Resources; GE: Geotechnical Engineering; HSE: Hydraulic Structures and Equipment;
+ESM: Engineering Safety and Management; HRD: Hydraulics and River Dynamic; M:
+Meteorology PS: Power System)
+26

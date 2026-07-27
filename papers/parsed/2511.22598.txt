@@ -1,0 +1,958 @@
+LLM-Cave: A benchmark and light environment for
+large language models reasoning and
+decision-making system
+1st Huanyu Li
+College of Artificial Intelligence
+Nankai University
+Tianjin, China
+2211286@mail.nankai.edu.cn
+2nd Zongyuan Li
+College of Artificial Intelligence
+Nankai University
+Tianjin, China
+2120230524@mail.nankai.edu.cn
+4th Xian Guo*
+College of Artificial Intelligence
+Nankai University
+Tianjin, China
+guoxian@nankai.edu.cn
+*Corresponding Author
+3rd Wei Huang
+College of Artificial Intelligence
+Nankai University
+Tianjin, China
+huangw@mail.nankai.edu.cn
+Abstract—Large language models (LLMs) such as ChatGPT
+o1, ChatGPT o3, and DeepSeek R1 have shown great potential
+in solving difficult problems. However, current LLM evalua-
+tion benchmarks are limited to one-step interactions. Some of
+the existing sequence decision-making environments, such as
+TextStarCraftII and LLM-PySC2, are too complicated and require
+hours of interaction to complete a game. In this paper, we
+introduce LLM-Cave, a benchmark and light environment for
+LLM reasoning and decision-making systems. This environment
+is a classic instance in the era of Symbolism. Artificial intelli-
+gence enables the agent to explore the environment and avoid
+potential losses by reasoning about nearby dangers using partial
+observable state information. In the experiment, we evaluated the
+sequential reasoning ability, decision-making performance and
+computational efficiency of mainstream large language models
+(LLMs) such as GPT-4o-mini, o1-mini, and DeepSeek-R1. Ex-
+periments show that while Deepseek-R1 achieved the highest
+success rate on complex reasoning tasks, smaller models like 4o-
+mini significantly narrowed the performance gap on challenges
+by employing Chain of Speculation and Planner-Critic strategies,
+at the expense of reduced computational efficiency. This indicates
+that structured, multi-step reasoning combined with an LLM-
+based feedback mechanism can substantially enhance an LLM’s
+decision-making capabilities, providing a promising direction for
+improving reasoning in weaker models and suggesting a new
+reasoning-centered benchmark for LLM assessment. Our code
+is open-sourced in https://github.com/puleya1277/CaveEnv.
+Index Terms—Large language models, reasoning, benchmark,
+sequential decision-making
+I. INTRODUCTION
+In recent years, unprecedented advancements have been
+witnessed in large language models, exemplified by models
+This work was supported in part by the National Natural Science Foundation
+of China under Grant 624B2074 and Grant 62233011.
+such as GPT, Claude, Grok, Gemini and Deepseek. These
+models, trained on vast corpora of text and leveraging scal-
+able transformer-based frameworks, have achieved remarkable
+performance across diverse natural language processing tasks,
+including text generation, translation, and question-answering.
+Beyond these capabilities, their emergent abilities in mul-
+timodal understanding, code generation, and context-aware
+interaction have positioned LLMs as foundational tools in
+artificial intelligence research. The integration of techniques
+like reinforcement learning from human feedback (RLHF) and
+reinforcement learning based finetune (RLFT) have further en-
+hanced their alignment with human intent or task requirements,
+enabling deployment in real-world applications ranging from
+education to creative industries.
+A critical frontier in LLM development lies in improving
+their reasoning abilities. Techniques such as chain-of-thought
+prompting [1], LLM self-reflection [2], Retrieval-Augmented
+Generation and online deep-search have enabled models to
+tackle complex logical, mathematical, and inferential tasks.
+These advancements have catalyzed societal transformations,
+such as AI gaming [3], AI-assisted financial decision-making
+[4], robot navigation [5] [6] [7], and manipulation [8] [9].
+However, the reasoning ability of current models is not exactly
+equal to logic ability. Current QA benchmarks may already
+exist in the pre-training or fine-tuning process, which raises
+concerns about the reliability of the actual logic abilities,
+especially in environments that are not trained in the pre-
+training process.
+Current benchmarks for evaluating the reasoning ability of
+LLMs, such as MMLU, GSM8K, and Humanity’s Last Exam,
+arXiv:2511.22598v1  [cs.LG]  27 Nov 2025
+
+predominantly focus on single-step question-answering (QA)
+tasks. While effective for measuring factual recall or short de-
+ductive reasoning, these datasets fail to capture the complexity
+of real-world problems requiring multi-step planning, iterative
+refinement, and dynamic environment interaction. Such limi-
+tations hinder the assessment of the LLMs’ ability to man-
+age long-term tasks, where errors compound over sequential
+decisions, and adaptive strategies are essential for success.
+Consequently, a gap exists between existing benchmarks and
+the demands of practical, multi-step decision-making scenarios.
+For long-term decision-making, recent efforts have in-
+troduced sequential decision-making environments such as
+TextStarCraft2 [10] and LLM-PySC2 [11], which provide
+interfaces for the strategic game StarCraft II through text-
+based interfaces. While these platforms enable research into
+multi-step reasoning and real-time planning, their reliance
+on heavy computational infrastructure, complex rule systems,
+and extensive API dependencies creates significant overhead.
+Such burdens limit accessibility for researchers, hinder rapid
+experimentation, and obscure the interpretability of model
+behavior—issues that demand lightweight, scalable alternatives
+for widespread adoption.
+4
+3
+2
+1
+1
+2
+3
+4
+Grids
+Explored 
+Grids
+To Explore
+Gold
+Agent
+Wumpus
+(Dangerous)
+Pit
+(Dangerous) 
+LLM/LLM Agent
+LLM-Cave Environment
+Observation:
+Valid Actions: <moveto(1,4)>, ...
+Observation: {"current pos": (1,3)
+                         "breeze": (1,3), ......}
+Assumptions: {"pit":[], "wumpus": []}
+     
+Response:
+Analysis: ......
+Guess:  {"pit": [(1, 4), (2, 3)],  
+                "wumpus": []}
+Action:  <MoveTo(2, 2)>
+      
+Stench
+(Safe)
+Breeze
+(Safe) 
+Fig. 1. LLM-Cave Environment. In the LLM-Cave environment, the LLM
+controls a game agent; the agent has to explore the cave and find the gold.
+In the cave, the agent can only get the information of the current grid, while
+there are pits (holes) and wumpus (monster) that may kill the agent. Near the
+pits and wumpus are breeze and stench. The LLM should reason the position
+of the pit and wumpus according to the observed information of breeze and
+stench to safely explore the cave and find the gold.
+In this paper, we introduce LLM-Cave, a novel benchmark
+framework and lightweight environment specifically designed
+for evaluating and enhancing the reasoning and decision-
+making abilities of Large Language Models (LLMs). This
+environment not only tests the ability of large language models
+in planning and reasoning but also their flexibility in the face
+of complex problems. The environment maintains a lightweight
+design, facilitating ease of deployment and interpretability of
+results while precisely capturing the intricacies inherent in
+sequential reasoning. Within LLM-Cave, we further implement
+the Chain of Speculation and Planner-Critic mechanisms. The
+performer-critic mechanism gives the model a “self-reflective”
+capability. Without human intervention, the model can indepen-
+dently evaluate its own decisions and adjust its direction when
+necessary. This makes the entire decision-making process more
+robust and reliable.
+In our experiments, we evaluated the sequential reasoning
+capabilities of several prominent LLMs, including OpenAI
+GPT-4o-mini, o1-mini, Claude 3.5, Gemini 2.5 Flash, and
+DeepSeek-R1, within the LLM-Cave environment. The ex-
+perimental results show clear differences. On the one hand,
+reasoning-oriented models such as DeepSeek-R1 tend to be
+able to deduce reasonable strategies with little external prompts.
+On the other hand, models that lack reasoning ability often
+struggle to make optimal moves when confronted with a prob-
+lem. However, after employing our Chain of Speculation and
+Planner-Critic collaborative mechanisms, performance among
+weaker models improved notably. Compared to their zero-shot
+or initial baseline attempts, these models exhibited a reduction
+in logical errors and an increased success rate.
+Our contributions include:
+(1) We propose a lightweight, text-based environment explic-
+itly designed for assessing the reasoning and decision-making
+capabilities of LLMs.
+(2) We introduce the Chain of Speculation inference strategy,
+which requires the LLM to make a guess about the hazard and
+explicitly propagate the guess to the next step.
+(3) We develop an LLM-driven dual-role feedback frame-
+work in which a Planner generates decisions informed by
+the current Chain of Speculation while a Critic evaluates the
+correctness of these outputs and proposes optimizations.
+(4)We assessed the decision-making ability and computing
+efficiency of leading large-language models (LLMs).
+The code of the LLMCave environment has been open-so/
+*-urced in GitHub https://github.com/puleya1277/CaveEnv.
+II. RELATED WORKS
+A. LLM Decision making
+LLM decision-making problems have been studied for sev-
+eral years since ChatGPT came into view. Early works such as
+Stanford Town [12] focused on LLMs’ behaviors, and LLMs
+exhibit human-like behaviors. After that, more and more works
+tested LLM’s decision-making abilities in games like ChatDev
+[13], CRADLE [14], LlamaRider [15], SwarmBrain [16] and
+TextStarCraft2. In the field of robotics, LLMs are also used
+in robotic manipulation and navigation. These works show
+the potential of LLM in sequential decision-making, but these
+environments are not widely used as benchmarks for LLMs
+because of their complexity and high demand for computational
+resources and token consumption.
+B. LLM Reasoning Enhancing Techniques
+In September 2024, OpenAI released the first long CoT
+model, GPT-o1. Since then, techniques for enhancing LLM
+reasoning ability have attracted increasing attention. Train-free
+
+prompt engineering methods like Chain-of-Draft [17] increase
+LLM’s performance directly through input instructions, while
+Multi-Agent LLM System [14] improves the performance by
+splitting tasks into smaller subtasks, enhancing the tool use and
+coding abilities [18] to better handle problems. For training
+methods, cold start supervised training, RLHF and RLFT
+increase the performance by directly updating the parameters
+of the models.
+III. PRELIMINARIES
+A. Markov Decision Process
+Within the framework of sequential decision modeling, a
+Markov decision process (MDP) establishes that the state at
+any given moment is independent of future actions. Over the
+last decade, MDP has become a standard paradigm for mod-
+eling sequential decision-making challenges, including optimal
+control strategies, policy optimization, reinforcement learning,
+and collaborative multi-agent systems.
+An MDP structure denoted as MDP(S, A, R, ρ, s0) orig-
+inating at s0 operates through iterative interactions: At each
+timestep t, the agent observes current environment information
+st of state space S and selects an execution command at from
+action space A. The environment subsequently produces an
+immediate feedback signal rt determined by the reward func-
+tion rt = R(st, at), and transitioning to successor state st+1
+according to transition dynamics pst+1 = ρ(st+1|st, at). For
+scenarios with incomplete state information, the model extends
+to partially observable MDP POMDP(O, S, A, R, ρ, s0), in-
+troducing observation domain O where ot ∈O denotes the
+observation at timestep t.
+B. LLM Decision Making Process
+For LLM-based decision making, we denote p as profile or
+system prompt, and the LLM makes decisions according to
+bat = LLMp(bot)
+where b. represents any data in text form. In CoT settings, an
+LLM will be prompted to respond as:
+(bc1, bc2, ...bcn)CoT = LLMp(bIt)
+where content bci+1 is generated after bci and bIt represent input
+content.
+IV. METHOD
+The chain of thought (CoT) approach enables the model to
+explicitly output the analysis process, thereby improving the
+decision-making capability of large models [1]. We build on
+CoT by introducing two core components to the LLM agent:
+the Chain of Speculation mechanism for long-term reasoning
+memory and the Planner-Critic mechanism for decision verifi-
+cation. Below, we describe each component in detail.
+LLM-Cave Environment
+Observation:
+Valid Actions: <moveto(1,4)>, ...
+Observation: {"current pos": (1,3)
+                         "breeze": (1,3), ......}
+Assumptions: {"pit":[], "wumpus": []}
+     
+Actor(Planner)
+Action:  <MoveTo(2, 2)>
+      
+Guess:  {"pit": [(1, 4), (2, 3)],  
+                "wumpus": []}      
+Analysis : ......
+Next step
+Critic
+Action:  <MoveTo(2, 2)>
+      
+Score:  ….
+Analysis: ......
+Action
+Draft Chain 
+Mechanism
+Actor-Critic 
+Mechanism
+Score≥Threshold?
+Yes
+No
+Execute
+ Actor's 
+Action
+Execute
+ Critic's Action
+Fig. 2. The workflow of LLM agents interacting with its environment. The
+Chain of Speculation Mechanism and the Planner-Critic Mechanism are applied
+within LLM-Cave. The Chain of Speculation maintains explicit hypotheses
+about pit and Wumpus positions, updating them after each observation. The
+Planner proposes an action that the Critic scores for safety; actions exceeding
+a confidence threshold are executed otherwise a safer alternative is supplied.
+A. Chain of Speculation Mechanism
+The Chain of Speculation mechanism aims to provide LLM
+agents with explicit reasoning memory across multiple interac-
+tion rounds. While standard LLM agents implicitly access the
+dialogue history (including past observations, previous actions,
+or reasoning) through prompts, they often struggle to maintain
+a structured and coherent understanding of the environmental
+state over time. The Chain of Speculation addresses this limita-
+tion by enabling the model to explicitly generate and propagate
+a hypothesis (”draft”) regarding the environmental state at each
+interaction step.
+Concretely, the output of the LLM at each interaction
+is structured into three distinct parts: Analysis (a reasoning
+process based on current observations), Guess (the model’s
+hypothesis or inference regarding the locations of Wumpus and
+pits—explicitly formatted in JSON for clarity and ease of sub-
+sequent processing), and Action (the decision based on these
+hypotheses). For instance, upon perceiving a
+"stench"
+at
+locations (1,2) and (2,1), the model’s Guess might be structured
+as
+"wumpus": [(2,2)], and the corresponding Action
+could be ”<shootright> to ensure the absence of Wumpus
+on the right side.” This Guess is then appended to the sub-
+sequent observations, thus reminding the model of its current
+inferences when it receives new information. Essentially, the
+model declares its evolving beliefs explicitly, thereby construct-
+ing and maintaining its own knowledge base.
+To clearly illustrate, each interaction round follows the
+procedure below:
+• The agent receives the latest observations from the envi-
+ronment (e.g., detecting a breeze or stench at its current
+
+position).
+• These new observations, along with the Guess from the
+previous round (if available), are incorporated into the
+prompt. The LLM then outputs a new Analysis, updated
+Guess, and subsequent Action. The analysis represents
+the model’s reasoning about the immediate environmental
+cues, Guess encapsulates the agent’s updated beliefs about
+possible Wumpus or pit locations, and Action is chosen
+based on these updated beliefs.
+• Newly generated Guesses are stored and passed to the
+LLM with the next round of observations, thus forming a
+continuous ”draft chain” throughout the task.
+By iteratively updating its own assumptions, the intelligent
+body gradually builds up a strong, long-term reasoning ability.
+In this process, the Chain of Speculation mechanism plays
+a role similar to that of ”internal memory,” which serves as
+the internal state of the large language model. At the same
+time, this mechanism also has the ability of self-correction
+- when a new environmental observation conflicts with the
+current speculation, the model will take the initiative to adjust
+the original speculation in the following rounds and correct its
+own cognitive bias step by step. In a sense, this stops the model
+from ”starting from scratch” at every step and allows it to move
+forward as it accumulates.
+B. Planner-Critic Decision Mechanism
+The Planner-Critic decision mechanism enhances decision-
+making quality by introducing a ”second opinion” for each
+proposed Action. In our framework, we pair the original
+Planner LLM with a separate Critic LLM, enabling the Critic
+to evaluate the actions suggested by the Planner.
+Specifically, within this framework, the Planner is respon-
+sible for proposing the next Action (leveraging information
+maintained by the Chain of Speculation as described previ-
+ously), while the Critic reviews and validates this Action prior
+to execution. The detailed procedure per round is as follows:
+• Given the current observation and continually updated
+Guess, the Planner LLM performs an analysis and outputs
+its Guess alongside a proposed Action (e.g., ”move to
+position (2,1)” or ”pick up the gold”). This represents the
+agent’s initial decision during the current interaction.
+• The Critic LLM receives relevant context, including the
+current observation and the Planner’s proposed Action.
+The Critic then evaluates the Action’s safety and appro-
+priateness. The Critic responds by assigning a confidence
+score between 0 and 1 to the Planner’s proposed Action
+and suggests an alternative action it believes would be
+superior, if any.
+• If the Critic assigns a high confidence score (exceeding
+a predetermined threshold, such as 0.7) to the Planner’s
+proposed Action, the original Action is executed. Con-
+versely, if the confidence score falls below the threshold,
+the alternative Action proposed by the Critic is chosen.
+Subsequently, the environment returns the next observa-
+tion.
+The above Planner-Critic procedure is repeated in every
+round. The threshold (set as 0.7 in our experiments) acts as a
+hyperparameter balancing risk and efficiency—lower thresholds
+indicate the Critic intervenes only when strongly opposing the
+Planner’s choice, whereas higher thresholds prompt the Critic to
+more frequently override the Planner to ensure safer outcomes.
+It is important to note that the Planner and Critic can
+either use the same underlying LLM with different prompts or
+two entirely different models. For fairness and comparability,
+our implementation uses the same model for both Planner
+and Critic when evaluating a specific LLM. Thus, the Critic
+essentially functions as an immediate validator.
+The Planner-Critic mechanism significantly reduces the oc-
+currence of overt mistakes. For example, if the Planner chooses
+an action that could result in falling into a pit due to in-
+sufficient reasoning, the Critic—armed with identical observa-
+tional data but tasked specifically with critical assessment—can
+identify this danger by interpreting clues such as ”breeze.”
+Consequently, the Critic assigns a low confidence score to
+this hazardous Action, thereby preventing its execution, and
+instead suggests a safer alternative. Empirically, this process
+substantially lowers the incidence of catastrophic failures (such
+as agent deaths) in our experiments. Although the drawback
+is an increased computational cost (as each step effectively
+doubles model invocations), the enhanced safety and higher
+success rates achieved through improved reasoning justify
+this additional overhead in tasks where correct inference is
+paramount.
+V. EXPERIMENTS
+We conducted a series of experiments in LLM-Cave to
+evaluate the impact of mechanisms such as the Chain of Spec-
+ulation and Planner-Critic on agent performance. LLM-Cave is
+a classic grid-world environment that requires an agent to infer
+the location of hidden dangers from partial information, making
+it a suitable testbed for evaluating reasoning and decision-
+making capabilities. The metrics used to measure performance
+include the average total reward, success rate, and Wumpus kill
+rate, the average number of steps the agent took to complete the
+task and the average reward per step. In addition, we introduce
+computational performance metrics, including average latency,
+tokens, average cost, and tokens per second. Each experimental
+configuration was run for 150 trials(3×3 board: zero pits one
+wumpus, one pit zero wumpuses, one pit one wumpus; 4×4
+board: one pit one wumpus, two pit one wumpus, three pit one
+wumpus, with 25 trials per condition, each using a different
+random seed) to ensure reliable statistics.
+A. LLM-Cave
+We have developed a text-based Wumpus World simulation
+environment tailored for LLM-agent interaction. The environ-
+ment consists of an n × n grid of rooms, consistent with the
+classical definition of the Wumpus problem. Within this grid,
+a single dangerous Wumpus and a number of bottomless pits
+(ranging from 0 to 3 in our setup) are hidden, along with a
+golden treasure placed in one of the rooms. The agent always
+
+starts in the bottom-left room (1, 1), which, along with its two
+adjacent rooms, is guaranteed safe. The primary objective for
+the agent is to locate the gold while avoiding death.
+4
+3
+2
+1
+1
+2
+3
+4
+Grids
+Explored 
+Grids
+To 
+Explore
+Gold
+Agent
+Wumpus
+(Dangerous)
+Pit
+(Dangerous) 
+Stench
+(Safe)
+Breeze
+(Safe) 
+Fig. 3. visualization of LLM-Cave.
+To simplify decision-making, we allow the agent to move by
+explicitly specifying the coordinates of an adjacent, unexplored
+room (i.e., a cell adjacent to any previously explored room)
+while remaining within grid boundaries. When the agent enters
+a room containing the gold, it automatically collects the trea-
+sure. Additionally, the agent possesses a single arrow, which
+can be shot in a chosen direction; if the Wumpus is present
+along that trajectory, it is killed (indicated by a scream), and
+the agent earns bonus points. The task terminates either when
+the agent successfully collects the gold (success) or when it
+falls into a pit or is killed by the Wumpus (failure). Notably,
+we do not require the agent to explicitly exit the cave after
+collecting the gold—retrieving the treasure itself is considered
+a success. However, since the gold may be unreachable due
+to randomized layouts, the agent is permitted to perform an
+”exit” action, which terminates the episode without incurring a
+reward or penalty.
+At each step, the environment provides textual perceptual
+feedback describing the agent’s current sensory experience. We
+implement standard Wumpus World signals: if any adjacent (up,
+down, left, or right) cell contains a pit, a breeze is perceived;
+if the Wumpus is nearby, the agent detects a stench; and if the
+gold is present in the current room, the agent perceives a glitter.
+We aggregate all prior perceptual feedback into a structured
+JSON observation comprising eight fields:
+• ’number of Wumpus’
+• ’number of pit’
+• ’Current Position’
+• ’No breeze or stench is detected in
+these locations’
+• ’A breeze is detected in the following
+locations’
+• ’A stench is detected in the following
+locations’
+• ’When you have confirmed that the
+corresponding locations are safe,
+prioritize exploring these areas’:
+suggestions for unexplored but adjacent rooms and
+potential shooting actions (if the agent still has an arrow)
+• ’The situation with the arrows’:
+including
+whether the arrow was fired, in what direction, and
+whether a scream was heard
+The agent must analyze this observation to infer the likely
+locations of danger and the treasure. Crucially, the agent
+never directly observes the precise positions of the pits or
+the Wumpus. Instead, it must deduce such information from
+indirect perceptual signals, requiring logical reasoning to avoid
+hazards.
+System Prompt
+1. Introduction 
+You are controlling an agent in a cave to find gold. 
+There is one gold, some immobile Wumpus, and some pits. 
+2. Valid Actions:
+Move using <Moveto(x,y)>. 
+You have one arrow to shoot the Wumpus using <ShootUP>, <ShootDown>, <ShootLeft>, or 
+<ShootRight>. 
+If you hit it, you’ll hear a scream and get a reward. 
+Each action consumes stamina. Try to reach the gold using as few steps as possible. 
+3. Game Mechanism
+The game ends if you find the gold (win), fall into a pit, encounter the Wumpus, or choose 
+<LeaveTheCave> (no reward, stamina is not refunded). 
+Perceptions include: Safe Point (adjacent tiles are safe), Breeze (pit nearby), Stench (Wumpus nearby), 
+and Scream (Wumpus was hit). 
+For example, Breeze at (2,2) means a pit is in one of (1,2), (2,1), (3,2), or (2,3). 
+4. Analysis:
+You should analyze following aspects
+(1) Nearby safe place: according to observed information, which position must be safe? 
+(2) Nearby pits: according to observed 'Breeze', which position may be 'Pit'? 
+(3) Nearby wumpus: according to observed 'Stench', which position may be 'Wumpus'? (if the 
+'Wumpus' still alive)
+5. Output:
+You should output as:
+Analysis:
+(1) ......
+(2) ......
+Guess:
+{"pit": [...], "wumpus": [...]}
+Action: 
+<ActionName>
+note that Action should be one of the valid acitons <Moveto(x,y)>, <ShootUP>, <ShootDown>, 
+<ShootLeft>, or <ShootRight>
+Fig. 4. System prompt for LLMs.
+To quantify agent performance, we adopt a reward structure
+inspired by the traditional Wumpus World. Each episode begins
+with a base score of 50 points. Every action (i.e., movement)
+results in a minor penalty of −1 point, encouraging efficiency.
+This penalty remains minor unless the agent performs many
+redundant steps. Successfully acquiring the gold yields a bonus
+of +50 points. Fatal outcomes—falling into a pit or being killed
+by the Wumpus—result in penalties of −20 or −30 points,
+respectively. Successfully killing the Wumpus with the arrow
+earns +20 bonus points.
+Each episode terminates upon success (gold collection),
+failure (death), or exceeding the step limit (50 steps per episode
+to prevent infinite loops). Thus, an ideal episode may achieve a
+normalized score slightly above 100(if the Wumpus is killed),
+while poor performance with extensive movement and eventual
+death can result in negative scores.
+
+(b) Agent begin to explore
+(c) Keep exploring upwards until 
+the edge of the map, during which 
+time no dangers are detected
+(d) Turning and 
+exploring to the right, at 
+(4, 4) feel the breeze
+(e) Presumably (4, 3) has pit, 
+so turn to explore (3, 3)
+(f) Both breeze and stench are felt at 
+(3,3), confirming the suspicion that 
+there is a pit at (4,3), while choosing 
+shootdown to secure the next step
+(g) Hear scream (shoot the wumpus) 
+and continue to explore down the road
+(h) Successfully picked up the gold
+(a) Initial state
+Fig. 5.
+A typical experiment replay. In LLM-Cave, the DeepSeek R1
+model effectively guided the agent through a hazardous cave. Starting from
+a safe region, the agent detected signs of danger—breeze and stench—and
+inferred the locations of a pit and the Wumpus. It successfully avoided the
+pit, eliminated the Wumpus, and proceeded to collect the gold, demonstrating
+accurate reasoning and decision-making under uncertainty.
+B. Effect of Chain of Speculation on o1-mini
+We first applied the Chain of Speculation method on the
+o1-mini model to evaluate its impact on performance.
+Results indicate that introducing the Chain of Speculation
+increased the success rate from 65.33% to 78.67% and raised
+the average total reward from 72.13 to 82.16. The performance
+variance also reduced (standard deviation from ±35.56 to
+±29.02), demonstrating more stable behavior. Additionally, the
+Wumpus kill rate rose from 19.33% to 22.00%. Although the
+average number of steps taken slightly increased (from 4.87 to
+5.17), the average reward per step also improved (from 23.44
+to 24.34), suggesting better efficiency.
+Regarding computational efficiency, introducing the Chain of
+TABLE I
+EFFECT OF CHAIN OF SPECULATION ON O1-MINI
+o1-mini
+o1-mini
+Metric
+(with only CoT)
+(with CoSb)
+Total Runs
+150
+150
+Avg Total Reward
+72.13 (±35.56)
+82.16 (±29.02)
+Avg Steps
+4.87 (range: 1–14)
+5.17 (range: 1–14)
+Avg Reward per Step
+23.44
+24.34
+Success Rate (%)a
+65.33%
+78.67%
+Wumpus Kill Rate (%)
+19.33%
+22.00%
+Avg Latency per Step (s)
+32.43
+36.88
+Avg Total Tokens
+3896.2
+6631.7
+Avg Cost per Step (USD)
+0.0015
+0.0025
+aSuccess is defined as the agent successfully collecting the gold.
+bCoS stands for Chain of Speculation.
+Speculation resulted in an increase in computational overhead.
+Specifically, the average latency per step increased from 32.43s
+to 36.88s, average token usage per run rose substantially from
+3896.2 to 6631.7 tokens, and correspondingly, the average cost
+per step grew from 0.0015 to 0.0025 USD. This demonstrates
+a clear tradeoff between improved inference performance and
+increased computational resource requirements.
+C. Application of Planner-Critic on 4o-mini
+Next, we turned to the 4o-mini model. Because the 4o-
+mini model lacks strong reasoning capabilities, the Chain of
+Speculation method provided limited benefit. Therefore, we
+introduced a Planner-Critic framework to further improve this
+model’s performance.
+TABLE II
+EFFECT OF PLANNER-CRITIC ON 4O-MINI
+4o-mini
+4o-mini
+Metric
+(with only CoT)
+(with Critic)
+Total Runs
+150
+150
+Avg Total Reward
+54.31 (±38.05)
+60.25 (±37.42)
+Avg Steps
+4.49 (range: 1–17)
+4.22 (range: 1–13)
+Avg Reward per Step
+20.23
+23.31
+Success Rate (%)a
+44.00%
+50.67%
+Wumpus Kill Rate (%)
+3.33%
+2.00%
+Avg Latency per Step (s)
+4.79
+10.14
+Avg Tokens per Run
+3257.9
+6256.0
+Avg Cost per Step (USD)
+0.0029
+0.0054
+aSuccess is defined as the agent successfully collecting the gold.
+The Planner-Critic approach yields consistent performance
+gains for 4o-mini: the success rate increased from 44.00% to
+50.67%, the average total reward rose from 54.31 to 60.25,
+and the average reward per step improved from 20.23 to 23.31
+(approximately a 15% gain). Notably, introducing a Critic also
+slightly reduced the average steps taken (from 4.49 to 4.22),
+indicating the model became more efficient in achieving its
+goals. Although the Wumpus kill rate dropped from 3.33%
+to 2.00%, the overall increase in success rate suggests a net
+improvement in performance.
+In terms of computational efficiency, incorporating the Critic
+agent resulted in higher resource consumption. Specifically,
+
+the average latency per step more than doubled (from 4.79s
+to 10.14s), token usage per run nearly doubled (from 3257.9
+to 6256.0 tokens), and average cost per step increased corre-
+spondingly (from 0.0029 to 0.0054 USD). These observations
+demonstrate a clear performance-resource trade-off when inte-
+grating the Critic into the planning process.
+D. Baseline Performance of Mainstream Models
+Finally, we evaluated the baseline performance of several
+mainstream large models with no special mechanisms (no active
+guessing, no Critic) to understand each model’s capability
+under default conditions. Table 3 lists the average reward,
+success rate, and Wumpus kill rate of five models in this base
+setting.
+TABLE III
+PERFORMANCE COMPARISON OF DIFFERENT LLMS IN THE WUMPUS
+ENVIRONMENT
+Model
+Avg Reward
+Success Rate a
+Wumpus Kill
+(%)
+Rate(%)
+4o-mini
+54.31 (±38.05)
+44.00
+3.33
+o1-mini
+72.13 (±35.56)
+65.33
+19.33
+Gemini 2.5 Flash
+74.73 (±34.30)
+76.67
+27.33
+Claude 3.5
+80.37 (±30.92)
+78.00
+28.67
+Deepseek R1
+81.31 (±26.56)
+74.00
+28.67
+aSuccess is defined as the agent successfully collecting the gold.
+As shown in Table 3, the more powerful models exhibit
+superior and more stable performance across all metrics. For
+example, Claude 3.5 and Deepseek R1 achieve average rewards
+above 80, with success rates around 78% and 74%, respectively,
+and Wumpus kill rates of approximately 29%, significantly
+outperforming the other models. Gemini 2.5 Flash and o1-
+mini attain intermediate performance, with success rates of
+76.67% and 65.33%. In contrast, the smaller 4o-mini model
+only achieves a 44.00% success rate and a 3.33% kill rate, and
+its score varies widely between runs (standard deviation ±38.05,
+much higher than those of the stronger models). Overall,
+these findings indicate that the score of this environment can
+effectively reflect the reasoning ability of the model.
+TABLE IV
+COMPUTATION EFFICIENCY METRICS OF DIFFERENT LLMS IN THE
+WUMPUS ENVIRONMENT
+Metric
+4o-
+mini
+Claude
+3.5
+Deepseek
+R1
+Gemini
+2.5 Flash
+o1-
+mini
+Avg
+Latency (s)
+4.79
+11.11
+49.42
+21.52
+32.43
+Tokens
+Prompt
+1940.6
+2764.9
+2144.3
+2578.4
+2130.1
+Tokens
+Completion
+1317.3
+2987.7
+14027.0
+38513.8
+1766.1
+Tokens
+Total
+3257.9
+5752.6
+16171.3
+41092.2
+3896.2
+Avg
+Cost (USD)
+0.0029
+0.0531
+0.0147
+0.0796
+0.0015
+TPSa
+(tokens/s)
+47.25
+30.97
+36.82
+195.51
+8.16
+aTPS = Tokens per second.
+In addition to task performance, computation efficiency
+metrics (Table 4) provide further insights into practical trade-
+offs among these models. Claude 3.5, despite its strong perfor-
+mance, incurs significantly higher computational costs ($0.0531
+per run) compared to other models, primarily due to a larger
+average token usage (5752.6 tokens per run). In contrast,
+models such as 4o-mini and o1-mini, although exhibiting lower
+success rates, are markedly more economical ($0.0029 and
+$0.0015 per run, respectively), reflecting their smaller size
+and lower computational overhead. Gemini 2.5 Flash demon-
+strates exceptionally high decoding speed, averaging 195.51
+tokens per second (TPS), which significantly surpasses all other
+tested models, highlighting its suitability for time-sensitive or
+interactive applications. Conversely, o1-mini shows a notably
+low TPS of 8.16, suggesting limited practical deployment in
+latency-critical scenarios despite acceptable overall reasoning
+ability. Deepseek R1 balances performance and cost relatively
+effectively ($0.0147 per run), although its average latency
+per step (49.42s) remains substantially higher than others,
+indicating potential drawbacks in real-time use cases. Taken
+together, these computational efficiency metrics complement
+traditional accuracy metrics and provide another perspective
+on the performance of large models.
+VI. DISCUSSION
+Our experiments demonstrate that the LLM-Cave environ-
+ment is effective in evaluating the multi-step reasoning ca-
+pabilities of large language models. The effectiveness of the
+reasoning enhancement strategy depends on the underlying
+reasoning strength of the model. For example, o1-mini benefits
+greatly from “Chain of Speculation” (CoS), with an increase in
+success rate of about 13% and an increase in average score of
+10 points. This suggests that the CoS mechanism can leverage
+explicit reasoning structures to optimize decision making.
+In contrast, the weaker 4o-mini model gains less from
+CoS due to the inaccuracy of the initial guess propagation.
+Instead, it benefits more significantly from the Planner-Critic
+mechanism, which improves the success rate by about 6.7% and
+the average score by 6 points by directly optimizing decisions
+and correcting errors. Thus, stronger models can maximize their
+potential through CoS, while weaker models can gain more
+from “planner-critic”, although they are still constrained by
+their inherent limitations.
+In terms of computational efficiency, both strategies incur
+additional resource overheads, including increased latency and
+token usage, which is particularly noticeable in the weaker
+models employing Planner-Critic. However, the substantial
+performance gains justify these incremental costs, making these
+strategies a worthwhile investment for tasks requiring higher
+accuracy and optimized decision making.
+VII. CONCLUSION
+We have developed LLM-Cave, a novel benchmark frame-
+work specifically designed to evaluate and enhance the reason-
+ing and decision-making capabilities of Large Language Mod-
+els (LLMs). In our experiments, we introduced complementary
+
+inference, the Chain of Speculation prompting technique and an
+LLM-based Planner-Critic feedback framework. Experimental
+results indicate that explicitly integrating structured reason-
+ing processes, whether through chain-of-thought prompting
+or evaluative feedback mechanisms, significantly helps LLMs
+achieve more accurate, reward-maximizing outcomes in multi-
+step reasoning scenarios. The computational cost associated
+with these strategies, while noticeable, remains a worthwhile
+trade-off given the observed performance gains. Looking for-
+ward, integrating inference-time reasoning strategies (such as
+Chain of Speculation and Planner-Critic) with training-time
+feedback or fine-tuning (e.g., incorporating Critic feedback
+into reinforcement learning or supervised fine-tuning) offers a
+promising path toward enhancing autonomy and reliability in
+complex reasoning tasks.
+REFERENCES
+[1] Jason Wei, Xuezhi Wang, Dale Schuurmans, Maarten Bosma, Brian
+Ichter, Fei Xia, Ed Chi, Quoc Le, Denny Zhou
+Chain-of-Thought
+Prompting Elicits Reasoning in Large Language Models. arXiv preprint
+arXiv:2201.11903, 2022.
+[2] Xu, X., Li, Z., Lu, C., Qi, R., Ni, Y., Jiang, L., Liu, X., Zhang, X., Fang,
+Y., Huang, et al., Li, Z. Reflection of Episodes: Learning to Play Game
+from Expert and Self Experiences arXiv preprint arXiv:2502.13388, 2025.
+[3] Hua, W., Liu, O., Li, L., Amayuelas, A., Chen, J., Jiang, L., Jin, M., Fan,
+L., Sun, F., Wang, W., et al., Zhang, Y. Game-Theoretic LLM: Agent
+Workflow for Negotiation Games.
+arXiv preprint arXiv:2411.05990,
+2024.
+[4] Xiao, Y., Sun, E., et al., Wang, W. TradingAgents: Multi-Agents LLM
+Financial Trading Framework. arXiv preprint arXiv:2412.20138, 2024.
+[5] D. Shah, B. Osi´nski, S. Levine. LM-Nav: Robotic Navigation with Large
+Pre-Trained Models of Language, Vision, and Action. In Conference on
+Robot Learning, pages 492–504, March 2023.
+[6] P. Doma, A. Arab, X. Xiao.
+LLM-Enhanced Path Planning: Safe
+and Efficient Autonomous Navigation with Instructional Inputs. arXiv
+preprint arXiv:2412.02655, 2024.
+[7] Dorbala, V. S., Mullen, et al.,Manocha, D.
+Can an Embodied Agent
+Find Your “Cat-Shaped Mug”? LLM-Based Zero-Shot Object Navigation.
+IEEE Robotics and Automation Letters, vol. 9, no. 5, pp. 4083–4090,
+2023.
+[8] Jin, Y., Li, D., Shi, J., Hao, P., Sun, F.,et al., Fang, B. RobotGPT: Robot
+Manipulation Learning From ChatGPT. IEEE Robotics and Automation
+Letters, vol. 9, no. 3, pp. 2543–2550, 2024.
+[9] Liu, H., Zhu, Y., Kato, K., Tsukahara, A., Kondo, I., et al., Hasegawa, Y.
+Enhancing the LLM-Based Robot Manipulation Through Human-Robot
+Collaboration. IEEE Robotics and Automation Letters, 2024.
+[10] Ma, W., Mi, Q., Zeng, Y., Yan, X., Wu, Y., Lin, R., et al., Wang, J.
+Large Language Models Play StarCraft II: Benchmarks and a Chain of
+Summarization Approach. In Advances in Neural Information Processing
+Systems, volume 37, pages 133386–133442, 2024.
+[11] Li, Z., Ni, Y., Qi, R., Jiang, L., Lu, C., Xu, X., et al. Zhang, X. LLM-
+PySC2: Starcraft II learning environment for Large Language Models.
+arXiv preprint arXiv:2411.05348. 2024.
+[12] Park, J. S., O’Brien, J., Cai, C. J., Morris, M. R., et al., Bernstein,
+M. Generative Agents: Interactive Simulacra of Human Behavior. In
+Proceedings of the 36th Annual ACM Symposium on User Interface
+Software and Technology, pages 1–22, October 2023.
+[13] Qian, C., Liu, W., Liu, H., Chen, N., Dang, Y., Li, J., Yang, C., Chen, W.,
+Su, Y., Cong, X., Xu, J.,et al., Sun, M. ChatDev: Communicative Agents
+for Software Development. arXiv preprint arXiv:2307.07924, 2023.
+[14] Tan, W., Ding, Z., Zhang, W., Li, B., Zhou, B., Yue, J., Xia, H., Jiang,
+J., Zheng, L., Xu, X., Bi, Y., Gu, P., Wang, X., Karlsson, B. F., An, B.,et
+al., Lu, Z. Towards General Computer Control: A Multimodal Agent for
+Red Dead Redemption II as a Case Study. In ICLR 2024 Workshop on
+Large Language Model (LLM) Agents, January 2024.
+[15] Feng, Y., Wang, Y., et al., Lu, Z. Llama rider: Spurring large language
+models to explore the open world.
+arXiv preprint arXiv:2310.08922,
+2023.
+[16] Shao, X., Jiang, W., et al.,Liu, M. SwarmBrain: Embodied Agent for
+Real-Time Strategy Game StarCraft II via Large Language Models. In
+arXiv preprint arXiv:2401.17749, 2024. URL: https://arxiv.org/abs/2401.
+17749.
+[17] Silei Xu, Wenhao Xie, Lingxiao Zhao, Pengcheng He Chain of Draft:
+Thinking Faster by Writing Less. arXiv preprint arXiv:2502.18600, 2025.
+[18] Guanting Dong, Yifei Chen, Xiaoxi Li, Jiajie Jin, Hongjin Qian, Yutao
+Zhu, Hangyu Mao, Guorui Zhou, Zhicheng Dou, Ji-Rong Wen
+Tool-
+Star: Empowering LLM-Brained Multi-Tool Reasoner via Reinforcement
+Learning arXiv preprint arXiv:2505.16410, 2025.

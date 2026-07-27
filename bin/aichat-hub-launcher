@@ -1,0 +1,55 @@
+#!/bin/bash
+# aichat-hub 启动器(用于 DEB 包安装到 /usr/bin/aichat-hub)
+
+set -e
+
+_LIB_DIR="/usr/lib/aichat-hub"
+_SHARE_DIR="/usr/share/aichat-hub"
+_CONFIG="/etc/aichat-hub/config.env"
+
+# 标准路径不存在(开发/测试环境),用脚本相对位置
+if [ ! -d "$_LIB_DIR" ]; then
+    _here=$(cd "$(dirname "$0")" && pwd)
+    _LIB_DIR=$(dirname "$_here")/lib/aichat-hub
+    _SHARE_DIR=$(dirname "$_here")/share/aichat-hub
+    _CONFIG="$_LIB_DIR/../etc/aichat-hub/config.env"
+fi
+
+load_config() {
+    [ -f "$_CONFIG" ] || return
+    while IFS='=' read -r k v; do
+        [[ "$k" =~ ^#.*$ ]] && continue
+        [ -z "$k" ] && continue
+        export "$k"="$v"
+    done < "$_CONFIG"
+}
+
+case "${1:-}" in
+    --help|-h)
+        echo "aichat-hub 启动器"
+        echo "用法: aichat-hub [选项]"
+        echo "  --version  显示版本"
+        echo "  --help     显示帮助"
+        exit 0
+        ;;
+    --version)
+        echo "aichat-hub v1.0.2"
+        exit 0
+        ;;
+esac
+
+load_config
+
+HOST="${AICHAT_HOST:-127.0.0.1}"
+PORT="${AICHAT_PORT:-8765}"
+
+export PYTHONPATH="$_LIB_DIR/scripts:$_LIB_DIR"
+
+# 启动 web server
+cd "$_SHARE_DIR"
+exec python3 -c "
+import sys
+sys.path.insert(0, '$_LIB_DIR/scripts')
+from web import run_server
+run_server(host='$HOST', port=$PORT, debug=True)
+"

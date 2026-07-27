@@ -1,0 +1,22 @@
+{
+  "arxiv_id": "2607.13654",
+  "title": "T3HG-Editor: Text-driven 3D Human Garment Editing with Body Priors Embedded in SMPL-X",
+  "authors": [
+    "Shaoru Sun",
+    "Xingtao Wang",
+    "Zihan Ma",
+    "Wenrui Li",
+    "Jiantao Zhou",
+    "Debin Zhao",
+    "Xiaopeng Fan"
+  ],
+  "abstract": "While 3D Gaussian Editing (3DGE) has seen substantial progress, text-driven 3D human garment editing remains largely underexplored. Existing 3DGE works typically follow a paradigm that applies 2D editing techniques to multi-view rendered images and updates 3D Gaussians based on the modified images. Extending such methods to 3D human garment editing suffers from low-fidelity outcomes, caused by introduced distortions and garment inconsistencies. A promising breakthrough opportunity arises from the SMPL eXpressive (SMPL-X) model that embodies rich prior information for virtual humans. Motivated by this insight, we propose a text-driven 3D human garment editor termed T3HG-Editor, which delivers high-fidelity and garment consistent results by leveraging geometry and joint priors embedded in SMPL-X. Specifically, T3HG-Editor contains three stages, namely obtainment of editable Gaussians, garment consistent editing, and Gaussian updating with overflow pruning. The obtainment of editable Gaussians begins with seeding Gaussians along SMPL-X normals to generate sufficient near surface Gaussians, followed by a 2D mask constraint that precisely localizes the target Gaussians to be edited. The garment consistent editing aggregates tokens corresponding to the same SMPL-X vertex across multiple views and propagates them to their original views, enforcing garment consistency without requiring additional training. Gaussian updating with overflow pruning employs a Signed Distance Function (SDF) defined on SMPL-X to construct a human distance field, which is then integrated with a 2D semantic mask to prune overflowing Gaussians, thus preventing contamination of non-target regions. Experiments on multiple subjects and diverse garment types demonstrate that T3HG-Editor outperforms state-of-the-art methods in both editing quality and garment consistency.",
+  "published": "2026-07-15T09:58:37Z",
+  "categories": [
+    "cs.CV"
+  ],
+  "keyword": "virtual_human",
+  "fetched_at": "2026-07-21T04:00:33Z",
+  "abs_url": "https://arxiv.org/abs/2607.13654",
+  "pdf_url": "https://arxiv.org/pdf/2607.13654"
+}

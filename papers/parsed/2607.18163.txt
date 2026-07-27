@@ -1,0 +1,1383 @@
+OR ELSE: A DIFFERENTIABLE TRUST REGION FOR POLICY
+OPTIMIZATION
+Chinmay Rane
+Quantiphi Inc
+Marlborough, MA, 01752
+ranechinmay54@gmail.com
+Kanishka Tyagi
+Self Machines Inc
+San Francisco, California, 94402
+kanishkaugee@icloud.com
+Michael Manry
+Department of Electrical Engineering
+The University of Texas at Arlington
+Arlington, TX, 76010
+manry@uta.edu
+July 21, 2026
+ABSTRACT
+PPO and the GRPO baseline studied here use clipped surrogate objectives whose favorable-direction
+saturation introduces an abrupt change in the scalar objective’s derivative. We ask whether Output
+Reset (OR), a smooth one-sided saturation rule, offers a useful alternative for large language model
+post-training. PPO-OR and GRPO-OR replace the clipped policy term with an OR squared-margin
+loss in rollout-relative token log-ratio space; the advantage sign determines the update direction,
+and a token contributes zero direct OR residual after crossing the favorable margin. We compare
+PPO-clip with PPO-OR under generalized advantage estimation (GAE), and GRPO with GRPO-
+OR under group-relative advantages, using Llama-3.2-1B-Instruct on Anthropic hh-rlhf with
+one shared reward model and three seeds per method. Under GAE, PPO-OR has a mean final
+training-time reward-model score 0.305 higher than PPO-clip, with a larger observed across-seed
+spread. Under group-relative advantages, GRPO-OR does not have a higher mean score, but shows a
+smaller observed spread, a near-zero terminal OR residual, and a declining overshoot fraction, while
+the matched GRPO clipped-objective trace remains variable. Both group-relative methods exhibit
+substantially larger rollout-to-current log-ratio displacement than the GAE methods, and OR does
+not consistently reduce it. Thus, OR changes optimization behavior in both matched comparisons,
+but the observed reward effect differs between them. At G = 2, the GRPO-OR diagnostics do
+not translate into a reward-score gain. Whether larger groups change this outcome remains open.
+The reported scores are training-time reward-model measurements, not held-out human-preference
+performance.
+Code: https://github.com/ChicoR-Dr/PPO-GRPO-OR
+Keywords: RLHF, LLM post-training, policy optimization, PPO, GRPO, Output Reset, preference optimization
+arXiv:2607.18163v1  [cs.LG]  20 Jul 2026
+
+A PREPRINT - JULY 21, 2026
+1
+Introduction
+Reinforcement learning from human feedback (RLHF) is widely used to adapt large language models to human pref-
+erences, building on preference-based reinforcement learning and subsequent work on human-feedback training for
+language models [1, 2, 3, 4]. Trust Region Policy Optimization (TRPO) introduced an explicit KL-constrained policy
+update, while Proximal Policy Optimization (PPO) replaced that second-order procedure with a clipped first-order
+surrogate [5, 6]. PPO remains a common optimization method for LLM post-training and uses the clipped surrogate
+objective
+LCLIP(θ) = ˆEt
+h
+min
+
+rt(θ) ˆAt, clip (rt(θ), 1 −ϵ, 1 + ϵ) ˆAt
+i
+.
+(1)
+Here, rt(θ) = πθ(at | st)/πθold(at | st) is the probability ratio and ˆAt is an estimated advantage. For ˆAt > 0, the
+clipped branch removes further incentive to increase rt once rt > 1 + ϵ; for ˆAt < 0, it removes further incentive
+to decrease rt once rt < 1 −ϵ. The objective remains sensitive to movement in the opposite, disadvantageous
+direction. Clipping therefore suppresses further policy-loss updates after a sample has moved sufficiently far in the
+advantage-favored direction, but it does not impose a hard bound on the optimizer step, parameter displacement, KL
+divergence, or cumulative policy drift. The one-sided zero-gradient region is an intentional feature of PPO, not by
+itself an optimization pathology. The distinction examined in this work is the geometry of the transition into that
+region: although LCLIP is continuous, its derivative with respect to rt changes abruptly at the active clipping boundary.
+Group Relative Policy Optimization (GRPO) [7] replaces the learned value baseline with advantages computed from
+groups of responses to the same prompt, but retains the clipped probability-ratio surrogate and its piecewise gradient
+structure.
+We introduce PPO-OR and GRPO-OR, which replace the clipped policy term with an objective derived from Output
+Reset (OR) [8]. Conceptually, both methods retain the advantage-estimation machinery of their parent algorithms but
+change how each sampled token is acted upon: the sign of the advantage specifies whether the token should become
+more or less probable, and the direct OR update for that token stops once its log-probability change crosses a prescribed
+margin in the desired direction. PPO-OR uses GAE advantages and a learned value head, whereas GRPO-OR uses
+group-relative advantages without a critic.
+Adapting OR to policy optimization requires a scalar quantity that represents how the probability of a sampled token
+changes relative to the rollout policy. We use the per-token log-probability ratio
+ρt = log πθ(at | st) −log πθold(at | st),
+(2)
+which plays the role of the network output in the original OR formulation. For a nonzero advantage, OR assigns a
+target of +αOR when ˆAt > 0 and −αOR when ˆAt < 0. Once ρt crosses the corresponding boundary in the advantage-
+favored direction, the target is reset to the current log-ratio, producing zero residual and zero direct gradient from that
+sample. In forward-value form, the per-token objective is equivalent to the squared one-sided margin
+ℓOR,t =
+
+
+
+h
+max
+
+0, αOR −sign( ˆAt)ρt
+i2
+,
+ˆAt ̸= 0,
+0,
+ˆAt = 0.
+(3)
+The OR-MSE gradient approaches zero continuously at the favorable saturation boundary and remains zero beyond
+it, although it is not globally bounded on the adverse side of the active branch. PPO-OR is therefore not merely a
+differentiable smoothing of PPO clipping. It simultaneously replaces the probability ratio rt with the log-ratio ρt,
+replaces the clipped surrogate with a squared one-sided margin, and uses the sign rather than the magnitude of ˆAt to
+determine the update direction. On the active branch, gradient descent on the OR-MSE term increases the selected
+token’s log-probability when ˆAt > 0 and decreases it when ˆAt < 0. Proposition 2 formalizes this sample-level
+directional property, while Proposition 1 establishes continuity of the first derivative at the favorable boundary. These
+properties do not imply that the aggregate update is identical to the full policy gradient or that optimizing the OR-MSE
+objective guarantees monotonic improvement in expected return.
+We evaluate the loss replacement in two advantage-estimation settings. PPO-clip and PPO-OR use generalized advan-
+tage estimation with a learned value head, whereas GRPO and the proposed GRPO-OR use group-relative advantages
+with G = 2. The study therefore contains two matched within-family substitutions: PPO-clip versus PPO-OR under
+GAE, and GRPO versus GRPO-OR under group-relative advantages. Cross-family comparisons also reflect differ-
+ences in advantage estimation, value-model usage, response length, and response sampling, and are not interpreted as
+a controlled factorial decomposition. All four methods are evaluated on Anthropic hh-rlhf [4] using a Llama-3.2-
+1B-Instruct policy, a single shared frozen reward model, and three seeds. Because the experiments use a lightweight
+2
+
+A PREPRINT - JULY 21, 2026
+reward model, a small group size, and a resource-constrained training configuration, the results characterize the eval-
+uated setting rather than establish general superiority over PPO or GRPO.
+Under GAE, the observed mean endpoint reward-model score increases from +0.195 for PPO-clip to +0.500 for PPO-
+OR, an absolute difference of +0.305; the corresponding across-seed standard deviations are 0.110 and 0.158. Under
+G = 2 group-relative advantages, the observed mean changes from +0.488 for GRPO to +0.457 for GRPO-OR,
+while the across-seed standard deviation decreases from 0.080 to 0.027. Because the reward model is trained from
+pairwise differences and its numerical zero is not calibrated, these scores are interpreted comparatively rather than as
+positive or negative success thresholds. The recorded policy-objective trajectories also differ substantially: the clipped
+GRPO objective exhibits large excursions, whereas the GRPO-OR MSE remains close to zero on its own scale. These
+raw values are not directly comparable because the objectives have different definitions, signs, and numerical scales,
+so we treat them only as objective-specific training diagnostics. Policy drift provides a shared diagnostic across all
+four methods. Measured by the batch-averaged absolute log-ratio relative to the rollout policy, both group-relative
+methods exhibit substantially greater drift than the GAE-based methods, and GRPO-OR does not consistently reduce
+this drift relative to GRPO. This finding separates local gradient saturation from global policy control: OR suppresses
+the direct policy-loss contribution of a sample after it crosses its favorable boundary, but does not constrain cumulative
+movement caused by shared parameters, auxiliary losses, later minibatches, or changing advantage signs.
+Our contributions are:
+1. We introduce PPO-OR and GRPO-OR, two LLM post-training variants that replace the clipped policy
+surrogate with an Output-Reset MSE objective in log-ratio space while retaining, respectively, GAE and
+group-relative advantage estimation.
+2. We characterize the OR policy objective as a continuously differentiable, one-sided squared-margin loss. We
+establish that its sample-level update changes a selected token’s log-probability in the direction indicated by
+the sign of its estimated advantage and vanishes continuously at the favorable saturation boundary.
+3. We conduct two matched, three-seed comparisons of clipping and OR: PPO-clip versus PPO-OR under GAE,
+and GRPO versus GRPO-OR under G = 2 group-relative advantages. In the evaluated setting, PPO-OR
+attains a higher observed mean endpoint reward-model score than PPO-clip, whereas GRPO-OR attains a
+slightly lower observed mean than GRPO but a smaller across-seed standard deviation.
+4. We show that replacing clipping with OR does not resolve the large policy drift observed under G = 2 group-
+relative advantages. This negative result identifies cumulative policy drift, rather than boundary smoothness
+alone, as the principal unresolved problem exposed by the study (Sec. 4.3).
+2
+Background and Related Work
+2.1
+Policy Optimization in RLHF
+Reinforcement learning from human feedback (RLHF) adapts a language-model policy using a scalar reward learned
+from human preference comparisons. A common large-scale pipeline consists of supervised fine-tuning, reward-
+model training on preference pairs, and online policy optimization against the learned reward [1, 2, 3, 4]. The
+policy-optimization stage is commonly expressed as a KL-regularized objective,
+J(θ) = E
+x∼D
+y∼πθ(·|x) [rϕ(x, y)]
+−β Ex∼D [DKL (πθ(· | x) ∥πref(· | x))] ,
+(4)
+where rϕ(x, y) is the reward-model score and β controls regularization toward the frozen reference policy πref. For
+a response yi = (yi,1, . . . , yi,Ti) sampled from the rollout policy πθold, the sampled rollout-to-reference log-ratio at
+token t is
+kroll
+i,t = log πθold (yi,t | xi, yi,<t)
+−log πref (yi,t | xi, yi,<t) .
+(5)
+A standard terminal-reward construction assigns the reward-model score to the last generated token and applies the
+sampled reference penalty at each response position,
+r′
+i,t = rϕ(xi, yi) 1[t = Ti] −βkroll
+i,t .
+(6)
+The exact placement of this reference term is an implementation choice; the GAE-based methods in this work use the
+shaped-reward form in Eq. (6), whereas the group-relative methods apply the sampled reference term directly in the
+optimization objective as described in Sec. 3.2.
+3
+
+A PREPRINT - JULY 21, 2026
+At a more fundamental level, policy-gradient methods optimize expected return from sampled trajectories. REIN-
+FORCE uses the score-function estimator to weight action log-probability gradients by sampled returns [9], while
+the policy-gradient theorem provides the corresponding expected-gradient foundation for parameterized policies [10].
+Advantage baselines and learned value functions are then used to reduce estimator variance without changing the
+intended policy-gradient direction.
+Trust Region Policy Optimization (TRPO) [5] controls policy movement through an explicit KL-constrained update,
+implemented using an approximate second-order procedure. Proximal Policy Optimization (PPO) [6] replaces that
+constrained update with a clipped surrogate that supports multiple minibatch epochs using first-order optimization. In
+RLHF, PPO is typically paired with a learned value function and Generalized Advantage Estimation (GAE) [11] to
+obtain token-level advantages ˆAi,t. The frozen reference policy πref and rollout policy πθold serve different purposes:
+πref anchors the model to the initial instruction-tuned policy, while πθold generates the current batch and defines the
+local importance ratio rt(θ) = πθ(at | st)/πθold(at | st) in the policy objective.
+Empirical analyses have shown that observed PPO and TRPO behavior depends substantially on implementation de-
+tails and on how the surrogate, advantage estimates, and value function behave in practice [12, 13]. Clipping also
+does not by itself impose the formal KL-constrained trust region used by TRPO [14]. In addition, PPO likelihood
+ratios and advantage estimates can induce heavy-tailed policy-gradient behavior [15]. More recent work has ana-
+lyzed stationary-point convergence of PPO-Clip under explicit assumptions [16] and developed alternative first-order
+proximal objectives with stronger control of probability-ratio movement [17]. These findings motivate studying the
+geometry of the policy objective without treating clipping as either a complete trust-region mechanism or an inherently
+defective design.
+Several alignment methods simplify or avoid this PPO configuration. Direct Preference Optimization (DPO) [18]
+trains directly on offline preference pairs without fitting an explicit reward model or sampling from the policy during
+fine-tuning. ReMax [19] and RLOO [20] instead retain online REINFORCE-style optimization while replacing PPO’s
+learned critic with trajectory-level variance-reduction baselines. These methods alter the data regime, baseline con-
+struction, or policy-optimization procedure. PPO-OR remains an online policy-optimization method and specifically
+replaces the PPO-style clipped policy term with a C1 squared one-sided margin in token-level log-ratio space; it does
+not introduce a formal trust-region constraint.
+2.2
+Group-Relative Advantage Estimation
+Group Relative Policy Optimization (GRPO) was introduced in DeepSeekMath [7]. It removes the learned value
+function and estimates response quality from multiple completions sampled for the same prompt. Given G responses
+with reward-model scores {rj}G
+j=1, the group-relative advantage for response i is
+ˆAGR
+i
+=
+ri −mean
+ {rj}G
+j=1
+
+max
+ std
+ {rj}G
+j=1
+
+, δ
+,
+(7)
+where δ > 0 prevents division by a zero or near-zero group standard deviation. A positive advantage indicates
+that a response scores above the group mean, while a negative advantage indicates that it scores below the mean. The
+response-level value is assigned to all valid generated tokens of that response. This construction removes critic training
+and storage, but the informativeness and variability of the estimate depend on group size, reward diversity, and the
+convention used to compute the group standard deviation. DeepSeek-R1 later applied group-relative reinforcement
+learning at larger scale for reasoning post-training [21].
+Standard GRPO combines the group-relative estimator with a PPO-style clipped probability-ratio objective, so the
+advantage estimator and policy loss remain separable design choices. Subsequent methods modify other parts of
+this pipeline. DAPO [22] uses asymmetric clipping together with dynamic sampling, token-level loss aggregation,
+and overlength reward shaping to address entropy collapse, ineffective groups, and long-response training instability.
+Dr. GRPO [23] identifies an optimization bias that can favor increasing response length and proposes a corrected
+objective that improves token efficiency. In contrast, GRPO-OR retains group-relative advantages but replaces the
+clipped surrogate with the same OR policy loss used by PPO-OR. The experiments therefore compare the clipped and
+OR losses within the group-relative family rather than treating GRPO-OR as a new advantage estimator.
+2.3
+Output Reset
+Output Reset (OR) [8] was introduced as a target-adjustment procedure for classifier training with mean squared error.
+For a training pattern p, let yp(ic) denote the pre-activation output for the correct class and yp(id) an output for an
+4
+
+A PREPRINT - JULY 21, 2026
+Table 1: Conceptual correspondence between Output Reset in classification and PPO-OR in token-level policy op-
+timization. The parameter αOR > 0 is a one-sided margin in log-ratio space; it is not a hard bound on parameter
+movement, policy displacement, probability ratios, or KL divergence.
+OR classification
+PPO-OR
+Role
+Pre-activation output yp(i)
+Log-ratio ρt
+Change in the selected token’s log-probability relative
+to πθold
+Correct-class output
+ˆAt > 0
+Favor an increase in the selected token’s probability
+Incorrect-class output
+ˆAt < 0
+Favor a decrease in the selected token’s probability
+Fixed class target
+Signed target margin σtαOR
+Desired movement in the advantage-favored direction
+Output crosses its target
+σtρt > αOR
+Reset the target to ρt, producing zero residual
+No class-specific signal
+ˆAt = 0
+Assign zero contribution from the OR policy-loss term
+incorrect class. OR assigns
+tp(ic) =
+1,
+yp(ic) ≤1,
+yp(ic),
+yp(ic) > 1,
+tp(id) =
+0,
+yp(id) ≥0,
+yp(id),
+yp(id) < 0.
+(8)
+Before an output crosses its desired boundary, its target remains fixed at 1 for the correct class or 0 for an incorrect
+class. After crossing the boundary in the desired direction, OR resets the target to the current output, which makes the
+corresponding MSE residual and direct gradient contribution zero during that evaluation.
+The present work transfers this target-reset construction from classifier outputs to token-level policy optimization. The
+classifier output becomes the log-probability change relative to the rollout policy, while the correct versus incorrect
+class distinction is replaced by the sign of the estimated advantage. This mapping yields a squared one-sided margin
+with continuous first derivative, as developed in Sec. 3. Unlike TRPO, it does not constrain KL divergence or parameter
+displacement; unlike PPO and GRPO, it does not use the clipped minimum surrogate; and unlike DPO, it remains an
+online reward-driven policy-optimization objective.
+3
+PPO-OR
+PPO-OR replaces the clipped policy-loss term while retaining the remaining components of the corresponding policy-
+optimization pipeline. For each sampled token, the method measures the change in log-probability relative to the
+rollout policy and uses the sign of the estimated advantage to determine whether that token should become more or less
+probable. When this change crosses a prescribed margin in the advantage-favored direction, Output Reset assigns zero
+residual to the token. We first establish the correspondence between the original Output Reset formulation and token-
+level policy optimization, then define the PPO-OR and GRPO-OR objectives, and finally characterize the analytical
+properties of the resulting scalar loss.
+3.1
+From Output Reset to Policy Optimization
+Adapting Output Reset from classification to policy optimization requires a scalar output and a desired direction for
+that output. For a sampled token at in state st, we use the per-token log-probability ratio
+ρt = log πθ(at | st) −log πθold(at | st),
+(9)
+which measures the change in the selected token’s log-probability relative to the rollout policy. We further define the
+advantage-sign variable
+σt = sign( ˆAt) ∈{−1, 0, +1}.
+(10)
+A positive estimated advantage gives σt = +1, indicating that the sampled token should become more probable,
+whereas a negative estimated advantage gives σt = −1, indicating that it should become less probable. When ˆAt = 0,
+the OR policy-loss term supplies no directional update for that token. Table 1 summarizes the resulting correspondence
+with the original classification formulation.
+The margin αOR is analogous to PPO’s clipping parameter only in the limited sense that both determine where
+favorable-direction saturation begins. PPO’s ratio-space interval [1 −ϵ, 1 + ϵ] corresponds to
+[log(1 −ϵ), log(1 + ϵ)]
+(11)
+5
+
+A PREPRINT - JULY 21, 2026
+in log-ratio space. The positive boundary has magnitude log(1 + ϵ), whereas the negative boundary has magnitude
+−log(1−ϵ); a symmetric OR margin therefore cannot match both PPO clipping boundaries exactly with a single value
+of αOR. For example, when ϵ = 0.2, the PPO boundaries are approximately [−0.223, +0.182], whereas αOR = 0.2
+gives symmetric OR margins at [−0.2, +0.2].
+3.2
+PPO-OR and GRPO-OR Objectives
+Using σt = sign( ˆAt), the OR-adjusted target is
+τt =
+σtαOR,
+σt ̸= 0 and σtρt ≤αOR,
+ρt,
+otherwise.
+(12)
+When the signed log-ratio has not crossed the favorable margin, the target remains fixed at σtαOR; once σtρt > αOR,
+the target follows the current log-ratio and the residual becomes zero. The same zero-residual branch is used when
+ˆAt = 0. Let M denote the set of valid generated-token positions in a minibatch, excluding prompt and padding
+positions, and let NM = |M|. The OR policy loss is
+LOR(θ) =
+1
+NM
+X
+(b,t)∈M
+(ρb,t −sg[τb,t])2 ,
+(13)
+where sg[·] denotes stop-gradient. Averaging over valid generated tokens prevents prompt and padding positions from
+affecting the normalization. The forward value of the corresponding per-token loss is equivalently
+ℓOR,t =
+[max (0, αOR −σtρt)]2 ,
+σt ̸= 0,
+0,
+σt = 0.
+(14)
+This form makes the one-sided saturation geometry explicit: the loss and its derivative approach zero continuously at
+the favorable boundary and remain zero beyond it. The derivative is not globally bounded on the adverse side of the
+active branch; for example, when σt = +1, the active branch contains every ρt < αOR, and the derivative magnitude
+grows without bound as ρt →−∞. PPO-OR differs from PPO clipping in more than the smoothness of its saturation
+boundary. On its active branch, the PPO clipped surrogate weights a sample using the magnitude of its estimated
+advantage, whereas PPO-OR uses only σt to determine the target direction; its scalar gradient coefficient is set by the
+distance between ρt and the OR margin rather than by | ˆAt|. Because a nonzero advantage enters the loss only through
+its sign, PPO-OR is invariant to positive rescaling:
+ℓOR,t(ρt, c ˆAt) = ℓOR,t(ρt, ˆAt),
+c > 0, ˆAt ̸= 0.
+(15)
+This property does not imply robustness to arbitrary advantage noise, because a perturbation that changes the advantage
+sign reverses the target direction. The sign-only construction is therefore a deliberate design choice, not a claim that
+advantage magnitudes are generally uninformative or that sign-only weighting is universally preferable. For PPO-
+OR, the signs σb,t are obtained from token-level GAE advantages and a learned value function. The reference-policy
+contribution is incorporated into the shaped rewards before GAE is computed. For a generated token, define the
+rollout-time sampled reference log-ratio
+kroll
+b,t = log πθold(ab,t | sb,t) −log πref(ab,t | sb,t),
+(16)
+and the shaped reward
+r′
+b,t = rRM,b 1[t = Tb] −βkroll
+b,t ,
+(17)
+where rRM,b is the response-level reward-model score and Tb is the final valid generated position. The resulting
+training loss is
+LPPO-OR(θ, ϕ) = LOR(θ) + c1Lvalue(ϕ) −c2HM[πθ],
+(18)
+where Lvalue is the unclipped critic mean-squared error against the GAE return targets, HM[πθ] is the entropy averaged
+over valid generated positions, and ϕ denotes the value-function parameters. No additional direct reference-policy
+term appears in Eq. (18), because the penalty has already contributed to the rewards from which the returns and GAE
+advantages were constructed.
+GRPO-OR uses the same OR policy loss but replaces the token-level GAE advantage with the response-level group-
+relative advantage from Eq. (7). For response i, the sign
+σGR
+i
+= sign
+
+ˆAGR
+i
+
+(19)
+6
+
+A PREPRINT - JULY 21, 2026
+is assigned to every valid generated token belonging to that response; groups with exactly zero reward variance are
+excluded from the policy update. This changes the source and granularity of the advantage signal while leaving the
+OR target construction unchanged. In the group-relative implementation, reference-policy regularization is applied
+directly to the optimization loss through the sampled current-to-reference log-ratio
+kcur
+b,t (θ) = log πθ(ab,t | sb,t) −log πref(ab,t | sb,t)
+(20)
+and its masked mean
+Lref(θ) =
+1
+NM
+X
+(b,t)∈M
+kcur
+b,t (θ).
+(21)
+This quantity is a sampled-token reference log-ratio penalty rather than the full categorical KL over the vocabulary at
+every state. The GRPO-OR training loss is
+LGRPO-OR(θ) = LOR(θ) + βLref(θ) −c2HM[πθ].
+(22)
+GRPO-OR contains no value-loss term because it does not train a critic, and the direct reference-policy contribu-
+tion is applied once rather than also being included in the reward-model scores used to construct the group-relative
+advantages.
+3.3
+Analytical Properties
+The following propositions characterize the scalar OR policy loss. They do not establish a hard trust region, a mono-
+tonic expected-return guarantee, or a bound on the aggregate neural-network update.
+Proposition 1 (One-sided saturation and smoothness). For a fixed nonzero advantage sign σt, the per-token loss in
+Eq. (14) is positive when σtρt < αOR and zero when σtρt ≥αOR. Its derivative is
+∂ℓOR,t
+∂ρt
+=
+−2σt (αOR −σtρt) ,
+σtρt < αOR,
+0,
+σtρt ≥αOR.
+(23)
+The derivative approaches zero continuously at the favorable boundary and remains zero beyond it. The scalar loss
+is therefore C1 but not C2 at σtρt = αOR. On the strict overshoot branch, τt = ρt, so the corresponding token
+contributes zero residual and zero direct OR policy-loss gradient during that evaluation.
+Proof. For σt ̸= 0, Eq. (14) reduces to ℓOR,t = [max(0, αOR −σtρt)]2. When σtρt < αOR, differentiating the active
+squared term gives the first branch of Eq. (23); when σtρt > αOR, the loss is identically zero and hence has zero
+derivative. At σtρt = αOR, the active-branch derivative also equals zero, so the first derivative is continuous while
+the second derivative changes from 2 on the active branch to 0 on the saturated branch. For strict overshoot, Eq. (12)
+assigns τt = ρt, yielding zero residual and zero direct gradient from that token-level term.
+Proposition 2 (Sample-level update direction). On the active branch, the negative gradient of an individual PPO-OR
+policy-loss term is a positive scalar multiple of σt∇θ log πθ(at | st). Consequently, the isolated steepest-descent
+direction favors increasing the selected token’s log-probability when ˆAt > 0 and decreasing it when ˆAt < 0.
+Proof. Because the rollout policy is fixed during the optimization epochs, its log-probability contributes no parameter
+gradient. On the active branch,
+−∇θℓOR,t = 2σt (αOR −σtρt) ∇θ log πθ(at | st).
+(24)
+The scalar factor 2(αOR −σtρt) is positive. Equivalently, with dt = −∇θℓOR,t, the directional derivative of the
+selected token’s log-probability is
+∇θ log πθ(at | st)⊤dt = 2σt (αOR −σtρt)
+× ∥∇θ log πθ(at | st)∥2
+2 .
+(25)
+Except at stationary points where the log-probability gradient is zero, its sign is determined by σt, which proves the
+stated sample-level direction.
+Proposition 1 characterizes one-sided saturation of the scalar loss, and Proposition 2 characterizes the isolated steepest-
+descent direction of one token-level term. Neither describes the exact AdamW update used in the experiments, which
+also depends on optimizer state, weight decay, other tokens, and the value, entropy, and reference-policy components
+of the minibatch objective. Because PPO-OR discards | ˆAt| and reweights samples according to their distance from the
+OR margin, its aggregate minibatch gradient is not generally identical or collinear with the full magnitude-weighted
+policy gradient. The results above therefore provide neither a monotonic expected-return guarantee nor a bound on
+parameter displacement, probability-ratio movement, or KL divergence.
+7
+
+A PREPRINT - JULY 21, 2026
+4
+Experiments
+4.1
+Experimental Setup
+All experiments were conducted on a single NVIDIA GeForce RTX 4060 Ti GPU with 16.7 GB of reported avail-
+able VRAM. We used PyTorch 2.12 with bfloat16 precision for the trainable policy and 4-bit NormalFloat quantiza-
+tion through BitsAndBytes [24] for the frozen reference model and reward-model backbone. Policy adaptation used
+PEFT [25] and LoRA [26]. Each method was evaluated with seeds 42, 43, and 44 on the same machine and with
+the same frozen reward model. Sharing one scorer removes reward-model variation across policy-optimization runs,
+but the four configurations do not form a fully controlled factorial comparison because the GAE and group-relative
+families differ in advantage estimation, critic usage, sampling procedure, and response length. We therefore inter-
+pret the study as two matched within-family comparisons: PPO-clip versus PPO-OR under GAE, and GRPO versus
+GRPO-OR under group-relative advantages.
+The trainable policy was initialized from meta-llama/Llama-3.2-1B-Instruct; we did not train a new supervised
+fine-tuning checkpoint. A frozen copy of the same checkpoint served as the reference policy πref, while πθold denotes
+the rollout-policy snapshot associated with the current rollout batch. Anthropic hh-rlhf [4] was used for both reward-
+model training and policy optimization. Preference pairs were used for the former, whereas the human turn alone was
+used as the generation prompt for the latter. Reusing one dataset source for both phases is a deliberate simplification
+and may allow overlap between reward-model training prompts and policy-optimization prompts; this limitation is
+discussed in Sec. 5.3.
+4.1.1
+Reward Model Training
+The reward model consists of a frozen, 4-bit quantized Llama-3.2-1B backbone and a trainable one-hidden-layer MLP
+head,
+Linear(2048, 512) →ReLU →Dropout(0.1) →Linear(512, 1)
+(26)
+The head contains approximately one million trainable parameters, and only these parameters receive gradients. For
+each prompt–response sequence, the hidden state at the final non-padding position is passed through the MLP to
+produce the scalar score rϕ(x, y).
+For a preferred response y+ and a rejected response y−to the same prompt x, the reward head is trained with the
+Bradley–Terry loss [27]
+LBT = −log σ
+ rϕ(x, y+) −rϕ(x, y−)
+
+.
+(27)
+The loss equals log 2 ≈0.693 when the two responses receive equal scores and approaches zero as the preferred
+response receives an increasingly larger score. Because the objective depends only on score differences, the numerical
+zero of the learned reward scale is not identified.
+We trained the reward head on 8,000 preference pairs for three epochs using a batch size of 8, AdamW with learning
+rate 2 × 10−4, and cosine annealing. Prompt–response sequences were truncated or padded to a maximum length of
+512 tokens. Pairwise preference accuracy was computed as
+Accpair =
+1
+Neval
+Neval
+X
+i=1
+1
+
+rϕ(xi, y+
+i ) > rϕ(xi, y−
+i )
+
+.
+(28)
+The resulting checkpoint achieved 60–61% pairwise accuracy (in-sample) and was then frozen and reused for every
+policy-optimization run.
+4.1.2
+Policy Optimization
+All four methods were trained for 500 rollout steps using four prompts per rollout batch, four optimization epochs
+per batch, and learning rate 10−5. Generation used temperature 0.9 and top-p 0.9 [28]. The reference coefficient
+was β = 0.05, and the entropy coefficient was c2 = 0.01. The GAE-based methods additionally used γ = 1.0,
+λ = 0.95, and value-loss coefficient c1 = 0.1. Optimization used AdamW with a cosine schedule and a warmup
+period equal to 10% of the total rollout steps. Policy weights were updated through LoRA adapters with rank r = 16
+and scaling parameter αLoRA = 32, applied to q_proj and v_proj; this yielded approximately four million trainable
+policy parameters out of 1.2 billion total parameters.
+Table 2 summarizes the method-specific settings. PPO-clip and PPO-OR use a learned value head Linear(2048, 1)
+initialized from N(0, 0.01) and an unclipped mean-squared value objective. Their sampled reference-policy term is
+8
+
+A PREPRINT - JULY 21, 2026
+Algorithm 1 Reward-model training on Anthropic hh-rlhf
+Require: Preference set D = {(xi, y+
+i , y−
+i )}8000
+i=1 , frozen backbone fLM, reward head hψ
+1: for epoch e = 1, . . . , 3 do
+2:
+for minibatch B ⊂D, |B| = 8 do
+3:
+Tokenize (x, y+) and (x, y−) to maximum length 512
+4:
+h+ ←fLM(x, y+)[last non-padding position]
+5:
+h−←fLM(x, y−)[last non-padding position]
+6:
+r+ ←hψ(h+) and r−←hψ(h−)
+7:
+LBT ←−|B|−1 P
+(x,y+,y−)∈B log σ(r+ −r−)
+8:
+Update ψ using AdamW
+9:
+end for
+10: end for
+11: return frozen reward model rϕ ≡hψ ◦fLM
+Table 2: Policy-optimization configurations. The matched comparisons replace only the policy-loss term within each
+advantage family. The GAE and group-relative families additionally differ in critic usage, sampling procedure, and
+maximum response length.
+Method
+Advantage and critic
+Policy term
+Reference regularization
+Response
+cap
+PPO-clip
+Token-level
+GAE
+with
+learned value head
+Clipped
+surrogate,
+Eq. (1)
+Sampled reference term incorporated
+into shaped rewards before GAE
+128 tokens
+PPO-OR
+Token-level
+GAE
+with
+learned value head
+OR loss, Eq. (13)
+Sampled reference term incorporated
+into shaped rewards before GAE
+128 tokens
+GRPO
+Group-relative response ad-
+vantage with G = 2; no critic
+Clipped
+surrogate,
+Eq. (1)
+Sampled current-to-reference penalty
+added directly to the loss
+64 tokens
+GRPO-OR
+Group-relative response ad-
+vantage with G = 2; no critic
+OR loss, Eq. (13)
+Sampled current-to-reference penalty
+added directly to the loss
+64 tokens
+incorporated into the shaped rewards before GAE, as defined in Sec. 3.2; no second direct reference penalty is added
+to their optimization loss. PPO-clip uses ϵ = 0.2, whereas PPO-OR uses αOR = 0.2. These settings use the same
+nominal numerical value but not identical boundaries: PPO clipping maps to [log(0.8), log(1.2)] ≈[−0.223, +0.182]
+in log-ratio space, whereas PPO-OR uses symmetric margins at [−0.2, +0.2].
+For GRPO and GRPO-OR, two responses were generated for each prompt. The implementation computes a group-
+relative advantage from the two reward-model scores, clamps the computed group standard deviation below at 10−4,
+and excludes groups with exactly zero reward variance from the policy update. For every non-tied G = 2 group,
+the two responses therefore receive opposite advantage signs, although their normalized magnitudes depend on the
+standard-deviation convention used by the installed PyTorch version. This distinction affects the magnitude-weighted
+GRPO clipped surrogate, whereas GRPO-OR uses only the signs to construct its targets. The group-relative methods
+compute advantages from the reward-model scores and add the sampled current-to-reference penalty directly to the
+optimization loss, as defined in Sec. 3.2.
+The group size G = 2 was the largest setting that fit within the available GPU memory under the implemented
+pipeline. During GRPO and GRPO-OR training, the reward-model backbone remained on the CPU during generation
+and policy updates and was moved to the GPU only for reward scoring. This offloading procedure and all other
+within-family settings were held fixed between GRPO and GRPO-OR. The smaller group size should be treated as a
+hardware-constrained experimental setting rather than as equivalent to the larger groups used in the original GRPO
+experiments [21].
+4.2
+Main Results
+Table 3 summarizes the final training-time reward-model scores and the principal optimization diagnostics for all four
+methods. Each entry is based on seeds 42, 43, and 44 evaluated with the same frozen reward model. We define the
+final score as the last logged reward-model score at rollout step 500 for each seed and report the mean and standard
+deviation across the three seeds. The policy-loss and drift descriptors are approximate values read from the terminal
+regions of the corresponding multi-seed mean curves and are included only as descriptive diagnostics. Because the
+GAE and group-relative configurations differ in advantage estimation, critic usage, sampling procedure, and response
+9
+
+A PREPRINT - JULY 21, 2026
+Algorithm 2 Policy optimization for the GAE and group-relative variants
+Require: Frozen reward model rϕ, frozen reference policy πref, trainable policy πθ, prompt set P, method m
+1: Initialize πθ from Llama-3.2-1B-Instruct
+2: Initialize πref as a frozen copy of the same checkpoint
+3: Attach LoRA with r = 16 and αLoRA = 32 to q_proj and v_proj
+4: for rollout step k = 1, . . . , 500 do
+5:
+Sample prompts {xi}B
+i=1 with B = 4
+6:
+Set πθold to the rollout-policy snapshot for this batch
+7:
+if m ∈{PPO-clip, PPO-OR} then
+8:
+Generate one response per prompt with maximum length 128
+9:
+Record rollout-policy and reference-policy log-probabilities
+10:
+Record value predictions and terminal reward-model scores
+11:
+Construct reference-shaped rewards as in Sec. 3.2
+12:
+Compute GAE advantages and return targets with γ = 1.0 and λ = 0.95
+13:
+else
+14:
+Generate G = 2 responses per prompt with maximum length 64
+15:
+Record rollout-policy and reference-policy log-probabilities
+16:
+Compute response-level reward-model scores
+17:
+Compute group-relative advantages using Eq. (7)
+18:
+Exclude groups with exactly zero reward variance
+19:
+end if
+20:
+for optimization epoch e = 1, . . . , 4 do
+21:
+Evaluate current-policy log-probabilities on valid response tokens
+22:
+if m ∈{PPO-OR, GRPO-OR} then
+23:
+Lpolicy ←LOR using Eq. (13)
+24:
+else
+25:
+Lpolicy ←Lclip using Eq. (1)
+26:
+end if
+27:
+if m ∈{PPO-clip, PPO-OR} then
+28:
+Compute Lvalue
+29:
+L ←Lpolicy + 0.1Lvalue −0.01Lentropy
+30:
+else
+31:
+Compute Lref using Eq. (21)
+32:
+L ←Lpolicy + 0.05Lref −0.01Lentropy
+33:
+end if
+34:
+Update LoRA parameters and, for GAE methods, the value head using AdamW
+35:
+end for
+36: end for
+length, the primary comparisons are PPO-clip versus PPO-OR and GRPO versus GRPO-OR. Cross-family rankings
+are reported for completeness but should not be interpreted as a controlled factorial comparison.
+Across the four configurations, PPO-OR has the highest observed mean final score, 0.500±0.158, followed by GRPO
+at 0.488 ± 0.080, GRPO-OR at 0.457 ± 0.027, and PPO-clip at 0.195 ± 0.110. Figure 1 shows that PPO-OR separates
+from PPO-clip during training and reaches the highest mean terminal score, but it also has the largest across-seed
+standard deviation. GRPO-OR has the smallest reported standard deviation, although three seeds are insufficient to
+support a general variance-reduction claim. These values are scores from the same frozen reward model on training-
+time rollouts; they should not be interpreted as calibrated utility values or held-out human preference rates.
+Within the GAE family, replacing the clipped surrogate with OR changes the observed mean final score from 0.195
+to 0.500, an absolute difference of 0.305 reward-score units. The observed across-seed standard deviation changes
+from 0.110 to 0.158. Thus, the higher observed mean is not accompanied by a smaller seed-to-seed spread. The
+comparison shows a higher observed mean for PPO-OR than for the matched PPO-clip configuration under the present
+model, dataset, training budget, and hyperparameters; it does not by itself identify the mechanism responsible for the
+difference or establish generalization outside this setting.
+Within the group-relative family, replacing the clipped surrogate with OR changes the mean final score from 0.488 to
+0.457, an absolute difference of −0.031. At the same time, the across-seed standard deviation decreases from 0.080 to
+0.027, making the observed spread approximately three times smaller. GRPO-OR therefore does not improve the mean
+10
+
+A PREPRINT - JULY 21, 2026
+Table 3: Main results on Anthropic hh-rlhf across three seeds. Final score is the mean and standard deviation of
+the last logged training-time reward-model score at rollout step 500. Policy-loss and drift entries are approximate
+terminal-region diagnostics read from the multi-seed mean curves. Raw policy-loss magnitudes are objective-specific
+and are not directly comparable across the clipped-surrogate and OR-MSE objectives.
+Method
+Advantage family
+Final score
+Terminal policy-loss behavior
+Mean |ρt| drift
+PPO-clip [6]
+GAE
+0.195 ± 0.110
+Near zero over the terminal region
+≈0.3–0.5
+PPO-OR
+GAE
+0.500 ± 0.158
+Near zero over the terminal region
+≈0.3–0.5
+GRPO [7]
+Group-relative
+0.488 ± 0.080
+Large and highly variable;
+per-seed
+peaks reach the hundreds
+≈5–13
+GRPO-OR
+Group-relative
+0.457 ± 0.027
+Near zero over the terminal region
+≈5–13
+Figure 1: Training-time reward-model score over 500 rollout steps for all four methods, with three seeds per method.
+Curves are smoothed with a moving window of 10 steps, and shaded regions denote ±1 standard deviation across
+seeds. The shared reward scale supports descriptive within-experiment comparisons, but its numerical zero is not
+calibrated as a success threshold.
+score in this matched comparison, but its three runs are more tightly clustered. Because the estimate is based on only
+three seeds, the reduced dispersion is reported as a descriptive observation rather than a general stability guarantee.
+Figure 2 adds an optimization view that is not captured by the final reward-model scores. PPO-clip, PPO-OR, and
+GRPO-OR remain near zero on their respective plotted loss scales, whereas the GRPO trace is much larger and has
+a wide cross-seed band, with individual peaks in the hundreds. This numerical difference does not, by itself, show
+that one objective is better conditioned than another because the clipped surrogate and OR loss have different units,
+normalizations, and gradient coefficients. It nevertheless shows that the strong final score obtained by GRPO coexists
+with a large and variable objective-specific loss trace. Conversely, the lower PPO-clip final score is not accompanied
+by an exploding raw loss. Any explanation based on clipping activity or OR branch occupancy must therefore be
+supported by the token-level diagnostics analyzed in Sec. 4.3, rather than inferred from raw loss magnitude alone.
+The policy-drift traces provide a second distinction between the two advantage families. The GAE-based methods
+remain in an approximate terminal range of |ρt| ≈0.3–0.5, whereas GRPO and GRPO-OR remain mostly between
+approximately 5 and 13. For GRPO, the logged mean reaches the display cap of 15 during roughly the first 130 rollout
+steps before decreasing and continuing to oscillate at a substantially higher level than the GAE methods. The same
+order of drift is observed for GRPO-OR, indicating that replacing the group-relative clipped surrogate with OR does
+not remove the large cross-family difference in rollout-to-current policy displacement. These drift values are examined
+in detail in Sec. 4.3 and should not be interpreted as formal KL bounds.
+11
+
+A PREPRINT - JULY 21, 2026
+Figure 2: Policy-loss traces over training for three seeds per method; shaded regions denote ±1 standard deviation.
+The left panel shows the full plotted range, and the right panel enlarges the near-zero region. GRPO has substantially
+larger and more variable logged loss values than the other configurations. Absolute values across the clipped-surrogate
+and OR-MSE objectives are not directly comparable, so the figure is interpreted as an objective-specific optimization
+diagnostic rather than a common performance scale.
+Figure 3 summarizes the two matched substitutions without treating them as a single factorial effect. The GAE
+comparison shows a +0.305 difference in mean final score when the clipped surrogate is replaced by OR, together
+with a +0.048 increase in the observed standard deviation. The group-relative comparison shows a −0.031 difference
+in mean final score and a −0.053 difference in standard deviation. The two comparisons therefore exhibit different
+observed patterns: higher mean score with greater dispersion under GAE, and a similar but slightly lower mean with
+smaller dispersion under the group-relative configuration. The present experiment does not isolate an interaction
+between the loss and advantage estimator, because the two families are not otherwise matched.
+4.3
+Training Dynamics
+We examine three complementary diagnostics: occupancy of the OR overshoot branch, the magnitude of the logged
+OR targets, and the sampled rollout-to-current policy displacement. These quantities characterize different aspects of
+training and should not be interpreted as interchangeable measures of convergence or stability. At rollout step k, let
+Mk denote the valid generated-token positions. For an OR-based method, we define the overshoot fraction as
+f (k)
+over =
+1
+|Mk|
+X
+(b,t)∈Mk
+1[σb,t ̸= 0 and σb,tρb,t > αOR] .
+(29)
+A token counted by Eq. (29) lies beyond the favorable OR margin and therefore contributes zero direct residual to LOR
+during that evaluation. A larger value consequently means that a larger fraction of sampled tokens occupies the strict
+zero-residual overshoot branch; it does not mean that OR is applying a larger corrective gradient. Conversely, a value
+near zero does not by itself establish policy convergence, because branch occupancy also depends on the sampled
+responses, current advantage signs, and the rollout-policy snapshot.
+The implementation additionally logged a squared-target diagnostic, shown as “OR energy” in the original training
+logs. To match the quantity computed by the implementation, we define it as
+E(k)
+τ
+=
+1
+|Mk|
+X
+(b,t)∈Mk
+τ 2
+b,t.
+(30)
+This is the mean squared magnitude of the logged OR target, not the mean-squared residual (ρ −τ)2 used by the policy
+loss. It is therefore reported only as an implementation-specific target-magnitude diagnostic and not as a second loss
+or a convergence certificate.
+Figure 4 shows different branch-occupancy patterns for the two OR variants. For PPO-OR, the mean overshoot
+fraction decreases from approximately 0.10 near the start of training to approximately 0.005 by rollout steps 150–200
+and remains low thereafter. For GRPO-OR, it begins near 0.14, declines more gradually, and remains near 0.03 with
+visible cross-seed variation through step 500. The squared-target diagnostic follows a similar descriptive separation:
+12
+
+A PREPRINT - JULY 21, 2026
+Figure 3: Paired visualization of the policy-loss substitution within each advantage family, using three seeds and ±1
+standard-deviation bands. Under GAE, PPO-OR has a higher observed mean final score than PPO-clip. Under group-
+relative advantages, GRPO-OR has a slightly lower mean final score but a smaller observed cross-seed spread than
+GRPO. The layout is not a controlled 2 × 2 factorial ablation because the two advantage families also differ in critic
+usage, response length, and sampling procedure.
+it remains close to zero on the plotted scale for PPO-OR, whereas for GRPO-OR it decreases from approximately
+4–5 to a noisy terminal range of approximately 1–1.5. These observations show that the two OR configurations spend
+different fractions of training on the strict overshoot branch and produce different target magnitudes. They do not,
+by themselves, establish that either policy has converged or identify the advantage estimator as the cause, because the
+GAE and group-relative configurations also differ in critic usage, response length, and group sampling.
+The objective-specific loss traces in Fig. 2 provide a related but distinct view. GRPO-OR’s logged OR loss approaches
+a near-zero terminal region, while the GRPO clipped-surrogate trace remains large and highly variable, with individual
+peaks in the hundreds. Because these methods optimize losses with different units, normalizations, and gradient
+coefficients, this numerical contrast cannot be interpreted as a common-scale reduction in policy loss or as proof that
+OR removes a particular instability mechanism. It does show that the OR residual remains small under the GRPO-OR
+objective while the matched GRPO run retains a large objective-specific trace. Under the OR loss, a small value can
+arise because active tokens are close to their signed margins, because tokens occupy the zero-residual branch, or from
+a combination of both; Fig. 4 is needed to distinguish these cases descriptively.
+For the displacement diagnostic, we use the valid-token mean absolute log-ratio between the current policy and the
+rollout policy,
+D(k)
+roll =
+1
+|Mk|
+X
+(b,t)∈Mk
+ρb,t
+,
+ρb,t = log πθ(ab,t | sb,t) −log πθold(ab,t | sb,t).
+(31)
+13
+
+A PREPRINT - JULY 21, 2026
+Figure 4: OR diagnostics over training for PPO-OR and GRPO-OR, with three seeds and ±1 standard-deviation bands.
+Left: overshoot fraction from Eq. (29). Tokens on this branch have zero direct OR residual at that evaluation. Right:
+mean squared OR target magnitude from Eq. (30), labeled “OR energy” in the training logs and capped at 25 for
+display. Neither quantity is a formal convergence measure or a bound on policy drift.
+Figure 5: Sampled rollout-to-current policy displacement from Eq. (31), averaged over valid generated tokens for three
+seeds. Curves show multi-seed means with ±1 standard-deviation bands and are capped at 15 for display; values at
+the cap may represent larger uncapped displacement. The metric is an absolute sampled log-ratio, not a KL divergence
+or a trust-region bound.
+The plotted value is capped at 15 for readability. This sampled absolute log-ratio is not a categorical KL divergence
+and does not measure displacement from the frozen reference policy.
+Figure 5 separates the GAE and group-relative configurations more sharply than the final reward-model scores. PPO-
+clip and PPO-OR remain below approximately 0.5 throughout most of training and end in the approximate range
+0.3–0.5. GRPO reaches the display cap during roughly the first 130 rollout steps and subsequently oscillates mostly
+between approximately 5 and 13. GRPO-OR remains on the same order and exceeds GRPO during portions of training
+rather than consistently reducing the displacement. Thus, replacing the clipped surrogate with OR does not remove
+the large rollout-to-current policy movement observed in the group-relative configuration.
+14
+
+A PREPRINT - JULY 21, 2026
+Table 4: Runtime and steady-state GPU-memory measurements for the implemented training pipelines. Step times
+were recorded from one representative run per method; total runtime includes run-level overhead. Steady-state VRAM
+values summarize the ranges observed in Fig. 6.
+Method
+Logged time/step Total time Steady-state VRAM
+PPO-OR
+1.3 s
+22 min
+≈5.5–6 GB
+PPO-clip
+4.4 s
+42 min
+≈5.5–6 GB
+GRPO
+8.9 s
+77 min
+≈4 GB
+GRPO-OR
+4.6 s
+49 min
+≈4 GB
+Figure 6: Allocated GPU memory over 500 rollout steps for three seeds per method. Curves show the seed mean and
+shaded regions show ±1 standard deviation. All four pipelines remain below the reported 16.7 GB device budget. The
+narrow bands indicate limited run-to-run variation in the logged memory allocation under the fixed architecture and
+batch settings.
+This result is consistent with the scope of the analytical properties in Sec. 3.3. Proposition 1 states that a token on
+the favorable saturated branch contributes zero direct OR residual; it does not impose a hard trust region or bound
+the cumulative optimizer update, and the active-branch derivative remains unbounded in the adverse direction. The
+realized update also combines gradients from other tokens, entropy and reference-policy terms, and, for PPO-OR,
+the value objective. Moreover, rollout batches and advantage signs change across iterations. The training dynamics
+therefore distinguish sample-level one-sided saturation from policy-level proximity: OR changes when individual
+token losses become inactive, but the present results do not show that it constrains aggregate policy displacement.
+4.4
+Runtime and Memory Usage
+We report wall-clock and GPU-memory measurements for the implemented training pipelines rather than asymptotic
+computational complexity. Table 4 summarizes the measured runtime of one representative run for each method. The
+logged step time covers the timed training-step region, whereas total wall-clock time also includes model initializa-
+tion, reward-model transfers, logging, checkpointing, and other run-level overhead. The two timing columns should
+therefore not be multiplied directly. Because these measurements were obtained from one run per method rather
+than averaged across seeds, they should be interpreted as descriptive measurements of this implementation, not as a
+hardware-independent ranking of the four objectives.
+Under this implementation, PPO-OR had the lowest measured step time and total runtime, followed by PPO-clip and
+GRPO-OR, while GRPO required the longest run. The group-relative pipelines generate two responses per prompt
+and repeatedly move the reward-model backbone between CPU and GPU, which contributes additional generation and
+transfer overhead. The substantial timing differences between the clipped and OR variants may also reflect implemen-
+tation details outside the scalar policy objective, including tensor construction, masking, logging, and the numerical
+behavior of each training path. We therefore do not claim that replacing the clipped surrogate with OR necessarily
+yields the same runtime ordering in other implementations.
+Figure 6 shows a short-lived peak of approximately 10 GB during initialization, when the policy, reference, and
+reward-model components are loaded before the steady-state execution pattern is established. During training, PPO-
+15
+
+A PREPRINT - JULY 21, 2026
+OR and PPO-clip allocate approximately 5.5–6 GB, whereas GRPO and GRPO-OR allocate approximately 4 GB. The
+lower steady-state GPU allocation of the group-relative pipelines is due to the implemented CPU offloading of the
+reward-model backbone and their shorter 64-token response cap; it should not be interpreted as an intrinsic memory
+advantage of group-relative optimization. The GAE-based methods retain the reward-model components on the GPU
+and generate up to 128 response tokens.
+The available memory constrained the group-relative experiments to G = 2. Under the implemented pipeline, this
+was the largest group size that could be run reliably together with four prompts per rollout batch. An engineering
+extrapolation from the observed allocations suggested that G = 4 could approach approximately 13 GB of peak usage
+and might be feasible with additional memory optimization, whereas G = 8 could require approximately 18–20 GB
+and would exceed the available budget. These are planning estimates rather than direct end-to-end measurements
+and do not include every possible memory optimization. Larger groups would change the group-relative advantage
+estimates, but whether they would reduce the policy-displacement behavior reported in Sec. 4.3 remains an empirical
+question.
+5
+Discussion
+5.1
+Interpreting the Observed Effects of OR
+The central result is not that OR uniformly stabilizes policy optimization, but that its observed effect depends on the
+surrounding advantage-estimation pipeline and on the diagnostic being examined. In the matched GAE comparison,
+PPO-OR has a higher observed mean final training-time reward-model score than PPO-clip, 0.500 ± 0.158 versus
+0.195 ± 0.110, an absolute difference of 0.305 score units; the observed cross-seed standard deviation is also larger
+by 0.048. In the matched group-relative comparison, replacing the clipped surrogate with OR changes the mean score
+from 0.488 ± 0.080 to 0.457 ± 0.027, a difference of −0.031, while the observed standard deviation decreases by
+0.053. GRPO-OR also produces a small OR residual over the terminal region, whereas the matched GRPO run has
+a large and variable clipped-surrogate trace. Because the two methods optimize objectives with different units and
+gradient coefficients, this contrast is an objective-specific training observation rather than a common-scale reduction
+in policy loss. Most importantly, GRPO-OR does not consistently reduce the large rollout-to-current displacement of
+the group-relative configuration.
+These results separate three questions that are often grouped under the single label of training stability: whether
+the policy obtains a high score under the learned reward model, whether the optimized scalar objective has a well-
+behaved numerical trace, and whether the updated policy remains close to the rollout policy. The three quantities
+do not move together in our experiments. PPO-clip has a near-zero terminal loss trace but the lowest mean reward-
+model score. GRPO has a strong mean final score despite a large objective-specific trace and much larger sampled
+policy displacement than the GAE methods. GRPO-OR has a small OR residual but remains on the same order
+of displacement as GRPO. Reward, raw loss, and policy displacement therefore provide complementary rather than
+interchangeable evidence.
+This interpretation also clarifies the relation of PPO-OR to prior policy-optimization methods. PPO and GRPO use a
+clipped probability-ratio surrogate [6, 7], whereas OR originated as a target-reset procedure for MSE-based classifica-
+tion [8]. The present work transfers that target-reset construction to a one-sided squared margin in token-level log-ratio
+space. The experiments show that this substitution can change reward-model scores and objective-specific dynamics
+under the evaluated conditions, but they do not support treating OR as a replacement for every stabilizing role played
+by clipping, a critic, reference regularization, or the advantage estimator. In particular, the smooth one-sided saturation
+of the scalar OR loss should not be interpreted as a policy-level trust region.
+5.2
+Interpreting the Persistent Policy Displacement
+The group-relative displacement result is consistent with the scope of the Method section. Proposition 1 establishes
+that a token on the favorable saturated branch contributes zero direct OR residual during that evaluation. It does
+not constrain the optimizer step, bound the adverse branch, reverse displacement accumulated in earlier updates, or
+guarantee proximity to either πθold or πref. The active-branch derivative can grow without bound when the sampled
+log-ratio moves far in the adverse direction, and the realized minibatch update combines contributions from many
+tokens together with entropy and reference-policy terms. Four optimization epochs are also performed for each rollout
+batch before a new rollout-policy snapshot is formed. Consequently, sample-level saturation and small OR residuals
+can coexist with large aggregate movement from the rollout policy.
+Changing batches and advantage signs add another distinction between the scalar analysis and the complete training
+process. The favorable branch for a sampled token is defined using the current estimated advantage sign, while later
+16
+
+A PREPRINT - JULY 21, 2026
+rollouts may contain different tokens, states, and signs. A token that is inactive in one evaluation therefore does not
+remain permanently constrained in subsequent updates. This observation explains why the Method does not predict
+a cumulative drift bound, but it does not by itself explain why the group-relative runs reach displacement values an
+order of magnitude larger than the GAE runs.
+Within the group-relative family, GRPO and GRPO-OR share the same group size, response cap, sampling procedure,
+optimization epochs, and reference-policy treatment. The matched comparison therefore supports one limited con-
+clusion: replacing the clipped surrogate with the present OR loss is insufficient to remove the observed displacement
+under this configuration. The mechanisms responsible for the larger group-relative displacement, and the factors that
+might change it, are left to Sec. 6 rather than inferred from the current runs.
+5.3
+Limitations and Scope
+The statistical evidence is limited to three seeds per method. The reported means and standard deviations describe the
+observed runs but do not support significance testing, reliable ranking of variance, or claims that the same ordering
+would persist under additional seeds. This qualification applies both to the larger observed spread of PPO-OR and
+to the smaller observed spread of GRPO-OR. The terminal policy-loss and drift entries in Table 3 are approximate
+ranges read from multi-seed mean curves rather than statistics computed from exported per-seed terminal values.
+They support the reported order-of-magnitude contrast, but not fine-grained numerical comparison.
+Evaluation relies on training-time scores from one frozen reward model, not on independent human judgments or a
+fixed held-out preference benchmark. The Bradley–Terry objective identifies score differences but does not calibrate an
+absolute zero, and the reward model’s reported 60–61% pairwise accuracy indicates a noisy preference signal. Sharing
+this scorer across methods removes reward-model variation between runs, but it does not establish that higher proxy
+scores correspond to better human-preferred behavior or that scorer errors affect every policy distribution equally.
+More generally, optimizing an imperfect reward model can separate proxy reward from the intended preference objec-
+tive [29]. External validity is further limited by the use of one instruction-tuned 1B model and one dataset. The study
+does not include a task-specific SFT stage, and hh-rlhf supplies both reward-model pairs and policy-optimization
+prompts; possible prompt overlap and reuse of the same source may favor the training distribution. The findings
+therefore characterize this constrained post-training setup rather than a general ranking of PPO, GRPO, and OR-based
+methods.
+The matched comparisons use shared rather than independently tuned hyperparameters. In the GAE family, the com-
+mon nominal setting ϵ = αOR = 0.2 does not imply identical saturation boundaries: PPO clipping corresponds to
+the asymmetric log-ratio interval [log(0.8), log(1.2)] ≈[−0.223, +0.182], whereas PPO-OR uses symmetric mar-
+gins at [−0.2, +0.2]. No sensitivity analysis was performed for the OR margin, value-head warmup, value clipping,
+method-specific learning rates, or optimization epochs. PPO-clip’s lower observed score in this experiment should
+therefore not be interpreted as a general inability to learn. The group-relative results are likewise restricted by the
+hardware-constrained choice G = 2, for which the standard-deviation convention is especially consequential. Larger
+groups may alter reward diversity, advantage magnitudes, and update dynamics, but the present runs do not show
+whether they would reduce policy displacement. Cross-family comparisons are additionally confounded by critic
+usage, reference-regularization placement, response length, sampling procedure, and CPU offloading; the strongest
+evidence remains the two within-family policy-loss substitutions.
+Finally, runtime measurements come from one representative run per method and reflect the particular implementa-
+tion, including model placement, reward-model transfers, masking, and logging. They do not establish an intrinsic
+computational advantage of the scalar OR objective. The larger-group memory values are engineering projections
+rather than measured end-to-end runs. The questions left unresolved by these limitations and the experiments needed
+to address them are presented separately in Secs. 6 and 7.
+6
+Open Questions Raised by the Study
+The experiments leave three questions unresolved.
+What drives the large rollout-to-current policy displacement in the group-relative runs? GRPO and GRPO-OR both
+move much farther from the rollout policy than the GAE-based methods, even though the GRPO-OR residual ap-
+proaches zero and its overshoot fraction declines during training. The present study cannot isolate the effects of the
+small response group (G = 2), critic removal, the shorter response cap, repeated optimization epochs, or the placement
+of reference-policy regularization.
+17
+
+A PREPRINT - JULY 21, 2026
+Do the OR diagnostics have predictive value? The overshoot fraction measures how often tokens lie beyond the
+favorable margin, while the logged “OR energy” measures squared target magnitude. A declining overshoot fraction
+and a near-zero OR residual describe the state of the OR objective, but neither establishes policy convergence. It
+remains unknown whether either diagnostic predicts subsequent reward change, policy displacement, or optimization
+failure.
+Why do the observed effects of OR differ between the two matched comparisons? Under GAE, PPO-OR produces
+a higher observed mean reward-model score but a larger observed seed spread. Under group-relative advantages,
+GRPO-OR produces a smaller observed seed spread and a near-zero terminal residual without a higher observed mean
+score. The current evidence cannot determine whether this contrast is driven by advantage construction, interaction
+with the OR margin, reward-model noise, or other family-specific differences in the training pipelines.
+7
+Future Directions
+The highest-priority experiment is a controlled group-size study with G ∈{2, 4, 8} while holding the model, prompt
+distribution, response length, sampled-token budget, update epochs, and reference-policy coefficient fixed. The study
+should report uncapped rollout-to-current displacement, displacement from the frozen reference policy, reward-model
+score, and OR branch occupancy. If larger groups do not reduce displacement, stronger adaptive reference regulariza-
+tion or an explicit two-sided displacement penalty should be compared against standard KL-based controls. The GAE
+comparison should be repeated with more seeds and with both shared and method-specific hyperparameter tuning. The
+most relevant factors are value-head warmup, the OR margin, and the mismatch between PPO’s asymmetric log-ratio
+clipping boundaries and the symmetric OR margins used here. An asymmetric OR variant would test whether the
+current margin choice contributes to the observed mean–dispersion trade-off.
+A second extension is to retain advantage-magnitude information on active tokens while preserving the OR zero-
+residual branch:
+Lw
+OR =
+1
+NM
+X
+(b,t)∈M
+ ˆAb,t
+ (ρb,t −sg[τb,t])2 .
+This objective is proposed rather than evaluated here. Raw, normalized, and clipped magnitude weights should be
+compared to determine whether restoring magnitude information improves reward or displacement, or instead rein-
+troduces sensitivity to noisy advantage estimates. Finally, external validity requires disjoint reward-model and RL
+prompt sets, checkpoint selection on held-out validation data, and final evaluation on separate prompts using indepen-
+dent preference judgments. The matched PPO-clip versus PPO-OR and GRPO versus GRPO-OR comparisons should
+then be repeated with a stronger reward model, a task-specific SFT checkpoint, and larger policies. A staged study at
+approximately 1B, 3B, and 7B–8B scale is more defensible than extrapolating directly from the present 1B experiment
+to very large models.
+8
+Conclusion
+We introduced PPO-OR and GRPO-OR, which replace the PPO-style clipped policy term with a continuously differ-
+entiable, one-sided squared margin in rollout-relative token log-ratio space while retaining the advantage estimator
+and remaining optimization components of their parent pipelines. The observed effect depends on the advantage fam-
+ily. In the matched GAE comparison, PPO-OR achieves a higher mean final training-time reward-model score than
+PPO-clip by 0.305 score units, although its observed across-seed spread is also larger. In the matched group-relative
+comparison, GRPO-OR does not achieve a higher mean score, but it shows a smaller observed seed spread, a near-
+zero terminal OR residual, and a declining overshoot fraction. These objective-specific diagnostics should not be
+interpreted as directly comparable loss magnitudes or as evidence of policy convergence.The principal qualification
+is that local OR saturation does not by itself control aggregate policy movement. Both group-relative methods retain
+substantially larger rollout-to-current log-ratio displacement than the GAE-based methods, and replacing the clipped
+GRPO objective with OR does not remove that displacement. The supported conclusion is therefore narrower than
+a general claim of superiority: OR changes the sample-level saturation geometry and can alter reward-score and op-
+timization behavior, but it is not a trust-region mechanism and does not replace the roles of advantage estimation,
+critic learning, or reference-policy regularization. Whether the observed family-dependent effects persist under larger
+response groups, stronger reward models, held-out preference evaluation, and method-specific tuning remains open.
+18
+
+A PREPRINT - JULY 21, 2026
+References
+[1] Paul F. Christiano, Jan Leike, Tom Brown, Miljan Martic, Shane Legg, and Dario Amodei. Deep reinforcement
+learning from human preferences. In Advances in Neural Information Processing Systems, volume 30, 2017.
+[2] Nisan Stiennon, Long Ouyang, Jeffrey Wu, Daniel Ziegler, Ryan Lowe, Chelsea Voss, Alec Radford, Dario
+Amodei, and Paul F. Christiano. Learning to summarize with human feedback. In Advances in Neural Informa-
+tion Processing Systems, volume 33, 2020.
+[3] Long Ouyang, Jeffrey Wu, Xu Jiang, Diogo Almeida, Carroll Wainwright, Pamela Mishkin, Chong Zhang,
+Sandhini Agarwal, Katarina Slama, Alex Ray, et al. Training language models to follow instructions with human
+feedback. In Advances in Neural Information Processing Systems, volume 35, 2022.
+[4] Yuntao Bai, Andy Jones, Kamal Ndousse, Amanda Askell, Anna Chen, Nova DasSarma, Dawn Drain, Stanislav
+Fort, Deep Ganguli, Tom Henighan, et al. Training a helpful and harmless assistant with reinforcement learning
+from human feedback. arXiv preprint arXiv:2204.05862, 2022.
+[5] John Schulman, Sergey Levine, Philipp Moritz, Michael I. Jordan, and Pieter Abbeel. Trust region policy opti-
+mization. In Proceedings of the 32nd International Conference on Machine Learning, volume 37 of Proceedings
+of Machine Learning Research, pages 1889–1897. PMLR, 2015.
+[6] John Schulman, Filip Wolski, Prafulla Dhariwal, Alec Radford, and Oleg Klimov. Proximal policy optimization
+algorithms. arXiv preprint arXiv:1707.06347, 2017.
+[7] Zhihong Shao, Peiyi Wang, Qihao Zhu, Runxin Xu, Junxiao Song, Xiao Bi, Haowei Zhang, Mingchuan Zhang,
+Y. K. Li, Y. Wu, and Daya Guo. DeepSeekMath: Pushing the limits of mathematical reasoning in open language
+models. arXiv preprint arXiv:2402.03300, 2024.
+[8] Kanishka Tyagi, Chinmay Rane, Ketaki Vaidya, Jeshwanth Challgundla, Soumitro Swapan Auddy, and Michael
+Manry. Making sigmoid-MSE great again: Output reset challenges softmax cross-entropy in neural network
+classification. arXiv preprint arXiv:2411.11213, 2024.
+[9] Ronald J. Williams. Simple statistical gradient-following algorithms for connectionist reinforcement learning.
+Machine Learning, 8:229–256, 1992.
+[10] Richard S. Sutton, David A. McAllester, Satinder P. Singh, and Yishay Mansour. Policy gradient methods for
+reinforcement learning with function approximation. In Advances in Neural Information Processing Systems,
+volume 12, pages 1057–1063, 1999.
+[11] John Schulman, Philipp Moritz, Sergey Levine, Michael I. Jordan, and Pieter Abbeel. High-dimensional con-
+tinuous control using generalized advantage estimation. International Conference on Learning Representations,
+2016.
+[12] Logan Engstrom, Andrew Ilyas, Shibani Santurkar, Dimitris Tsipras, Firdaus Janoos, Larry Rudolph, and Alek-
+sander Madry. Implementation matters in deep rl: A case study on ppo and trpo. In International Conference on
+Learning Representations, 2020.
+[13] Andrew Ilyas, Logan Engstrom, Shibani Santurkar, Dimitris Tsipras, Firdaus Janoos, Larry Rudolph, and Alek-
+sander Madry. A closer look at deep policy gradients. In International Conference on Learning Representations,
+2020.
+[14] Yuhui Wang, Hao He, and Xiaoyang Tan. Truly proximal policy optimization. In Proceedings of the 35th
+Uncertainty in Artificial Intelligence Conference, volume 115 of Proceedings of Machine Learning Research,
+pages 113–122. PMLR, 2020.
+[15] Saurabh Garg, Joshua Zhanson, Emilio Parisotto, Adarsh Prasad, J. Zico Kolter, Zachary Chase Lipton, Sivara-
+man Balakrishnan, Ruslan Salakhutdinov, and Pradeep Ravikumar. On proximal policy optimization’s heavy-
+tailed gradients. In Proceedings of the 38th International Conference on Machine Learning, volume 139 of
+Proceedings of Machine Learning Research, pages 3610–3619. PMLR, 2021.
+[16] Ruinan Jin, Shuai Li, and Baoxiang Wang.
+On stationary point convergence of ppo-clip.
+In International
+Conference on Learning Representations, 2024.
+[17] Zhengpeng Xie, Qiang Zhang, Fan Yang, Marco Hutter, and Renjing Xu. Simple policy optimization. In Pro-
+ceedings of the 42nd International Conference on Machine Learning, volume 267 of Proceedings of Machine
+Learning Research, pages 68813–68824. PMLR, 2025.
+[18] Rafael Rafailov, Archit Sharma, Eric Mitchell, Stefano Ermon, Christopher D. Manning, and Chelsea Finn. Di-
+rect preference optimization: Your language model is secretly a reward model. In Advances in Neural Information
+Processing Systems, volume 36, 2023.
+19
+
+A PREPRINT - JULY 21, 2026
+[19] Ziniu Li, Tian Xu, Yushun Zhang, Zhihang Lin, Yang Yu, Ruoyu Sun, and Zhi-Quan Luo. Remax: A simple,
+effective, and efficient reinforcement learning method for aligning large language models, 2024.
+[20] Arash Ahmadian, Chris Cremer, Matthias Gallé, Marzieh Fadaee, Julia Kreutzer, Olivier Pietquin, Ahmet Üstün,
+and Sara Hooker. Back to basics: Revisiting REINFORCE-style optimization for learning from human feedback
+in LLMs. In Proceedings of the 62nd Annual Meeting of the Association for Computational Linguistics (Volume
+1: Long Papers), pages 12248–12267, 2024.
+[21] DeepSeek-AI, Daya Guo, Dejian Yang, Haowei Zhang, Junxiao Song, Ruoyu Zhang, Runxin Xu, Qihao Zhu,
+Shirong Ma, Peiyi Wang, et al. DeepSeek-R1: Incentivizing reasoning capability in LLMs via reinforcement
+learning. arXiv preprint arXiv:2501.12948, 2025.
+[22] Qiying Yu, Zheng Zhang, Ruofei Zhu, Yufeng Yuan, Xiaochen Zuo, Yu Yue, Weinan Dai, Tiantian Fan,
+Gaohong Liu, et al.
+DAPO: An open-source LLM reinforcement learning system at scale.
+arXiv preprint
+arXiv:2503.14476, 2025.
+[23] Zichen Liu, Changyu Chen, Wenjun Li, Penghui Qi, Tianyu Pang, Chao Du, Wee Sun Lee, and Min Lin. Under-
+standing r1-zero-like training: A critical perspective. arXiv preprint arXiv:2503.20783, 2025.
+[24] Tim Dettmers, Artidoro Pagnoni, Ari Holtzman, and Luke Zettlemoyer. QLoRA: Efficient finetuning of quan-
+tized LLMs. In Advances in Neural Information Processing Systems, volume 36, 2023.
+[25] Sourab Mangrulkar, Sylvain Gugger, Lysandre Debut, Younes Belkada, and Sayak Paul. PEFT: State-of-the-art
+parameter-efficient fine-tuning methods. Hugging Face software library, 2022.
+[26] Edward J. Hu, Yelong Shen, Phillip Wallis, Zeyuan Allen-Zhu, Yuanzhi Li, Shean Wang, Lu Wang, and Weizhu
+Chen. LoRA: Low-rank adaptation of large language models. In International Conference on Learning Repre-
+sentations, 2022.
+[27] Ralph Allan Bradley and Milton E. Terry. Rank analysis of incomplete block designs: I. the method of paired
+comparisons. Biometrika, 39(3/4):324–345, 1952.
+[28] Ari Holtzman, Jan Buys, Li Du, Maxwell Forbes, and Yejin Choi. The curious case of neural text degeneration.
+In International Conference on Learning Representations, 2020.
+[29] Leo Gao, John Schulman, and Jacob Hilton. Scaling laws for reward model overoptimization. In Proceedings
+of the 40th International Conference on Machine Learning, volume 202 of Proceedings of Machine Learning
+Research, pages 10835–10866. PMLR, 2023.
+A
+Experimental Scope Relative to a Larger-Scale RLHF Pipeline
+Table 5 places the present implementation in the context of a more fully separated, larger-scale RLHF evaluation
+pipeline. The comparison clarifies the scope of the evidence rather than defining a single “ideal” implementation.
+Table 5: Comparison between common larger-scale RLHF practice and the controlled implementation used in this
+study.
+Stage
+Common larger-scale practice
+Current study
+Implication
+Supervised
+fine-tuning
+Task-specific SFT checkpoint
+trained on a substantial
+instruction set.
+Llama-3.2-1B-Instruct used
+directly, without an additional
+study-specific SFT stage.
+The study does not test whether
+task-specific SFT changes the
+relative behavior of the policy
+objectives.
+Preference-data
+separation
+Disjoint reward-model
+train/validation/test splits, with
+separate RL and final-evaluation
+prompts.
+Reward model trained on 8,000
+hh-rlhf pairs; RL prompts drawn
+from the same source dataset.
+Prompt-level overlap is not
+documented.
+Possible overlap may inflate
+training-time reward-model scores
+and limits generalization claims;
+shared conditions do not guarantee
+that bias cancels across methods.
+RL prompt
+coverage
+Large, diverse RL prompt set
+with an independent held-out
+evaluation set.
+Human turns from hh-rlhf used
+for 500 optimization steps; no
+independent held-out
+human-preference evaluation.
+The results characterize this
+training setup and prompt
+distribution, not broad
+post-training performance.
+Continued on next page
+20
+
+A PREPRINT - JULY 21, 2026
+Table 5 continued
+Stage
+Common larger-scale practice
+Current study
+Implication
+Policy
+adaptation
+Full-model tuning or a
+parameter-efficient configuration
+selected for the target model and
+compute budget.
+LoRA with rank r = 16 and
+approximately four million
+trainable policy parameters.
+The restricted trainable subspace
+enables single-GPU experiments
+but may change the dynamics
+relative to full-model or
+higher-rank tuning.
+Reward model
+Reward model selected on
+held-out preference data and
+evaluated before policy
+optimization.
+MLP scalar head on a frozen 4-bit
+Llama backbone; recorded
+pairwise accuracy approximately
+60–61%.
+Scores may be noisy and are not
+calibrated measures of human
+utility; checkpoint selection and
+evaluation split must match the
+finalized record.
+Group-relative
+configuration
+Group size and response length
+evaluated through controlled
+ablations.
+Group size G = 2, 64-token
+response cap, and reward-model
+CPU offload during generation and
+policy updates.
+The small group and shorter
+response cap constrain the
+group-relative findings and
+confound direct cross-family
+comparisons.
+Final evaluation
+Fixed checkpoints evaluated on
+held-out prompts using
+independent preference
+judgments and, where
+appropriate, multiple evaluators.
+Final logged training-time score
+from the same frozen reward
+model, reported over three seeds.
+The evidence supports matched
+within-family comparisons, not
+calibrated utility, statistical
+significance, or held-out
+human-preference claims.
+B
+Illustrative Preference-Pair Format
+The following example illustrates the chosen–rejected response format used to train the Bradley–Terry reward model.
+It is included only to clarify the data structure and is not used as evidence about reward-model quality.
+chosen:
+Human: I want to learn how to cook.
+Can you give me some basic tips?
+Assistant: Sure! Start with simple recipes.
+Master knife skills early. Control your heat.
+Taste as you go and season at each stage.
+rejected:
+Human: I want to learn how to cook.
+Can you give me some basic tips?
+Assistant: Cooking is a great skill.
+Try different recipes and see what you like.
+Practice makes perfect so just keep trying.
+C
+Reference Implementation
+The listing below makes three implementation choices explicit. First, zero-advantage tokens follow the detached
+current log-ratio and therefore contribute zero direct OR residual. Second, the diagnostic returned by output_reset
+is the squared target magnitude, not the squared prediction residual. Third, group-relative advantages use a standard
+deviation lower-clamped at 10−4, and zero-variance groups are excluded before policy-loss aggregation. The standard-
+deviation correction is written explicitly so that the implementation does not depend on a library default.
+def output_reset(log_ratio, advantages, alpha=0.2):
+"""
+Construct detached OR targets.
+advantage > 0: target +alpha until favorable overshoot
+advantage < 0: target -alpha until favorable overshoot
+advantage = 0: target current log-ratio, giving zero residual
+"""
+21
+
+A PREPRINT - JULY 21, 2026
+y = log_ratio.detach()
+positive = advantages > 0
+negative = advantages < 0
+target = y.clone()
+target = torch.where(
+positive, torch.full_like(y, +alpha), target
+)
+target = torch.where(
+negative, torch.full_like(y, -alpha), target
+)
+# Favorable overshoot follows the detached current output.
+target = torch.where(positive & (y > +alpha), y, target)
+target = torch.where(negative & (y < -alpha), y, target)
+# Diagnostic only: squared target magnitude, not OR residual.
+target_magnitude_sq = target.square().mean(dim=0)
+return target, target_magnitude_sq
+def group_relative_advantages(rm_grouped, eps=1e-4):
+"""
+rm_grouped has shape [num_prompts, group_size].
+Zero-variance groups are excluded from returned advantages.
+"""
+group_mean = rm_grouped.mean(dim=1, keepdim=True)
+# Explicit Bessel correction; equivalent to unbiased=True.
+raw_group_std = rm_grouped.std(
+dim=1, keepdim=True, correction=1
+)
+valid_group = raw_group_std.squeeze(1) > 0
+denom = raw_group_std.clamp(min=eps)
+advantages = (rm_grouped - group_mean) / denom
+return advantages[valid_group], valid_group
+22

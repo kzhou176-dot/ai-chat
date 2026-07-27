@@ -1,0 +1,22 @@
+{
+  "arxiv_id": "2607.10159",
+  "title": "UNIT: Unleash Large Language Models Potential for Graph Continual Learning",
+  "authors": [
+    "Tairan Huang",
+    "Yili Wang",
+    "Beibei Hu",
+    "Yiting Shi",
+    "Qiutong Li",
+    "Changlong He",
+    "Jianliang Gao"
+  ],
+  "abstract": "In real-world multimodal web scenarios, graph-structured data often arrives in a streaming manner, making graph continual learning a crucial paradigm for continuously modeling such evolving structures. However, existing graph continual learning methods still face two fundamental challenges. 1) semantic-structural separation, where the graph-based methods excel at modeling topological relationships but neglect deep semantics. 2) imbalanced knowledge transfer, where existing models fail to effectively leverage general knowledge gained from early tasks to benefit subsequent new tasks. To address above issues, we propose a novel framework, \\textbf{UN}leash Large Language Models PotentIal for Graph ConTinual Learning (UNIT). By fine-tuning large language model only on the first task, we bridge the distributional gap between the pre-trained LLM corpus and the target task dataset to enhance the adaptability of LLMs for graph-structured tasks. Meanwhile, we propose an uncertain-aware anchor generation mechanism to effectively preserve representative knowledge across tasks, avoiding the neglect of universal knowledge learned from previous tasks. Additionally, we introduce structural confluence modeling to explicitly integrates graph topology information into semantic information, enhancing the collaborative capabilities between semantic understanding and structural modeling. Extensive experiments demonstrate that our proposed method achieves state-of-the-art performance in the graph continual learning task.",
+  "published": "2026-07-11T06:47:26Z",
+  "categories": [
+    "cs.AI"
+  ],
+  "keyword": "pre_training",
+  "fetched_at": "2026-07-21T05:15:43Z",
+  "abs_url": "https://arxiv.org/abs/2607.10159",
+  "pdf_url": "https://arxiv.org/pdf/2607.10159"
+}

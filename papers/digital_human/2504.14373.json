@@ -1,0 +1,27 @@
+{
+  "arxiv_id": "2504.14373",
+  "title": "SEGA: Drivable 3D Gaussian Head Avatar from a Single Image",
+  "authors": [
+    "Chen Guo",
+    "Zhuo Su",
+    "Liao Wang",
+    "Jian Wang",
+    "Shuang Li",
+    "Xu Chang",
+    "Zhaohu Li",
+    "Yang Zhao",
+    "Guidong Wang",
+    "Yebin Liu",
+    "Ruqi Huang"
+  ],
+  "abstract": "Creating photorealistic 3D head avatars from limited input has become increasingly important for applications in virtual reality, telepresence, and digital entertainment. While recent advances like neural rendering and 3D Gaussian splatting have enabled high-quality digital human avatar creation and animation, most methods rely on multiple images or multi-view inputs, limiting their practicality for real-world use. In this paper, we propose SEGA, a novel approach for Single-imagE-based 3D drivable Gaussian head Avatar creation that combines generalized prior models with a new hierarchical UV-space Gaussian Splatting framework. SEGA seamlessly combines priors derived from large-scale 2D datasets with 3D priors learned from multi-view, multi-expression, and multi-ID data, achieving robust generalization to unseen identities while ensuring 3D consistency across novel viewpoints and expressions. We further present a hierarchical UV-space Gaussian Splatting framework that leverages FLAME-based structural priors and employs a dual-branch architecture to disentangle dynamic and static facial components effectively. The dynamic branch encodes expression-driven fine details, while the static branch focuses on expression-invariant regions, enabling efficient parameter inference and precomputation. This design maximizes the utility of limited 3D data and achieves real-time performance for animation and rendering. Additionally, SEGA performs person-specific fine-tuning to further enhance the fidelity and realism of the generated avatars. Experiments show our method outperforms state-of-the-art approaches in generalization ability, identity preservation, and expression realism, advancing one-shot avatar creation for practical applications.",
+  "published": "2025-04-19T18:23:31Z",
+  "categories": [
+    "cs.GR",
+    "cs.CV"
+  ],
+  "keyword": "digital_human",
+  "fetched_at": "2026-07-21T03:46:04Z",
+  "abs_url": "https://arxiv.org/abs/2504.14373",
+  "pdf_url": "https://arxiv.org/pdf/2504.14373"
+}

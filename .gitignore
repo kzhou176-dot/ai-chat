@@ -1,0 +1,81 @@
+# ============================================================
+# aichat-hub .gitignore
+# ============================================================
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+*.egg
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+*~
+.cache/
+
+# 虚拟环境
+venv/
+.venv/
+env/
+
+# ============================================================
+# Build / 打包产物(可重新生成)
+# ============================================================
+
+# dist/ 里的 DEB / DMG(可重新跑 packaging/build_deb.sh 生成)
+dist/
+
+# 打包好的 .app bundle(可重新跑 packaging/build_macos.sh 生成)
+packaging/aichat-hub.app/
+packaging/check*/
+packaging/deb-check/
+packaging/debcheck/
+packaging/check-*/
+
+# packaging/stage/ 是 build_deb.sh 生成的 stage 目录(可重生成)
+# 元数据源在 packaging/debian/ 里
+packaging/stage/
+
+# ============================================================
+# 大文件 / 不入版本库
+# ============================================================
+
+# arxiv 论文原始 PDF(279MB,太重;JSON metadata 已够用)
+papers/pdfs/
+
+# 运行时数据 / 测试临时
+data/test_*/
+data/tts_cache/
+data/_test_*/
+*.tmp
+*.bak
+
+# 日志
+*.log
+logs/
+
+# 用户专属(应用数据)
+.history/
+.vscode-test/
+
+# ============================================================
+# 可选保留(放进 git 更友好,但本地调试可忽略)
+# ============================================================
+
+# 这些文件留着 — 是项目核心数据
+# papers/*/        # arxiv JSON 索引(60 篇,~240KB)
+# papers/parsed/   # PDF 解析文本(3.3MB,搜索时有用)
+# data/personas/   # persona 配置(3 个 JSON)
+# data/*.json      # benchmark / demo 日志

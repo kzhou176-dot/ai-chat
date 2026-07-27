@@ -1,0 +1,20 @@
+{
+  "arxiv_id": "2607.18081",
+  "title": "SelectInfer: Selective Neuron Loading and Computation for On-Device LLMs",
+  "authors": [
+    "Huzaifa Shaaban Kabakibo",
+    "Eric Schniedermeyer",
+    "Artem Burchanow",
+    "Lin Wang"
+  ],
+  "abstract": "Large Language Models (LLMs) have demonstrated remarkable capabilities across a range of Natural Language Processing (NLP) tasks, but their high computational and memory demands pose significant challenges for deployment on resource-constrained edge devices. Existing approaches to model compression and optimization often rely on coarse-grained pruning or quantization, which can compromise accuracy or require re-training and fine-tuning. In this work, we introduce SelectInfer, a neuron-level optimization framework that enables efficient LLM inference on edge devices through selective neuron loading and computation. By profiling and identifying both task-specific and general-purpose neurons using an offline LLM profiler, SelectInfer implements two key optimizations: selective loading, which reduces memory footprint by selectively loading a subset of neurons that were identified to be most important during the offline stage, and selective computation, which dynamically computes only the most relevant neurons at runtime. Evaluation across multiple datasets shows that SelectInfer achieves significant reductions in memory footprint and computation while preserving task performance, making it a practical step towards enabling LLM deployment on edge devices",
+  "published": "2026-07-20T15:48:33Z",
+  "categories": [
+    "cs.LG",
+    "cs.AI"
+  ],
+  "keyword": "large_language_model",
+  "fetched_at": "2026-07-21T03:43:48Z",
+  "abs_url": "https://arxiv.org/abs/2607.18081",
+  "pdf_url": "https://arxiv.org/pdf/2607.18081"
+}

@@ -1,0 +1,24 @@
+{
+  "arxiv_id": "2606.22905",
+  "title": "InteractiveAvatar: Real-Time Streaming Video Generation for Consistent and Intent-Aware Avatars",
+  "authors": [
+    "Quanyue Song",
+    "Yishan He",
+    "Yanfei Zhang",
+    "Shihao Cheng",
+    "Zhixiang He",
+    "Zhizhi Guo",
+    "Chi Zhang",
+    "Xuelong Li",
+    "Caigui Jiang"
+  ],
+  "abstract": "Recent diffusion-based models have enabled realistic audio-driven avatar generation in real-time streaming. However, existing approaches struggle to maintain visual temporal consistency and fail to explicitly perceive user intent in complex interactive streaming scenarios. To address these challenges, we propose InteractiveAvatar, a real-time infinite-streaming video generation framework that supports visually consistent avatar video generation and intent-aware interactions. With autoregressive distillation, InteractiveAvatar achieves real-time str-eaming generation of human avatars over arbitrarily long durations. For visual consistency, we introduce a Long-Short Visual Memory (LSVM) mechanism that flexibly compresses historical visual information into compact tokens, preserving both short-range coherence and long-term consistency. To generate avatars with speeches and actions aligned with user intent, we propose a Reasoning-Reaction Module (RRM), which incorporates a State-Cycling strategy and a Cache-Switching mechanism. Extensive experimental results over diverse scenarios demonstrate that our method achieves state-of-the-art visual consistency in long-duration generation, while enabling complex user-avatar interaction in real time.",
+  "published": "2026-06-22T06:41:17Z",
+  "categories": [
+    "cs.CV"
+  ],
+  "keyword": "avatar",
+  "fetched_at": "2026-07-21T04:01:49Z",
+  "abs_url": "https://arxiv.org/abs/2606.22905",
+  "pdf_url": "https://arxiv.org/pdf/2606.22905"
+}

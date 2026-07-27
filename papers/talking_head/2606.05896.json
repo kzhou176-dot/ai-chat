@@ -1,0 +1,22 @@
+{
+  "arxiv_id": "2606.05896",
+  "title": "Resonant Minds: Closed-Loop Social Avatars with Theory of Mind",
+  "authors": [
+    "Jianxu Shangguan",
+    "Jing Xu",
+    "Hang Ye",
+    "Xiaoxuan Ma",
+    "Yizhou Wang",
+    "Jenq-Neng Hwang",
+    "Wentao Zhu"
+  ],
+  "abstract": "Creating lifelike digital humans with genuine social intelligence requires unifying cognitive reasoning and multimodal generation within a coherent framework. Current approaches treat these as separate tasks: Large Language Models excel at dialogue but lack embodied expression, while diffusion-based talking head models achieve visual fidelity but ignore social cognition. To bridge this gap, we propose a closed-loop dual-agent framework integrating perception, social reasoning, and expression into a continuous interaction cycle. The perception module analyzes partners' multimodal behaviors from video, while the social reasoning module infers hidden mental states through Theory of Mind and selects responses via an ensemble mechanism. The expression module then generates emotion-controllable videos that jointly synthesize speaker speech and facial expressions with listener reactive behaviors, capturing bidirectional dynamics absent in prior work. We further construct a hierarchical Persona-Scenario dataset with psychologically grounded personas and private social goals to support evaluation under information asymmetry. Experiments on this dataset demonstrate competitive or superior performance on both dialogue quality and video generation metrics. Notably, our method surpasses even the full-information Script mode on key dialogue quality dimensions, suggesting that explicit mental state inference under uncertainty can elicit more thoughtful dialogue than unrestricted information access. Project page: https://resonantminds.github.io/.",
+  "published": "2026-06-04T09:03:43Z",
+  "categories": [
+    "cs.CV"
+  ],
+  "keyword": "talking_head",
+  "fetched_at": "2026-07-21T04:02:45Z",
+  "abs_url": "https://arxiv.org/abs/2606.05896",
+  "pdf_url": "https://arxiv.org/pdf/2606.05896"
+}

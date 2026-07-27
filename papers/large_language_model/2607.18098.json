@@ -1,0 +1,19 @@
+{
+  "arxiv_id": "2607.18098",
+  "title": "VDAR-Router: Adaptive LLMs Routing via Verbalized Query Difficulty Analysis Retrieval",
+  "authors": [
+    "Yu-Chien Tang",
+    "Jun-Chen Hung",
+    "Wen-Chih Peng",
+    "An-Zi Yen"
+  ],
+  "abstract": "Large language models are increasingly used in practical systems, making efficient model selection important for reducing deployment cost. LLM routing has emerged as a practical solution for allocating each input query to an appropriate model under a desired cost-performance trade-off. Existing routing methods often estimate model suitability from the surface semantics or embedding similarity of the input query. However, such methods may ignore the underlying difficulty of a query, leading to suboptimal routing decisions. To address the challenge, we propose VDAR-Router, a difficulty-aware retrieval-based routing framework. For each input query, VDAR-Router first generates an explicit difficulty analysis. It then retrieves historical examples with similar difficulty profiles. Based on the retrieved records, it estimates candidate model suitability and selects the model using a reward function that considers both performance and cost. Experiments on three datasets show that VDAR-Router consistently achieves better cost-performance trade-offs than existing baselines. These results demonstrate the effectiveness of difficulty-aware retrieval for training-free LLM routing. Case studies further show that explicit query analysis helps retrieve more relevant examples and supports more reliable routing decisions.",
+  "published": "2026-07-20T16:00:45Z",
+  "categories": [
+    "cs.CL"
+  ],
+  "keyword": "large_language_model",
+  "fetched_at": "2026-07-21T03:43:44Z",
+  "abs_url": "https://arxiv.org/abs/2607.18098",
+  "pdf_url": "https://arxiv.org/pdf/2607.18098"
+}

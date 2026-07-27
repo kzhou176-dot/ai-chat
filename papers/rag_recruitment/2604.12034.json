@@ -1,0 +1,11 @@
+{
+  "arxiv_id": "2604.12034",
+  "title": "Memory as Metabolism: A Design for Companion Knowledge Systems",
+  "summary": "Retrieval-Augmented Generation remains the dominant pattern for giving LLMs persistent memory, but a visible cluster of personal wiki-style memory architectures emerged in April 2026 -- design proposals from Karpathy, MemPalace, and LLM Wiki v2 that compile knowledge into an interlinked artifact for long-term use by a single user. They sit alongside production memory systems that the major labs have shipped for over a year, and an active academic lineage including MemGPT, Generative Agents, Mem0, Zep, A-Mem, MemMachine, SleepGate, and Second Me. Within a 2026 landscape of emerging governance frameworks for agent context and memory -- including Context Cartography and MemOS -- this paper proposes a companion-specific governance profile: a set of normative obligations, a time-structured proc",
+  "authors": [
+    "Stefan Miteski"
+  ],
+  "published": "2026-04-13",
+  "category": "cs.AI",
+  "keyword": "rag_recruitment"
+}

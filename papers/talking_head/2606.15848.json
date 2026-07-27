@@ -1,0 +1,20 @@
+{
+  "arxiv_id": "2606.15848",
+  "title": "EmoZone-Talker: Regional Semantic Control of Audio-Driven 3DGS Talking Heads via Facial Action Units",
+  "authors": [
+    "Tingting Chen",
+    "Shaojun Wang",
+    "Huaye Zhang",
+    "Diqiong Jiang",
+    "Chenglizhao Chen"
+  ],
+  "abstract": "3D Gaussian Splatting (3DGS) has shown strong potential for high-fidelity talking head synthesis. However, enabling fine-grained, interpretable, and editable facial expression control remains fundamentally challenging due to intrinsic conflicts between speech-driven facial dynamics and explicit expression signals. Existing methods rely on implicit multimodal fusion, leading to spatial entanglement and temporal instability. We present EmoZone-Talker, a novel framework that reformulates audio-driven facial animation as a structured spatial-temporal coordination problem under cross-modal conflicts. Our approach introduces an explicit spatial disentanglement and temporal dynamics modeling of facial motion. Specifically, we propose Synergy Zones with Prioritized Attention Bias (SZ-PAB) to explicitly decouple modality contributions via region-wise constraints guided by anatomical priors, and a Channel-Independent Temporal AU Encoder (CIT-AE) to model temporally coherent AU dynamics. By integrating these representations into 3D Gaussian deformation, EmoZone-Talker enables precise and interpretable control over facial expressions. Extensive experiments demonstrate that our method improves expression controllability and realism, with notable gains in upper-face accuracy and temporal coherence, while preserving high rendering quality and accurate lip synchronization. Code will be publicly released to facilitate reproducibility and further research.",
+  "published": "2026-06-14T15:10:05Z",
+  "categories": [
+    "cs.CV"
+  ],
+  "keyword": "talking_head",
+  "fetched_at": "2026-07-21T04:02:35Z",
+  "abs_url": "https://arxiv.org/abs/2606.15848",
+  "pdf_url": "https://arxiv.org/pdf/2606.15848"
+}

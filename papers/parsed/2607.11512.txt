@@ -1,0 +1,915 @@
+Toward Inclusive Avatar Design with Limb Differences
+Through Artificial Intelligence
+Fernanda Miyuki Yamada1, Jo˜ao Paulo Gois2, and Hiroki Takahashi1
+1The University of Electro-Communications, Chofu, Tokyo, Japan
+2Federal University of ABC, Santo Andr´e, S˜ao Paulo, Brazil
+Abstract
+As extended reality becomes more popular for social interaction and entertainment, 3D avatars must
+represent the full diversity of body types. Most 3D avatar systems only support normative bodies
+and do not accurately depict people with limb differences, amputations, or other morphological
+variations. This paper reviews emerging technical approaches for inclusive 3D avatar customization
+for this group and current guidelines that promote respectful and accurate representation. We
+highlight persistent challenges, including the scarcity of diverse datasets and the limitations in
+animation for non-normative anatomies. This paper positions artificial intelligence as a promising
+path to overcoming these limitations and advancing inclusive 3D avatar generation.
+Introduction
+In extended reality (XR) applications, 3D
+avatars mediate the user interaction with dig-
+ital environments, shaping self-representation
+and overall experience.
+Despite recent ad-
+vances in modeling and animation, most 3D
+© 2026 IEEE. Personal use of this material is
+permitted. Permission from IEEE must be obtained
+for all other uses, in any current or future media, in-
+cluding reprinting/republishing this material for ad-
+vertising or promotional purposes, creating new col-
+lective works, for resale or redistribution to servers or
+lists, or reuse of any copyrighted component of this
+work in other works.
+DOI: 10.1109/MCSE.2026.3685086
+avatar customization systems continue to de-
+fault to normative bodies. This lack of mor-
+phological diversity affects mainly users with
+visible physical disabilities, such as limb dif-
+ferences, amputations, or other anatomical
+variations.
+Such users are often forced to
+choose between misrepresenting themselves
+through normative 3D avatars or forgoing au-
+thentic self-representation entirely.
+Conse-
+quently, the inability to create accurate self-
+representations in XR can reinforce feelings
+of exclusion present in physical spaces.
+Inclusive 3D avatars offer more than just
+self-representation.
+They can impact ar-
+eas such as virtual sports, rehabilitation,
+and education.
+For example, while digi-
+tal games frequently simulate sports for nor-
+1
+arXiv:2607.11512v1  [cs.HC]  13 Jul 2026
+
+mative bodies, there is a notable lack of
+virtual environments inspired by adapted
+sports. This gap highlights the potential of
+inclusive 3D avatars to increase the visibil-
+ity of Paralympic athletes, challenging tradi-
+tional assumptions about ability and promot-
+ing greater appreciation for the performance
+and dedication of athletes with disabilities.
+Achieving these outcomes remains chal-
+lenging due to the scarcity of 3D anatomi-
+cal representations that capture diverse body
+types and the lack of established design stan-
+dards to guide developers. Recent progress in
+artificial intelligence (AI) provides promising
+means to address these limitations. Advances
+in generative modeling, computer vision, and
+physics-based simulation have enabled acces-
+sible 3D avatar generation and improved rep-
+resentation of morphological diversity in vir-
+tual environments.
+This paper presents an overview of emerg-
+ing approaches for inclusive 3D avatar gen-
+eration, with a focus on users with limb dif-
+ferences, amputations, and other morpholog-
+ical variations. Refer to the Key Terminology
+box for definitions of terms used throughout
+the paper. We advocate for digital adapted
+sports as a domain where such 3D avatars
+can have a high social and cultural impact.
+We emphasize the interplay between techni-
+cal innovation and ethical design, reviewing
+existing applications and systems that ad-
+dress anatomical diversity, dataset consider-
+ations, and design guidelines that support di-
+verse representation. Finally, we discuss fu-
+ture directions in which AI may play a critical
+role in enabling accessible, socially responsi-
+ble XR applications.
+Self-representation
+and
+Cus-
+tomization Systems
+Self-representation refers to how the user or
+player is embodied and visually represented
+within a digital environment. Systems that
+let players represent themselves, instead of
+only controlling a predefined protagonist, can
+strongly influence how interactive content is
+experienced. Despite this importance, many
+games still provide only narrow support for
+self-representation in practice. A large share
+of action and adventure titles use fixed pro-
+tagonists defined by the narrative. When cus-
+tomization exists, it often covers only surface
+elements such as clothing and accessories.
+This pattern appears in titles such as Until
+Dawn, Death Stranding, and The Last of Us.
+Character
+customization
+systems
+allow
+players to change the appearance of the on-
+screen character, instead of using a fixed pro-
+tagonist. Market indicators show that cus-
+tomizable avatars are increasingly common in
+commercial games. Golando [1] noted that 7
+of the top 13 best-selling video game titles
+as of February 2023, approximately 54%, use
+a “Customizable Avatar” model rather than
+a fixed protagonist. Similarly, metadata from
+Steam, the largest PC gaming platform, iden-
+tifies more than 13,550 active titles explic-
+itly tagged with “Character Customization”
+1. At first glance, these numbers seem to sup-
+port the idea that modern games increasingly
+enable self-representation. However, charac-
+1SteamDB,
+“Character
+Customization”
+tag.
+Available
+at:
+https://steamdb.info/tags/.
+Accessed February 9th, 2026.
+2
+
+Key Terminology
+• Limb difference: a congenital or acquired condition in which one or more limbs are
+absent or partially formed. The term refers to variations in limb presence and morphology
+and does not imply any specific level of functionality.
+• Amputation: surgical or traumatic removal of a limb or part of a limb. This term refers
+specifically to acquired cases and is distinct from congenital limb differences.
+• Morphological variations: differences in body structure, proportions, or configuration
+relative to the standardized human model commonly presented in medical contexts. These
+include, but are not limited to, limb differences and variations in skeletal morphology.
+• Non-normative anatomy: anatomical presentation characterized by morphological
+variations, referring to bodies that differ from the conventional anatomical reference mod-
+els used in medical contexts.
+• Prosthetic/Assistive device: a wearable device that replaces or supplements a missing
+or impaired body part or function. It may be designed to restore lost capabilities, as in
+prosthetic devices, or to enhance and assist existing functions, as in assistive devices.
+ter customization does not necessarily mean
+true self-representation. Many systems offer
+only cosmetic adjustments, with little sup-
+port for body-shape editing.
+As a result,
+users may interact with a customized char-
+acter that still does not reflect their identity
+or self-image.
+The gap is larger for people with limb dif-
+ferences and other morphological variations.
+Some games feature playable characters with
+visible limb differences without prosthetics,
+such as titles in the Devil May Cry and
+Guilty Gear series.
+These examples show
+that non-normative body structures can be
+integrated into gameplay without compro-
+mising the functionality. However, such char-
+acters are predefined by the developers and
+offered as fixed protagonists, rather than cus-
+tomizable options. Therefore, these designs
+support inclusion at the narrative level but do
+not enable true self-representation for people
+with limb differences or other morphological
+variations.
+Moreover, a content analysis of
+108 game trailers released between 2006 and
+2016 found that, although disability is occa-
+sionally depicted in background non-playable
+characters, only 1% of the content included
+playable characters with disabilities [2].
+A similar pattern appears in XR systems,
+where users are typically represented through
+3D avatars, and embodiment plays a central
+role in interaction and presence. Surveys of
+social virtual reality platforms report that
+customization support is limited. Handley et
+3
+
+al. [3] analyzed 44 social virtual reality plat-
+forms and found that only 27.3% of systems
+in their catalog offered customizable features.
+Options for amputations or limb differences
+are rarely available. A growing body of XR
+research addresses limb differences in rehabil-
+itation and clinical contexts. This sustained
+research activity indicates that 3D avatar
+representations with limb differences are not
+a niche or isolated topic, but rather an ac-
+tive and expanding area of XR research with
+demonstrated practical applications.
+Guidelines in Avatar Design
+Although the importance of inclusive 3D
+avatars is increasingly recognized, translating
+this goal into practice remains challenging.
+Some physical disabilities are easier to in-
+corporate within standard frameworks, par-
+ticularly when they do not alter the under-
+lying anatomy or skeletal structure of the
+3D model.
+For instance, hearing devices,
+wheelchairs, or lower limb prosthetics can of-
+ten be added as separate items. This discrep-
+ancy creates an unfortunate hierarchy of rep-
+resentation, where some disabilities are more
+“visible” in digital spaces than others.
+Addressing this gap requires not only tech-
+nical innovation but also a structured un-
+derstanding of inclusive design practices. In
+this context, clear guidelines for 3D avatar
+design ensure that users with limb differ-
+ences are represented accurately and respect-
+fully in XR applications.
+These guidelines
+are often developed through user-centered re-
+search, where people with disabilities, design-
+ers, and accessibility experts collaborate to
+identify what works and what causes exclu-
+sion.
+Inclusive 3D avatar guidelines emphasize
+giving users flexible and granular control over
+their virtual representation. Zhang et al. [4]
+suggest using continuous controls, like sliders
+or text prompts, so that users can describe
+their unique body differences naturally. This
+includes adjusting body features such as limb
+length, symmetry, and joint movement using
+smooth and flexible controls.
+User preferences for 3D avatar representa-
+tion can vary depending on social and per-
+sonal considerations. Park & Kim [5] found
+that some users prefer to hide their disabili-
+ties to enjoy activities they cannot perform
+in real life and avoid stigma, while others
+value showing their disabilities to raise aware-
+ness and facilitate communication. Regard-
+less of these differences, participants agreed
+that customization systems must offer diverse
+options.
+Together, these studies underscore that
+inclusive 3D avatar customization systems
+have to:
+(1) allow users to customize the
+appearance of their 3D avatars to support
+self-representation; (2) provide granular con-
+trol over the representation of physical dif-
+ferences and assistive devices; (3) support
+context-dependent representations, allowing
+users to represent themselves with or with-
+out prosthetics, and reflecting personal pref-
+erence and situational context; and (4) inte-
+grate user-centered design and validation.
+From a technical perspective, the most
+challenging and important aspect is allow-
+ing users to represent themselves without
+4
+
+prosthetics.
+As discussed at the beginning
+of this section, physical disabilities that do
+not require modifications to the underlying
+skeleton can be added relatively easily to
+the design of 3D avatars.
+Modeling ab-
+sent limbs requires deviation from norma-
+tive body templates, affecting not only the
+mesh but also the skeleton, rigging, and ani-
+mation pipelines. Consequently, people with
+limb differences who choose not to use pros-
+thetics or cannot use them often remain the
+most “invisible” in virtual spaces. When limb
+differences are represented using prosthetics,
+the system defaults to normative body tem-
+plates, thus only simulating the appearance
+of a disability rather than promoting au-
+thentic representation. The stakes are high,
+as accurate and realistic representations re-
+quire not only careful 3D modeling but also
+fully adaptive animation pipelines that pre-
+serve natural motion without defaulting to
+normative body assumptions.
+In the fol-
+lowing, we analyze current 3D applications
+and avatar customization systems to assess
+whether these guidelines are implemented or
+overlooked in the representation of limb dif-
+ferences.
+Current Applications and Limi-
+tations
+Considering the principles of inclusive 3D
+avatar design outlined in the previous section,
+it is notable that many systems that incorpo-
+rate 3D avatars with limb differences or am-
+putations still focus primarily on represent-
+ing users with prosthetics.
+Although pros-
+thetic modeling is helpful in clinical contexts,
+its default inclusion in 3D avatar customiza-
+tion can hinder authentic self-representation
+in social settings where users may prefer to
+represent themselves without prosthetics.
+Even for applications that focus on inclu-
+sion, as in digital adapted sport games, 3D
+avatars with limb differences are not accu-
+rately represented and often rely on pros-
+thetic models.
+Mindscape 2 allows players
+to create 3D avatars that use wheelchairs or
+prosthetic devices as visible forms of inclu-
+sion. The Pegasus Dream Tour 3 allows play-
+ers to take part in virtual sports events using
+3D avatars with prosthetics and adaptive de-
+vices. Another example is ParaJecripe [6], a
+game developed to raise awareness of adapted
+sports. It includes 3D avatars based on real
+Paralympic athletes, some of whom have limb
+differences and do not rely on prosthetics, but
+customization is limited to clothing and ac-
+cessories. As shown in Figure 1, ParaJecripe
+features avatars inspired by real Paralympic
+athletes, some of whom have limb differences,
+and are represented without prosthetics.
+Only a few 3D avatar systems support
+people with limb differences and amputees
+without prosthetics, offering limited options
+for appearance customization.
+Stracke et
+al. [7] present a prototype for a virtual reality
+simulation of lower limb amputation, where
+2Mindscape,
+2024.
+Available
+at:
+https://paralympics.org.uk/articles/
+mindscape-by-paralympicsgb-and-deloitte/.
+Accessed February 9th, 2026.
+3The Pegasus Dream Tour, 2021.
+Available at:
+https://pegasus-dream.com/. Accessed February
+9th, 2026.
+5
+
+Figure 1: Parajecripe modalities for adapted
+sports [6].
+tracked movements are shown through a 3D
+avatar, whose template is created with the
+Ready Player Me system.
+The customiza-
+tion options are limited to choosing gender,
+height, and amputation type, which must be
+single-sided and either above or below the
+knee. The Computer Assisted Limb Assess-
+ment (CALA) system by Prahm et al. [8],
+building on MakeHuman and Blender, in-
+troduces continuous sliders for altering in-
+dividual body segments such as the hands,
+forearms, upper arms, and shoulders. These
+sliders allow extreme and asymmetric mod-
+ifications, ranging from thin to thick limbs,
+as well as complete upper limb amputation.
+This system partially follows the guidelines
+for disability representation in 3D avatars,
+especially regarding the recommendation for
+granular continuous control over the repre-
+sentation of physical differences.
+However,
+the process is not fully automated and still re-
+quires some level of specialized knowledge to
+manually adjust multiple parameters through
+a 3D modeling interface, such as navigating
+camera angles and manipulating meshes.
+The literature shows that existing ap-
+proaches tend to fall into two main directions:
+(1) medical applications, where customiza-
+tion focuses on accurately modeling disabil-
+ities for clinical or rehabilitative purposes,
+and (2) self-representation systems, which
+emphasize visual customization of 3D avatar
+appearance but often overlook the diversity
+of disabilities, typically relying on prosthetic
+additions rather than structural variation.
+This divide underscores the lack of methods
+that integrate both anatomical accuracy and
+expressive customization, thus not fulfilling
+the inclusive 3D avatar guidelines.
+In the
+following, we review some AI-based methods
+that aim to address these limitations.
+Artificial Intelligence and Mor-
+phological Editting
+Current
+AI-based
+3D
+avatar
+generation
+frameworks refine models by rendering them
+from multiple camera viewpoints and us-
+ing diffusion models to assess and improve
+realism.
+Diffusion models are a genera-
+tive method that constructs data by itera-
+tively denoising a random signal, approxi-
+mating the data distribution through a re-
+verse stochastic process learned via neu-
+ral networks.
+Parametric models such as
+Skinned Multi-Person Linear Model (SMPL)
+and SMPL eXpressive (SMPL-X) [9] guide
+this process, providing a structured represen-
+tation of the human body through parame-
+ters controlling pose, shape, and sometimes
+facial or muscle details. Although these mod-
+els ensure anatomical consistency, their de-
+sign assumes normative bodies, hindering the
+representation of limb differences or signifi-
+cant asymmetries. To address this limitation,
+recent research has focused on modifying
+parametric models to handle non-normative
+6
+
+bodies.
+Cho et al.
+propose the Amputated
+Joint Aware 3D Human Mesh Recovery
+(AJAHR) [10], which reconstructs 3D hu-
+man meshes from images while accounting for
+missing limbs. The method uses the SMPL
+model kinematic tree without modifying pre-
+trained parameters. Amputations are repre-
+sented by setting the pose values of the af-
+fected joint and its descendants to zero, caus-
+ing the associated vertices to collapse near
+the joint and simulate limb absence. A joint
+regressor then processes these vertices to pro-
+duce anatomically consistent 3D joint posi-
+tions that reflect the hierarchical effects of
+missing limbs. A Vision Transformer predicts
+the pose values from images, with separate
+branches for classifying the amputation sta-
+tus of each major limb. Global body rotation,
+shape, and camera position are predicted in-
+dependently and combined with pose values
+to reconstruct the final mesh. Figure 2 shows
+the 3D meshes extracted from photographs of
+individuals with limb differences.
+Figure 2: 3D mesh recovery based on images
+by AJAHR [10], licensed under CC BY-SA
+4.0.
+Yamada et al.
+propose DreamAble [11],
+a framework that generates 3D avatars with
+upper limb differences from natural language
+descriptions. The authors justify this focus
+by observing that upper limb prosthetics are
+less standardized, more context-dependent,
+and less commonly used than lower limb pros-
+thetics.
+DreamAble allows users to specify
+not only their limb differences but also their
+appearance, clothing, and style. Instead of
+relying on image input or rigid-body parame-
+ters, it interprets textual descriptions of limb
+differences and adapts the 3D avatar accord-
+ingly. The method uses the SMPL-X model
+kinematic tree to remove the corresponding
+keypoints from an OpenPose representation
+of the skeleton, which is later used for skele-
+tal guidance for a diffusion model. The au-
+thors introduce a skeleton-aware loss func-
+tion that penalizes anatomical inconsisten-
+cies by comparing generated 3D avatar sil-
+houettes against the adapted skeleton struc-
+ture. Figure 3 illustrates results produced by
+DreamAble. Figure 3a shows the generated
+3D avatars in a canonical pose. Figures 3b
+and 3c provide close-up views, highlighting
+limb termination and cloth positioning de-
+tails, respectively.
+Both methods take meaningful steps to-
+ward more inclusive 3D avatar generation,
+but address the inclusive guidelines in dif-
+ferent ways. AJAHR focuses on anatomical
+accuracy, offering a technically precise recon-
+struction of limb differences through a mod-
+ified joint representation.
+However, it re-
+mains limited to reconstructing existing hu-
+man meshes and does not provide appear-
+ance customization. DreamAble allows users
+7
+
+(a) Full-body avatars in canonical pose.
+(b) Rendering of limb
+termination.
+(c) Adaptive handling of
+cloth around the limb.
+Figure 3: 3D avatars generated by Dream-
+Able [11].
+to describe their limb differences and appear-
+ance through natural language, but it is lim-
+ited to upper limb differences.
+A shared
+limitation of both approaches is the lack
+of continuous control over limb length, as
+they only support limb differences resembling
+joint-level amputations.
+These approaches
+also overlook user-centered validation and
+community engagement.
+Emerging Challenges and Op-
+portunities
+Advances in 3D modeling, animation, and
+AI are enabling developers to generate 3D
+avatars that are increasingly diverse and
+foster inclusive self-representation.
+Recent
+guidelines emphasize the importance of cus-
+tomizable 3D avatars that can accurately re-
+flect the physical characteristics of diverse
+users. In the following, we discuss emerging
+trends and outline key open problems that
+must be addressed in the field.
+• Clothing
+and
+appearance
+cus-
+tomization: For individuals with limb
+differences, realistic clothing simulation
+is essential, as garments must drape
+naturally over the limb. Customization
+should extend to prosthetics,
+letting
+users modify or design assistive devices
+and save different versions of the same
+avatar. AI-based 3D avatar generation
+approaches,
+especially
+text-prompt-
+based methods, represent a promising
+path to provide flexible and accessible
+customization.
+• Limitation
+in
+rigid
+parametric
+models: Since parametric body mod-
+els are built upon fixed skeletal joints
+and hierarchical connections, current AI-
+based systems [10, 11] are limited in rep-
+resenting limb differences that deviate
+from conventional joint-level structures.
+Addressing this limitation requires ei-
+ther moving away from rigid paramet-
+ric structures or extending them to han-
+dle variable limb configurations through
+editing mechanisms.
+• Editing and representing congeni-
+tal conditions: Current AI-based sys-
+tems are limited by their inability to
+8
+
+model the anatomical diversity of con-
+genital limb conditions that may occur
+at the ends of limbs.
+Modeling these
+complex variations requires the integra-
+tion of multiple specialized classifica-
+tion systems, such as the Oberg-Manske-
+Tonkin system for the upper limbs, dif-
+ferent types of macrodactyly, and ra-
+dial longitudinal deficiency. Future re-
+search could adopt a two-step method,
+where the first stage employs AI-based
+3D avatar generation to create a rough
+body model that captures limb differ-
+ences up to the anatomical level where
+the congenital variation occurs. The sec-
+ond stage would then refine the gran-
+ular details around the ends of the
+limbs through an editing tool similar to
+the CALA system [8]. This refinement
+process could be further automated by
+learning from diverse datasets of limb
+variations.
+• Challenges in motion capture and
+rigging:
+Creating adaptive skeletons
+and
+rigs
+that
+accommodate
+diverse
+anatomies while preserving realistic mo-
+tion remains challenging.
+Current mo-
+tion datasets, such as Motion-X [12],
+are designed for normative body types,
+revealing a gap in tools for animating
+non-normative bodies. In particular, for
+lower limb differences, directly applying
+motions from existing datasets can pro-
+duce uncanny results due to shifts in bal-
+ance caused by asymmetry.
+Address-
+ing this challenge will require integrating
+parameterized body models and motion
+retargeting methods that adapt to dif-
+ferences in limb length, joint structure,
+and mobility. Future research should de-
+velop motion datasets that specifically
+target people with limb differences. Be-
+yond applications in AI-based 3D avatar
+animation, such datasets could provide
+benchmarks for non-normative motion
+and facilitate the study of compensatory
+strategies.
+• Addressing visual data scarcity and
+diversity: Real-world datasets on limb
+differences remain limited and inconsis-
+tent, making it difficult to learn from few
+and unbalanced samples.
+Advances in
+the generation of data can help expand
+data diversity and enhance model gener-
+alization. For example, Cho et al. [10] in-
+troduce A3D, a synthetic dataset of var-
+ied amputee poses designed primarily for
+training image-based generative models,
+such as diffusion models, to create realis-
+tic images of non-normative bodies. Un-
+like motion datasets, which encode tem-
+poral dynamics and skeletal movements,
+datasets like A3D focus on visual repre-
+sentation, supporting tasks such as neu-
+ral rendering for 3D avatar generation
+and appearance editing.
+• Standardization, ethical guidelines,
+and user-centered validation: Cur-
+rent research on inclusive 3D avatar gen-
+eration lacks standardized protocols for
+evaluation, making comparisons across
+studies difficult.
+Most works rely on
+subjective assessments of visual quality
+9
+
+or anatomical plausibility, overlooking
+measures of inclusivity and representa-
+tion accuracy. To address this gap, re-
+search should incorporate feedback from
+users, particularly those with disabili-
+ties.
+This feedback can be achieved
+by establishing participatory design in
+AI-based frameworks, implementing us-
+ability testing protocols, and validating
+methods, while also adhering to guide-
+lines established in the literature.
+• Integration in XR and sports simu-
+lations: Incorporating 3D avatars that
+account for diverse anatomies into de-
+ployed XR experiences presents inten-
+sified versions of the challenges dis-
+cussed earlier.
+For instance, when de-
+veloping digital adapted sport games,
+prosthetic variability, motion adapta-
+tion, and scarcity of data representing
+diverse disabilities become even more
+pronounced. As upper limb prosthetics
+vary widely in form and function, mo-
+tion capture and animation should be
+adapted to each sport modality. Chal-
+lenges in training data also arise, as dif-
+fusion models struggle in sports where
+limbs are obscured by water or present
+motion blur. If any of these aspects are
+not properly addressed, the digital rep-
+resentation cannot accurately reflect the
+original event, undermining the goal of
+inclusivity.
+The scarcity of media on
+Paralympic athletes amplifies these dif-
+ficulties, exposing ethical considerations
+around privacy, consent, and fair repre-
+sentation.
+Conclusion
+Although current AI-based 3D avatar gen-
+eration approaches face considerable techni-
+cal and ethical challenges, ongoing innova-
+tions offer promising means to enable respect-
+ful and representative avatars.
+Recent ad-
+vances in the field permit users with joint-
+level or limb-specific variations to customize
+their 3D avatars to accurately reflect their
+physical characteristics. However, users who
+do not conform to normative body structures
+or have complex congenital conditions may
+encounter limitations due to rigid kinematic
+tree of parametric models.
+Future research should prioritize the de-
+velopment of adaptive editing tools that al-
+low users to customize their avatars to re-
+flect their preferences. Integrating principles
+of responsible AI development is also impor-
+tant to mitigate biases and prevent misrep-
+resentation.
+Participatory design involving
+users with disabilities is essential for validat-
+ing avatar systems and ensuring they meet
+diverse needs.
+Advancing this area requires close collabo-
+ration between technical development and an
+understanding of human experience. A cen-
+tral question that remains is whether existing
+AI-based 3D modeling workflows designed for
+normative bodies can be adapted to enable
+genuine individual customization, or whether
+entirely new paradigms must be developed to
+achieve true inclusivity.
+10
+
+Takeaway and Future Directions
+Recent advances in AI-based approaches
+show that inclusive 3D avatar design for peo-
+ple with limb differences is no longer a distant
+goal. The next priority for the community is
+to move beyond proof-of-concept systems and
+commit to delivering deployed XR applica-
+tions. As a first step to achieve this goal, re-
+searchers should develop methods that jointly
+address anatomical accuracy and expressive
+customization, while also establishing stan-
+dardized evaluation protocols that incorpo-
+rate user-centered validation. The next step
+is for developers of XR applications to ex-
+tend the animation and rigging pipelines to
+include non-normative anatomies.
+The fi-
+nal step is for XR platforms to take an ac-
+tive role in enhancing the visibility of in-
+dividuals with limb differences, particularly
+in adapted sports simulations, and to part-
+ner with Paralympic athletes and disabil-
+ity organizations. Table 1 summarizes how
+each group can adopt inclusive practices and
+guidelines.
+Acknowledgments
+This Project was conducted with the sup-
+port of the Industrial Technology Innovation
+Program (20023347 Development of Graph-
+based Intelligent Metaverse Engine for Im-
+mersive Content-sharing Service) funded by
+the Ministry of Trade, Industry & Energy of
+the Republic of Korea.
+References
+[1] T. Golando, “Nerf This!
+Navigating
+the Accessibility and Inclusivity of Video
+Games Through Expressive Arts Thera-
+pies: A Literature Review,” Expressive
+Therapies Capstone Theses, 2023.
+[2] J. Shell, “What Do We See: An Inves-
+tigation Into the representation of dis-
+ability in video games,” arXiv preprint
+arXiv:2103.17100, 2021.
+[3] R. Handley, B. Guerra, R. Goli, and
+D. Zytko, “Designing social VR: a col-
+lection of design choices across commer-
+cial and research applications,” arXiv
+preprint arXiv:2201.02253, 2022.
+[4] K.
+Zhang,
+E.
+G.
+S.
+Spencer
+Jr,
+A. Manikandan, A. Li, A. Li, Y. Yao,
+and Y. Zhao, “Inclusive avatar guide-
+lines for people with disabilities: Sup-
+porting disability representation in so-
+cial virtual reality,” in Proceedings of the
+2025 CHI Conference on Human Factors
+in Computing Systems, 2025, pp. 1–26.
+[5] J. Park and S. Kim, “How do people
+with physical disabilities want to con-
+struct virtual identities with avatars?”
+Frontiers in Psychology, vol. 13, pp. 1–
+13, 2022.
+[6] G. B. Domingos, A. L. Brand˜ao, A. G.
+Szykman, and J. P. Gois, “Production
+and post-production phases of the game
+scrum for the development of an adapted
+sports digital game,” in Proceedings of
+11
+
+the XV Brazilian Symposium on Games
+and Digital Entertainment, SBGAMES,
+vol. 17, 2017, pp. 782–788.
+[7] L.
+Stracke,
+S.
+Burbach,
+R.
+Jakob,
+R. Br¨uck, and T. J. Eiler, “Development
+of a Standalone VR Application for the
+Simulation of Lower Extremity Ampu-
+tations,” in International Conference on
+e-Health and Bioengineering.
+Springer,
+2023, pp. 426–433.
+[8] C.
+Prahm,
+K.
+Bauer,
+A.
+Sturma,
+L. Hruby, A. Pittermann, and O. Asz-
+mann, “3D body image perception and
+pain visualization tool for upper limb
+amputees,” in 2019 IEEE 7th Inter-
+national Conference on Serious Games
+and Applications for Health (SeGAH).
+IEEE, 2019, pp. 1–5.
+[9] G. Pavlakos, V. Choutas, N. Ghorbani,
+T. Bolkart, A. A. Osman, D. Tzionas,
+and M. J. Black, “Expressive body cap-
+ture:
+3D hands, face, and body from
+a single image,” in Proceedings of the
+IEEE/CVF Conference on Computer
+Vision and Pattern Recognition, 2019,
+pp. 10 975–10 985.
+[10] H. Cho, G. Choi, and J. Choi, “AJAHR:
+Amputated Joint Aware 3D Human
+Mesh Recovery,” in Proceedings of the
+IEEE/CVF International Conference on
+Computer Vision, 2025, pp. 7925–7935.
+[11] F. M. Yamada, J. P. Gois, and H. Taka-
+hashi, “A Framework for Text-Guided
+3D
+Avatar
+Generation
+with
+Upper
+Limb Differences,” in IEEE Interna-
+tional Conference on Artificial Intelli-
+gence and Extended Reality (AIxVR),
+2026.
+[12] J. Lin, A. Zeng, S. Lu, Y. Cai, R. Zhang,
+H. Wang, and L. Zhang, “Motion-X:
+A large-scale 3D expressive whole-body
+human motion dataset,” Advances in
+Neural Information Processing Systems,
+vol. 36, 2024.
+12
+
+Community
+Recommended Actions
+Researchers • Expand synthetic image datasets like A3D to broader disability profiles to address
+data scarcity
+• Extend or replace rigid 3D parametric body models to represent people with limb
+differences
+• Build motion capture datasets that feature people with limb differences for automatic
+rigging
+• Incorporate localized fine-grained modification of limbs for representing congenital
+conditions
+• Develop evaluation protocols that measure representation accuracy, not visual quality
+alone
+• Establish shared benchmarks for inclusive 3D avatar generation for comparison across
+methods
+• Embed participatory design with people with limb differences to ensure respectful
+representation
+Developers
+• Introduce AI-based 3D avatar generation to foster self-representation of people with
+limb differences
+• Build interfaces to edit limb differences in 3D avatars and save versions with or
+without prosthetics
+• Extend animation pipelines to account for variation in limb length and mobility range
+• Ensure clothing simulations handle natural draping for 3D avatars with limb differ-
+ences
+XR
+Plat-
+forms
+• Develop adapted sports games as both entertainment and awareness tools for general
+audiences
+• Partner with Paralympic athletes and disability organizations to ensure respectful
+representation
+• Collaborate with researchers to fund the production of motion capture data in
+adapted sports
+• Govern adapted sport content with policies on consent, privacy, and fair representa-
+tion
+• Treat incomplete self-representation as an accessibility failure, not a secondary com-
+pliance issue
+Table 1: Actions to support inclusive 3D avatar design across research, development, and
+XR platforms.
+13

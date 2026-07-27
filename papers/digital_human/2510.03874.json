@@ -1,0 +1,21 @@
+{
+  "arxiv_id": "2510.03874",
+  "title": "DHQA-4D: Perceptual Quality Assessment of Dynamic 4D Digital Human",
+  "authors": [
+    "Yunhao Li",
+    "Sijing Wu",
+    "Yucheng Zhu",
+    "Huiyu Duan",
+    "Zicheng Zhang",
+    "Guangtao Zhai"
+  ],
+  "abstract": "With the rapid development of 3D scanning and reconstruction technologies, dynamic digital human avatars based on 4D meshes have become increasingly popular. A high-precision dynamic digital human avatar can be applied to various fields such as game production, animation generation, and remote immersive communication. However, these 4D human avatar meshes are prone to being degraded by various types of noise during the processes of collection, compression, and transmission, thereby affecting the viewing experience of users. In light of this fact, quality assessment of dynamic 4D digital humans becomes increasingly important. In this paper, we first propose a large-scale dynamic digital human quality assessment dataset, DHQA-4D, which contains 32 high-quality real-scanned 4D human mesh sequences, 1920 distorted textured 4D human meshes degraded by 11 textured distortions, as well as their corresponding textured and non-textured mean opinion scores (MOSs). Equipped with DHQA-4D dataset, we analyze the influence of different types of distortion on human perception for textured dynamic 4D meshes and non-textured dynamic 4D meshes. Additionally, we propose DynaMesh-Rater, a novel large multimodal model (LMM) based approach that is able to assess both textured 4D meshes and non-textured 4D meshes. Concretely, DynaMesh-Rater elaborately extracts multi-dimensional features, including visual features from a projected 2D video, motion features from cropped video clips, and geometry features from the 4D human mesh to provide comprehensive quality-related information. Then we utilize a LMM model to integrate the multi-dimensional features and conduct a LoRA-based instruction tuning technique to teach the LMM model to predict the quality scores. Extensive experimental results on the DHQA-4D dataset demonstrate the superiority of our DynaMesh-Rater method over previous quality assessment methods.",
+  "published": "2025-10-04T16:51:08Z",
+  "categories": [
+    "cs.CV"
+  ],
+  "keyword": "digital_human",
+  "fetched_at": "2026-07-21T03:45:02Z",
+  "abs_url": "https://arxiv.org/abs/2510.03874",
+  "pdf_url": "https://arxiv.org/pdf/2510.03874"
+}

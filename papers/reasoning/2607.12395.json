@@ -1,0 +1,31 @@
+{
+  "arxiv_id": "2607.12395",
+  "title": "Ring-Zero: Scaling Zero RL to a Trillion Parameters for Emergent Reasoning",
+  "authors": [
+    "Xinyu Tang",
+    "Qianggang Cao",
+    "Yurou Liu",
+    "Yuliang Zhan",
+    "Xiaochong Lan",
+    "Yifan Li",
+    "Yuchen Yan",
+    "Han Peng",
+    "Zican Dong",
+    "Zhenduo Zhang",
+    "Tianshu Wang",
+    "Xinyu Kong",
+    "Zujie Wen",
+    "Wayne Xin Zhao",
+    "Zhiqiang Zhang",
+    "Jun Zhou"
+  ],
+  "abstract": "Reinforcement learning with verifiable rewards without human-annotated data, often referred to as zero RL, has emerged as a powerful paradigm for eliciting chain-of-thought reasoning. However, due to computational constraints, existing studies are largely restricted to small models, leaving the training dynamics and emergent capabilities at a large scale unexplored. To meaningfully explore this frontier, we aim to elicit high-quality reasoning behaviors from the model. However, we find that naive scaling often suffers from poor readability, token redundancy, and a lack of adaptive reasoning depth. To address these challenges, we present a stable and efficient training pipeline, incorporating algorithmic and system optimizations such as clipped importance sampling, training-inference ratio correction, and mixed-precision control. Our experiments offer three key findings that validate the \"bitter lesson\" of scaling: (1) scaling to 1T parameters significantly enhances sample efficiency and performance ceilings; (2) the training process progresses sequentially through an initial discovery phase followed by a sharpening phase; and (3) the model spontaneously develops advanced cognitive behaviors, including anthropomorphism, structured formatting, self-verification, parallel reasoning, and context anxiety, rendering hand-crafted heuristics redundant. Evaluated on seven mathematical benchmarks, Ring-2.5-1T-Zero achieves competitive performance. Additionally, to assess CoT quality beyond final-answer correctness, we propose a structured evaluation framework across three dimensions: comprehensibility, reproducibility, and efficiency, where our model demonstrates clear advantages in producing structured and concise reasoning traces. By sharing our observed emergent phenomena, we hope to provide the community with deeper insights into scaling behaviors, particularly at the 1-trillion scale.",
+  "published": "2026-07-14T06:14:55Z",
+  "categories": [
+    "cs.CL"
+  ],
+  "keyword": "reasoning",
+  "fetched_at": "2026-07-21T05:45:56Z",
+  "abs_url": "https://arxiv.org/abs/2607.12395",
+  "pdf_url": "https://arxiv.org/pdf/2607.12395"
+}

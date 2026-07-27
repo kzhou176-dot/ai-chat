@@ -1,0 +1,2355 @@
+Archon: A Unified Multimodal Model for Holistic Digital Human Generation
+Chong Bao1,2∗§
+Shichen Liu2*
+Lijun Yu3
+David Futschik2
+Stylianos Moschoglou2
+Shefali Srivastava2
+Ziqian Bai2
+Feitong Tan2
+Guofeng Zhang1
+Zhaopeng Cui1
+Sean Fanello2
+Yinda Zhang2†
+1State Key Lab of CAD&CG, Zhejiang University
+2Google
+3Google DeepMind
+Any Modality Editing
+Any-to-any Generation
+Vanilla
+{ “appearance”: {“gender
+”: “female”, .}, “action”: {“activity
+”: “speaking”, ..}, “environment”: 
+{“background”: “plain Maroon”, ..}}
+“to get things done. That's not what 
+we're seeing right now.”
+Input Modality
+Output Modalities
+“is your algorithm's uncanny ability to 
+specifically classify the human.”
+“just was at a standstill after a while. 
+There wasn't really much evidence.”
+/ˈst/
+/wa/
+/ˈwɒ/
+Original 
+Video
+Modality
+Editing
+Edited
+Video
+Unified Multimodal Model
+Description (text)
+Script (text)
+Speech (audio)
+Animation
+Semantic Video
+Image/Video
+Thinking in Modalities
+Thinking
+Figure 1. Archon. We propose a novel unified multimodal model that performs cross-modal generation among a wide range of modalities,
+including description, script, speech, animation, semantic video, image, and video. Furthermore, we introduce the concept of Thinking in
+Modality to reduce ambiguity during cross-modal transitions and enhance generation quality. Our model inherently supports conditional
+generation across arbitrary sets of modalities, enabling any modality editing throughout the entire multimodal input space.
+Abstract
+Digital humans are fundamental to immersive interac-
+tion, yet creating a unified model for holistic modalities,
+including text, audio, motion, and visual content, remains
+an open challenge.
+In this paper, we present Archon, a
+fully pretrained, human-centric unified multimodal model
+for holistic avatar generation. Archon unifies seven modal-
+ities with modality-specific tokenizers, and a native autore-
+gressive unified multimodal model pretrained on synchro-
+nized modalities and 72 diverse tasks to model holistic joint
+distributions. To address the token explosion challenge in
+high-fidelity talking videos, we introduce a memory-efficient
+semantic video reparameterization achieving 4× token re-
+duction while preserving fine-grained dynamics, coupled
+with a semantic-driven video diffusion decoder.
+We fur-
+ther propose a “Thinking in Modality” that decomposes
+*Authors contributed equally.
+†Corresponding authors.
+§The work was done during an internship at Google.
+ambiguous cross-modal tasks into stepwise thinking in an
+alternative chain of modality, progressively enhancing fi-
+delity and controllability.
+Extensive experiments demon-
+strate that Archon achieves superior or comparable perfor-
+mance across diverse digital human generation tasks, val-
+idating the effectiveness of our unified framework. Project
+page: https://zju3dv.github.io/archon/.
+1. Introduction
+Digital humans are central to modern human–computer in-
+teraction, virtual reality, and digital entertainment. To sup-
+port faithful representation, engaging communication, and
+flexible interaction, a unified model is required to seam-
+lessly integrate a rich set of perceptual modalities, including
+text, audio, motion, semantic and color, capable of process-
+ing and generating each signal on demand. Despite decades
+of progress, creating fine-grained controllable digital hu-
+mans that is able to process holistic multimodal signals re-
+mains a significant open challenge.
+1
+arXiv:2605.30311v1  [cs.CV]  28 May 2026
+
+Current approaches for digital human systems are largely
+built upon specialized expert models that target individual
+modalities or sub-tasks, such as speech-driven video gener-
+ation [8, 12, 35, 43, 51, 58, 65, 68] and image-conditioned
+text-to-speech [20, 25, 29, 59].
+While these approaches
+achieve impressive realism within their respective domains,
+they share fundamental limitations: fragmentation and in-
+efficiency. Training on distinct, modality-specific datasets
+introduces distribution mismatches, making the coordina-
+tion of different expert models as a unified system brittle
+for novel multimodal tasks. This fragmentation also leads
+to redundant capacity and limited scalability, as each expert
+model must independently learn task-specific knowledge
+that could otherwise be shared in a modality-driven uni-
+fied space. Crucially, the introduction of any new modality
+demands training a new model from scratch or non-trivial
+finetuning of a model designed for a different task. In con-
+trast, we advocate for a holistic, unified, any-to-any multi-
+modal generative framework that overcomes these issues by
+reusing shared representations and seamlessly adapting to
+novel tasks without requiring dedicated model pretraining.
+Existing unified multimodal models are not truly “holis-
+tic” in the context of digital humans. While current multi-
+modal language models (MLLM) [2, 4, 9, 32, 36, 44, 57]
+focus on understanding multimodal inputs, their outputs are
+confined to text. Conversely, contemporary unified gener-
+ative models can generate text, image or video but over-
+look the supports on audio [15, 55, 56, 63, 67], or gener-
+ate only non-speech audio such as music or environmental
+sounds [28, 55, 63]. Specifically for digital human, pars-
+ing human speech, animation (e.g., through 3D Morphable
+Model), and preserving identity across the temporal dimen-
+sion are barely studied in the domain of multimodal models.
+To address these challenges, we introduce Archon, a
+pretrained unified multimodal model designed for holistic
+digital human generation. Archon pushes general-purpose
+multimodal reasoning to domain-specific avatar synthesis,
+enabling holistic cross-modal generation and understand-
+ing across a comprehensive set of modalities, including de-
+scription, speech (transcript and audio), animation, seman-
+tic video, image, and video. First, we design a suite of
+modality-specific tokenizers that encode heterogeneous sig-
+nals from each modality into discrete integer tokens, which
+are subsequently merged into a unified vocabulary. These
+tokenizers are crafted to balance reconstruction fidelity with
+token-sequence efficiency, facilitating compact yet expres-
+sive representations across modalities.
+Second, we pro-
+pose a native unified multimodal model that models the
+joint distribution of holistic modalities in a autoregressive
+framework. To support large-scale pretraining, we curate
+a comprehensive multimodal dataset comprising synchro-
+nized modality pairs and 72 diverse multimodal tasks, en-
+abling the model to learn rich cross-modal correspondences.
+Third, human-centric talking videos inherently involve
+high-frequency dynamics, such as lip motion, facial expres-
+sions, and head poses, which demand high frame rates (e.g.,
+30 fps). However, a 5-second 30 fps video at 256×256 res-
+olution amounts to 9K tokens [61], exceeding the context
+window of MLLMs (8K tokens) [3]. Moreover, MLLM’s
+reasoning on discrete tokens disrupts the continuous nature
+of video signals, thereby degrading generation quality. To
+overcome this, we introduce a memory-efficient video dis-
+cretization tailored for cross-modal reasoning, coupled with
+a semantic-driven video diffusion decoder for high-fidelity
+video synthesis. Specifically, we replace RGB videos with
+semantic videos, which consist of discrete semantic labels
+and preserve essential dynamics and structure while dis-
+carding redundant visual information, achieving a 4× reduc-
+tion in token count. Subsequently, a video diffusion model
+conditioned on semantic video, reference images, and tex-
+tual descriptions generates high-quality videos.
+Fourth, certain cross-modal generation tasks suffer from
+substantial domain gaps and inherent ambiguities. For in-
+stance, generating video from speech necessitates both ex-
+tracting explicit information (e.g., gender) and synthesizing
+missing details (e.g., appearance, expression), which chal-
+lenges the scaling-to-quality rule of expert models. Lever-
+aging the flexibility of our unified model in holistic cross-
+modal reasoning, we introduce a “Thinking in Modality”
+strategy during inference. This approach decomposes com-
+plex cross-modal tasks into stepwise thinking in an alterna-
+tive chain of modality generation, progressively enhancing
+fidelity and controllability in cross-modal synthesis.
+Our contributions can be summarized as:
+• We introduce Archon, a fully pretrained, human-centric
+unified multimodal model with holistic avatar synthesis
+via a native MLLM pretrained on synchronized modali-
+ties and 72 tasks to model holistic joint distributions.
+• We propose a memory-efficient video discretization and a
+semantic-driven diffusion decoder for efficient and high-
+quality generation, and a “Thinking in Modality” infer-
+ence strategy to enhance fidelity and controllability.
+• Extensive experiments demonstrate superior or compara-
+ble performance with expert models across holistic digi-
+tal human generation tasks, validating the effectiveness of
+our unified framework.
+2. Related Works
+Digital human generation. Research on digital humans
+has evolved from modality-specific modeling towards in-
+creasingly unified representations. Early studies focused on
+specialized tasks, such as facial modeling and reconstruc-
+tion from images [13, 19], talking heads generation and lip
+synchronization from audio [8, 12, 51, 52, 65], personalized
+speech generation from identity [29], and similar isolated
+tasks. While these expert systems achieved high fidelity
+2
+
+Multimodal Tokenization
+Description
+Script
+Speech
+Animation
+Image
+Semantic
+Video
+Image 
+Tokenizer
+Semantic Video 
+Tokenizer
+3DMM
+Tokenizer
+Audio 
+Tokenizer
+Text 
+Tokenizer
+Multimodal Detokenization
+{
+   'Input': {
+ 
+ 
+‘<state 1> <modality 1>’:
+ 
+ 
+[<modality 1 tokens>],
+ 
+ 
+‘<state 2> <modality 2>’:
+ 
+ 
+[<modality 2 tokens>],
+ 
+ 
+...
+},  
+'Output':‘<state> <modality>',
+}
+Structured Prompt Design
+Language Model
+Multimodal Reasoning
+Description
+Script
+Speech
+Animation
+Image
+Semantic
+Video
+Image
+Tokenizer
+Semantic Video 
+Tokenizer
+3DMM
+Tokenizer
+Audio 
+Tokenizer
+Text 
+Tokenizer
+Spatial Self Attention
+Spatial Cross Attention
+…
+Video Diffusion 
+Model 
+Video
+Noisy
+Latent
+Semantic 
+Latent
+Temporal Self Attention
+Spatial Cross Attention
+Figure 2. Pipeline. We use modality tokenizers to tokenize description, script, speech, animation, image and semantic video into discrete
+tokens. These tokens are arranged in a structured format and input to the language model for multimodal reasoning. The synthesized
+tokens are detokenized into raw modalities. For synthesizing high-quality video, we employ a semantic-driven video diffusion model to
+synthesize high-quality video conditioned on image and semantic segmentations.
+within their domains, they typically rely on task-specific
+model architecture, limiting cross-modal generalization. To
+overcome these constraints, more recent efforts aim to cou-
+ple multiple tasks or modalities into unified human-centric
+frameworks.
+Human foundation models such as Sapi-
+ens [26] and OmniHuman [31] move toward large-scale
+representations pretraining that jointly capture pose, geom-
+etry, and semantic understanding, while promptHMR [50]
+introduces language-guided controllability in mesh recov-
+ery. Despite advances, most existing systems still treat in-
+puts or outputs as modality-specific, rather than learning
+a truly unified interface across modalities. Consequently,
+these systems struggle with any-to-any modality translation.
+Multimodal language models.
+In parallel, multimodal
+models [15, 28, 55, 63] demonstrate that diverse data types
+can be represented within a unified transformer backbone.
+Models such as Flamingo [2], PaLM-E [16], and Kos-
+mos [36] extend language models with multimodal context,
+improving cross-modal reasoning and conditional genera-
+tion. The development of modality-specific discrete tok-
+enizers [38, 60–62] further enables unified sequence mod-
+eling across text, audio, video, and other signals.
+This
+paradigm is explored by AudioLM [6], SpeechGPT [64],
+VideoPoet [28], and large unified architectures such as
+Gemini [44], showing that a single transformer can per-
+form both perception and generation through a shared to-
+ken space. Building on these insights, we extends unified
+multimodal model into the domain of avatar.
+3. Method
+We propose a unified multimodal model for holistic dig-
+ital human generation and understanding.
+As shown in
+Fig. 2, our model consists of four core modules: (1) a set
+of modality-specific tokenizers (Sec. 3.1), (2) a language
+model backbone for cross-modal reasoning (Sec. 3.2), (3) a
+semantic-driven diffusion model for high-quality video gen-
+eration (Sec. 3.3), (4) “Thinking in Modality” strategy for
+high quality and controllability generation (Sec. 3.4).
+3.1. Multimodal Tokenization
+As shown in Fig. 2, we model a comprehensive coverage
+of modalities in the digital human, which are description,
+script, speech, animation, semantic video, image and video.
+In the following paragraphs, we introduce the tokenization
+process of each modality. The details of the model architec-
+tures and training strategies are in supplementary Sec. D.
+Image tokenizer.
+We employ the pretrained MAGVIT-
+v2 [61] model for image tokenization, selected for its supe-
+rior visual fidelity and compression capabilities. MAGVIT-
+v2 [61] is a 3D convolution-based VQGAN [18] that uti-
+lizes a lookup-free vocabulary with a codebook size of 218.
+We leverage this model to quantize images of 256 × 256
+resolution into a discrete 16 × 16 token representation.
+Semantic video as context-efficient video tokenizer. Di-
+rectly adopting existing video tokenizers [61] is impracti-
+cal in multimodal model, as their token output often ex-
+ceeds the context window capacity of language models.
+As a case in point, a 32GB-HBM TPUv6 can accommo-
+date a context window of approximately 8K tokens. How-
+ever, encoding a five-second, 256×256 video (30 fps) pro-
+duces 9K tokens [61]. Furthermore, the sheer magnitude
+of video tokens introduces a severe modality imbalance. A
+five-second audio clip, for instance, generates only 940 to-
+kens, representing a small fraction of the video token count.
+This discrepancy leads to a training bias, as video tokens
+3
+
+overwhelmingly dominate the dataset. Naïve token reduc-
+tion via higher-compression tokenizers is infeasible, as this
+necessitates retraining a new tokenizer with an intractably
+large vocabulary (exceeding 218) and network bottleneck,
+which in turn significantly increases the language model’s
+modality learning complexity.
+Inspired by semantic-to-video generation works [33], we
+introduce a novel, memory-efficient discretization strategy
+that decomposes the video into a reference image and a
+semantic video. The reference image is typically the first
+video frame.
+The semantic video comprises 21 discrete
+semantic categories (e.g., eyelid, eyebrow, nose) obtained
+from an off-the-shelf face segmentation model [34]. The
+semantic video retains crucial structural and motion infor-
+mation while discarding texture, significantly reducing the
+information density but preserving the pixel-domain nature
+of the video. The discrete nature of the semantic labels in-
+duces a smooth distribution along the spatial dimension and
+aligns naturally with the autoregressive reasoning paradigm
+of large language models, which allows a low-resolution
+semantic video to effectively represent a high-resolution
+video. A video diffusion model is subsequently used to up-
+sample and generate a high-quality video conditioned on the
+semantic video and reference image (detailed in Sec. 3.3).
+Specifically, we learn a semantic video tokenizer to com-
+press a L×128×128 semantic video into ( L−1
+4 +1)×8×8
+tokens, where L is the number of frames.
+We finetune
+MAGVIT-v2 [61] to reuse its powerful pretrained encoders.
+An invertible color embedding is defined to map each se-
+mantic label to a distinct RGB color, allowing the seman-
+tic video to be processed as a standard color video.
+To
+align with the reduced complexity of this representation, the
+codebook size of our semantic tokenizer is set to 210.
+Speech tokenizer. We use a pretrained SoundStream to-
+kenizer [62] for speech tokenization.
+SoundStream [62]
+employs a residual vector quantizer (RVQ) that encodes
+16 kHz audio into discrete tokens at 25 frames per second
+across 8 residual levels. Following the VideoPoet [28], we
+retain only the first 4 RVQ levels for efficiency and stability.
+Each of these residual levels has an independent vocabulary
+of 1,024 codes. The final token sequence is constructed by
+arranging tokens from lower to higher levels, preserving the
+hierarchical structure of the residual quantization.
+Animation tokenizer.
+We utilize 3D Morphable Model
+(3DMM) parameters [30] to parameterize the animation of
+digital humans. The 3DMM have three components: shape,
+expression, and pose. The shape parameters capture the
+subject’s static geometry and appearance, remaining invari-
+ant throughout the video clip, and are represented by an esh-
+dimensional vector. In contrast, the expression and pose pa-
+rameters evolve temporally and are modeled as continuous
+1D temporal signals, with respective dimensions of L×eexp
+and L × epose. We independently learn three Residual Vec-
+tor Quantized VAE (VQVAE) models [46] for shape, ex-
+pression and pose. Each employs causal convolution to dis-
+cretize parameters. The resulting codebooks are configured
+as follows: shape (8 levels, 512 codes per level), expres-
+sion (8 levels, 2048 codes per level), and pose (6 levels, 512
+codes per level). Consistent with the speech tokens, the fi-
+nal RVQ token sequence is constructed by arranging tokens
+from lower to higher residual levels.
+Text tokenizer. To preserve the inherent text generation
+capabilities of our language model, we retain its original
+tokenizer, the T5 encoder [39], for all text processing tasks.
+3.2. Language Model for Multimodal Generation
+We employ an auto-regressive language model that supports
+flexible generation by conditioning on prompts contextual-
+ized with task and modality-specific token cues.
+Task definition.
+Different from typical multimodal set-
+tings that focus on only a few generation tasks, the input
+and output of the holistic digital human generation prob-
+lem can be arbitrary modality sets.
+We categorize the
+modalities of interest into time-dependent ones Dvar =
+{dscr, dspc, dexp, dsem, dvid}, including script, speech, se-
+mantic masks, and video; and time-invariant ones Dinv =
+{dimg, ddsc, dshp}, including image, description, and shape.
+We define the full modality set as
+D = { dt | d ∈Dt
+var, t ∈{0, 1} } ∪Dinv,
+(1)
+where d0, d1 denote the modality in the past and present
+tense respectively. Given input modalities Dcond ⊂D as
+conditions, the goal of a generation task is to generate a sub-
+set of the remaining modalities T : Dcond →Dgen, where
+Dgen = { dj | dj /∈Dcond }. Existing works [28, 49] em-
+ploy a special task token to instruct the task type. However,
+as the number of modalities increases, the possible combi-
+nations of input and output causes combinatorial explosion,
+making it increasingly difficult for the model to handle all
+tasks within a unified framework. To address this challenge,
+we reformulate the auto-regressive generation process al-
+lowing an arbitrary combination as
+Tj :
+(
+Dcond →d1,
+j = 1,
+Dcond ∪{d1, . . . , dj−1} →dj,
+j > 1.
+(2)
+This recurrent formulation makes explicit that, at each step
+j, the model generates one modality dj conditioned on the
+input modalities along with all previously generated ones.
+Consequently, rather than training the model to generate all
+modalities jointly, we train it to predict one modality at a
+time. This reduction preserves the expressive power of the
+original formulation while substantially simplifying the task
+space. For clarity, we henceforth define sequential genera-
+tion order from d1 to d|Dgen| as Dcond →[d1, . . . , d|Dgen|].
+Prompt design. To instruct the model of input and desired
+output, the input prompt, which is a series of tokens, must
+4
+
+contain necessary task information. Existing language mod-
+els [3, 9, 11, 21] are good at parsing and understanding the
+structured inputs, e.g., HTML, JSON, etc. Rather than em-
+ploying special tokens to denote modalities or tasks, we or-
+ganize the prompt as a structured data serialization filled
+with natural language descriptors. These descriptors serve
+as keys that explicitly delineate the modality type, state, in-
+put, and expected output, as illustrated in Fig. 2. This design
+has two advantages: (1) it mitigates the burden of the model
+that heavily relies on a sparse set of special tokens; (2) it
+provides clearer semantic grounding that can leverage the
+knowledge in the pretrained language model.
+Language model backbone. We adopt PaLM2 [3], a pre-
+fix decoder-only model with bidirectional prefix attention.
+The model processes an input sequence of tokens and au-
+toregressively predicts the subsequent token from a unified
+vocabulary. This vocabulary partitions different modalities
+into distinct contiguous index ranges; for instance, text to-
+kens occupy indices 0–256127, while video tokens are as-
+signed to 256128–518272. Each token is associated with its
+own learnable embedding vector.
+Multimodal training strategy. To equip our model with
+the ability to map across arbitrary modality sets, we con-
+duct training across 72 diverse multimodal tasks and enable
+compositional inference (see supplementary Sec. C.3 for
+details). Following the AGD training paradigm [1], we em-
+ploy a context window of 8K tokens, dynamically populated
+at each training step by sampling from our task distribu-
+tion. However, a naïve random sampling approach, select-
+ing one task per step, is susceptible to three forms of train-
+ing bias: (1) Model bias, where gradients backpropagate
+towards a sub-optimal direction for a single-modality task
+rather than the global gradient for multiple modality tasks.
+(2) Distributional bias, where random sampling over an un-
+even task distribution causes the model to under-prioritize
+modalities with fewer tasks. (3) Difficulty variance, where
+tasks of greater difficulty intrinsically require more learning
+effort. To overcome these challenges, we first sample mul-
+tiple tasks at each step, ensuring the model learns the joint
+distribution of multiple modalities. Second, we propose a
+novel sampling strategy to balance the multimodal training,
+factoring in both the task count per modality and the task
+difficulty. The sampling weight S(i) for the i-th task is de-
+fined as: S(i) = log(pi)
+Nm(i) where pi is the perplexity of the i-th
+task, and Nm(i) is the total number of tasks with the output
+modality being m(i). The perplexity pi measures task dif-
+ficulty and estimated using a baseline model trained with
+uniform sampling weights. This strategy balances model
+capacity to learn joint distribution across all tasks.
+3.3. Semantic-driven Video Diffusion Model
+While the language model leverages discrete semantic
+videos as a memory-efficient alternative to continuous RGB
+Input
+Output 
+(chain 1)
+Output 
+(chain 2)
+Ground
+Truth
+Figure 3. Thinking in Modality. We show the results of speech-
+to-video generation with different thinking strategies. The videos
+generated from chain 2 contain less distortion (e.g., blurry appear-
+ance and undefined textual symbols) and exhibit closer identity
+alignment with the ground truth.
+videos for cross-modal reasoning, we introduce a semantic-
+driven video diffusion model that decodes these semantic
+videos into high-fidelity outputs, guided by a reference im-
+age and textual description.
+Semantic and appearance conditioning.
+We employ
+WALT [23], a transformer-based latent diffusion model
+originally designed for text-to-video generation, as our
+video diffusion backbone. We modify its architecture to ac-
+cept low-resolution reference images, semantic masks, and
+textual descriptions as inputs for high-quality video gener-
+ation. To provide strong motion guidance, we concatenate
+the encoded semantic mask latents with the noisy video la-
+tents along the feature dimension before feeding them into
+the diffusion model. We utilize a cross-attention module
+to condition the reference image. To enhance the corre-
+spondence between video latents and the reference image,
+we extract the semantic mask of the reference image and
+concatenate its encoded semantic latent with the reference
+image latent along the feature dimension, analogous to our
+semantic signal conditioning.
+This composite feature is
+then concatenated with text embeddings to perform cross-
+attention with the video latent. In this way, semantics serves
+as a structural bridge, facilitating the effective transmission
+of the reference appearance into the generated video.
+Diffusion training.
+We fine-tune the entire WALT [23]
+backbone to adapt it for our semantic-driven video gener-
+ation task. The input reference images and semantic masks
+are processed at 256 × 256 resolution, while the output
+videos are synthesized at 512 × 512 resolution. The model
+employs a v-prediction parameterization [40] and is opti-
+mized using Mean Squared Error (MSE) loss between the
+predicted and target velocities.
+3.4. Thinking in Modality
+While our model supports direct generation between modal-
+ities, we observe that different modality transitions exhibit
+varying levels of uncertainty. For instance, generating video
+directly from speech typically shows higher perplexity than
+5
+
+{ “appearance”: {“age”: “young adult”, ..}, “action”: 
+{“expression”: “open mouth”, ..}, “environment”: 
+{“context”: “indoor”, ..}}
+“If you like watching it, you can buy a new ticket”
+(a) Output Modalities
+(a) Input Modalities 
+{ “appearance”: {“gender”: “male”, ..}, “action”: 
+{“activity ”: “speaking”, ..}, .”environment”: 
+{“background”: “black”}.}
+“blunt, I did not know what was going to work, 
+then”
+(b) Input  Modality
+(b) Output Modalities
+{ “appearance”: {“body_build”: “slim”, ..}, “action”: 
+{“blink_frequency”: “medium”, ..}, “environment”: 
+{“time_of_day”: “unknown”, ..}}
+“that if you are a new fan to Watchmen, that you 
+can be a new fan.”
+(c) Input  Modality
+(c) Output Modalities
+{ “appearance”: {“hair_color”: “grey”, ..}, “action”: 
+{“head_action: “mostly_centered”, ..}, 
+“environment”: {“context”: “indoor”, ..}}
+“This week, our nation mourns the loss of 
+100,000 Americans to the coronavirus..”
+(d) Input  Modality
+(d) Output Modalities
+Figure 4. Multimodal Generation. We show holistic modality generation and understanding given an arbitrary modality as input.
+from 3DMM shape and expression, as shown in Fig. 3, in-
+dicating that the latter offers a more controllable and inter-
+pretable pathway. Motivated by this, we introduce thinking
+in modality — an inference strategy that explores alternative
+generative chains by instructing the model to produce inter-
+mediate modalities that form a smooth transition in seman-
+tic granularity, thereby reducing uncertainty and improving
+output quality. This approach requires no retraining and
+simply exploits the model’s ability to condition on multiple
+modalities in a unified framework.
+4. Experiments
+4.1. Experiment Setup
+Models. We fine-tune a pretrained 1B PaLM2 [3] featuring
+a 550K vocabulary to equip the model with the language
+priors. The vocabulary size of language model is 550K for
+multimodal tokens. We employed the Adam optimizer [27]
+with a weight decay of 10−3 and a 4,000-step learning rate
+warmup from 0 to 10−3, followed by a cosine decay sched-
+ule to 5 × 10−5. We use 256 TPUv6 Trillium to train the
+language model for 20 days with a batch size of 256. For
+the diffusion model, we employ Adafactor optimizer [41]
+and a 6,000-step linear warmup from 0 to 1.2 × 10−4 fol-
+lowed by a constant schedule. We use 128 TPUv6 to train
+the diffusion model for 10 days with batch size 128.
+Datasets. We train our model on a comprehensive mul-
+timodal dataset with 6,000 hours of monologue videos
+sourced from the public Internet.
+Each video contains
+speech and script synchronized to the video [10]. We cap-
+tion the video with Gemini 2.5 Pro [11], fit the 3DMM pa-
+rameters following [53], and extract the face segmentation
+using our trained segmentation models with a DinoV2 back-
+bone [34]. We evaluate our method on two standard bench-
+marks: CelebV-HQ [69] and HDTF [66] that are disjoint
+from our training dataset. From each, we randomly sample
+a test set of 200 videos following previous work [8, 12], and
+extract the script from the speech using Whisper [37].
+4.2. Multimodal Generation and Editing
+Multimodal generation. We demonstrate our model’s any-
+to-any generation capabilities in Fig. 4. First, we showcase
+text-to-all generation. Given a description of a person’s ap-
+pearance, action, and environment, optionally augmented
+with a script, our model sequentially generates all corre-
+sponding modalities: script, speech, 3DMM, segmentation,
+and the talking video. As shown in Fig. 4(a), our model
+generates realistic talking videos of a woman, with speech
+and visuals that precisely adhere to the input attributes. Sec-
+ond, for speech-to-all generation, our model infers the per-
+son’s appearance (as a description) and script from the in-
+put speech, subsequently using these to generate the talk-
+ing video, 3DMM, and segmentation.
+As illustrated in
+Fig. 4(b), the model correctly interprets the person’s gender
+from the audio and generates a video that is temporally syn-
+chronized with the input speech. Third, our model supports
+more fine-grained control using 3DMM or segmentation as
+inputs. When conditioned on these signals, it convincingly
+generates high-fidelity videos with responsive head motion
+and accurate expressions that match the input, as shown in
+Fig. 4(c). Finally, our model exhibits a strong capacity for
+understanding high-level modalities from low-level video,
+semantic, and 3DMM inputs. As shown in Fig. 4(d), our
+model extract a description of the person’s appearance, ac-
+tion, and environment; read the script directly from lip mo-
+tion (lip-reading); synthesize a semantically-coherent voice
+for the input signals; reconstruct the 3DMM coefficients
+and semantic segmentations from the input video. Please
+see supplementary Sec. E.1 for more examples.
+Modality-specific editing. We demonstrate the modality-
+specific editing capability of our model in Fig. 5. Firstly, we
+showcase script editing in Fig. 5(a). Our model synthesizes
+new speech following the edited script in the original voice
+6
+
+Original 
+Video
+Modality
+Editing
+Edited
+Video
+(a) Speech editing with reference 
+appearance and voice 
+“Sandra Bullock is giving back in a big way 
+with help of her eight-year-old daughter.”
+“Just a girl standing in front of a boy.
+/ˈs/
+/dɪŋ/
+/ˈbɔ/
+“gender: female” 
+“gender: male” (change voice 
+according to appearance) 
+(b) Appearance and voice editing 
+from text prompt
+(c) Motion editing for face 
+reenactment
+“age_group: adult, ethnicity: 
+African American
+“age_group: teenage , ethnicity: 
+African American”
+Figure 5. Modality-specific Editing. We show flexible any modality editing to modify an arbitrarily chosen modality while maintain the
+others untouched. The icons on the top show the modalities used in the example, and the highlighted icons are the ones that are edited.
+and new video with synchronized lip motion and animation
+while maintain the identity. Secondly, our model can seam-
+lessly change the appearance of the subject via text prompt.
+As shown in Fig. 5(b), changing the gender or appearance
+attributes in the text description synthesizes a new talking
+video, retaining all other original aspects. The speech is op-
+tionally modified to match the new appearance while still
+following the original script. Finally, we perform face reen-
+actment by editing the head motion using a reference video,
+as shown in Fig. 5(c). Our model generates high-quality
+videos with animation aligned with the reference, even un-
+der extreme head poses.
+4.3. Comparisons on Modality-Specific Tasks
+Although our model is built for broad multimodal genera-
+tion, we investigate its performance on canonical modality-
+specific benchmarks to assess the unified architecture’s ca-
+pability in handling individual tasks. Note that our multi-
+modal model is not trained on the benchmark dataset and is
+used straightforward on these tasks without any finetuning.
+Baselines. We conduct a comparative analysis against state-
+of-the-art across two tasks: (1) Audio-driven video gen-
+eration: We compare our model against AniPortrait [52],
+Echomimic [8], and Hallo3 [8]. (2) Image-conditioned text-
+to-speech: We compare our model against FaceTTS [29].
+Metrics.
+We employ a suite of metrics targeting video
+quality, lip synchronization, and audio fidelity. We mea-
+sure the perceptual distributional distance between gener-
+ated and ground truth videos using Fréchet Inception Dis-
+tance (FID) [24] and Fréchet Video Distance (FVD) [45],
+and assess video quality using Q-Align VLM (IQA) [54].
+We quantify lip-sync accuracy using the confidence (Sync-
+C) and distance (Sync-D) scores from the pre-trained Sync-
+Methods
+CelebV-HQ [69]
+FID↓
+FVD↓
+Sync-C↑
+Sync-D↓
+IQA↑
+AniPortrait∗[52]
+39.73
+160.7
+3.493
+10.982
+3.833
+EchoMimic∗[8]
+56.81
+236.9
+4.463
+9.575
+3.601
+Hallo3 [12]
+15.67
+105.5
+5.429
+9.158
+3.722
+Ours
+6.818
+93.81
+5.210
+8.998
+3.794
+Methods
+HDTF [66]
+FID↓
+FVD↓
+Sync-C↑
+Sync-D↓
+IQA↑
+AniPortrait [52]
+42.03
+162.8
+2.879
+10.889
+3.813
+EchoMimic∗[8]
+45.90
+241.6
+5.467
+9.36
+3.743
+Hallo3∗[12]
+12.78
+96.51
+6.376
+9.131
+3.83
+Ours
+5.779
+81.64
+6.198
+8.822
+3.94
+Table 1. Comparisons on speech-driven video generation. We
+compare video generation quality and lip synchronization against
+baselines. “∗” denotes methods trained on the benchmark dataset.
+Methods
+CelebV-HQ [69]
+HDTF [66]
+MCD-DTW↓C-SIM↑Id. Acc.↑MCD-DTW↓C-SIM↑Id. Acc.↑
+FaceTTS
+7.9383
+0.9048
+0.6032
+7.8128
+0.8844
+0.5715
+Ours
+8.918
+0.9117
+0.6223
+8.9822
+0.9002
+0.5911
+Table 2.
+Comparisons on image-conditioned text-to-speech.
+We compare speech quality and voice-identity coherence against
+the FaceTTS [29].
+Net model [10]. For audio fidelity, we use Mel Cepstral
+Distortion with Dynamic Time Warping (MCD-DTW) [5]
+to measure the audio quality, and cosine similarity (C-
+SIM) [42, 48] to measure the voice identity coherence.
+Speech-driven video generation. We provide quantitative
+comparisons in Tab. 1. Our model surpasses all baselines on
+FID and FVD, indicating superior video quality and align-
+ment with the ground truth. Moreover, our model yields
+lip synchronization and IQA scores that are comparable to
+established strong baselines, including Echomimic [8] and
+Hallo3 [12] that are specifically trained on the benchmark
+7
+
+/aɪ/
+/ﬂɔː/
+/ˈsɛː/
+/rɛ/
+/'dɪ/
+Ground Truth
+Ours
+Hallo3
+EchoMimic
+AniPortrait
+/jɑː/
+/sɪ/
+/e/
+/ˈɔː/
+/d͡ʒi/
+Reference Image
+Reference Image
+Figure 6. Comparison on the Speech-driven Video Generation. We qualitatively compare the video quality and video-audio synchro-
+nization against AniPortrait [52], Echomimic [8], Hallo3 [12].
+datasets. This notable performance highlights the excep-
+tional quality of our lip synchronization and overall realism.
+We further provide qualitative comparisons in Fig. 6. No-
+tably, given an image of a woman with closed eyes (Fig. 6
+left), our method and Echomimic successfully synthesize
+the woman opening her eyes and speaking, whereas AniPor-
+trait [52] and Hallo3 fail to achieve this. We also observe
+that Hallo3 tends to synthesize exaggerated expressions on
+accented notes (Fig. 1 right). While this boosts Syn-C score,
+the resulting expressions often appear unnatural. In con-
+trast, our method not only synthesizes a high-quality video
+with a consistent identity, but also generates realistic lip mo-
+tions highly synchronized to the accompanying speech.
+Image-conditioned speech generation.
+Quantitative re-
+sults are detailed in Tab. 2. Our model achieves superior
+performance on C-SIM and Identity Accuracy across both
+datasets, confirming better identity coherence and stronger
+semantic matching between the reference image and the
+generated audio identity. This enhanced identity-to-audio
+mapping is a direct result of our multimodal training strat-
+egy.
+However, we observe a slightly lower MCD-DTW
+score, primarily because our model adopts a lightweight,
+general-purpose detokenizer, while FaceTTS [29] employs
+a heavier audio diffusion model tailored to this task.
+4.4. Ablation Studies
+Unified vs. modality-specific modeling. To examine the
+capacity efficiency of unified multimodal modeling, we
+compare our model against a baseline composed of mul-
+tiple expert models, with each producing a single modality
+trained with identical data, architecture, and training set-
+tings. The total parameter count across all experts is set
+to match that of our unified model. As shown in Tab. 3,
+the unified model outperforms the ensemble of experts
+Methods
+CelebV-HQ [69]
+FID↓
+FVD↓
+Sync-C↑
+Sync-D↓
+IQA↑
+w/o Unified Model
+7.279
+170
+3.209
+10.143
+3.695
+w/o Thinking
+13.76
+128.1
+3.088
+10.209
+3.593
+Full Model
+6.818
+93.81
+5.210
+8.998
+3.794
+Methods
+HDTF [66]
+FID↓
+FVD↓
+Sync-C↑
+Sync-D↓
+IQA↑
+w/o Unified Model
+6.353
+199.5
+3.991
+9.97
+3.892
+w/o Thinking
+13.43
+110.3
+4.478
+9.597
+3.809
+Full Model
+5.779
+81.64
+6.198
+8.822
+3.94
+Table 3. Ablation on Design Choices. We show ablation studies
+of different designs on speech-driven video generation task.
+across all metrics. This indicates that jointly learning across
+modalities within a shared architecture yields stronger rep-
+resentations than training isolated experts models.
+Effect of thinking-in-modality.
+We perform quantita-
+tive and qualitative ablations on our modality thinking
+strategy.
+As shown in Tab. 3, we compare two vari-
+ants for speech-driven video generation.
+W/o Thinking
+directly generates {dsph, dimg}
+→
+[dvid], whereas Full
+Model utilizes the full chain of generation: {dsph, dimg} →
+[dshp, dexp, dsem, ddsc, dvid].
+Our Full Model surpasses the
+baseline on all metrics, demonstrating that incorporating
+3DMM and description as intermediate representations sta-
+bilizes video quality and audio synchronization.
+5. Conclusion
+We present Archon, a unified multimodal model for holistic
+digital human generation. Archon supports any-modality-
+to-any generation,
+understanding,
+and editing across
+description, script, speech, animation, semantic video, im-
+age, and video. Archon is a step toward truly unified digital
+human modeling, where diverse modalities coexist and
+interact coherently within a single generative framework.
+Please refer to supplementary Sec. B for more discussions.
+8
+
+References
+[1] Hassan Akbari, Dan Kondratyuk, Yin Cui, Rachel Hornung,
+Huisheng Wang, and Hartwig Adam.
+Alternating gradi-
+ent descent and mixture-of-experts for integrated multimodal
+perception. Advances in Neural Information Processing Sys-
+tems, 36:79142–79154, 2023. 5
+[2] Jean-Baptiste Alayrac, Jeff Donahue, Pauline Luc, Antoine
+Miech, Iain Barr, Yana Hasson, Karel Lenc, Arthur Men-
+sch, Katherine Millican, Malcolm Reynolds, et al. Flamingo:
+a visual language model for few-shot learning.
+Advances
+in neural information processing systems, 35:23716–23736,
+2022. 2, 3
+[3] Rohan Anil, Andrew M Dai, Orhan Firat, Melvin John-
+son, Dmitry Lepikhin, Alexandre Passos, Siamak Shakeri,
+Emanuel Taropa, Paige Bailey, Zhifeng Chen, et al. Palm 2
+technical report. arXiv preprint arXiv:2305.10403, 2023. 2,
+5, 6
+[4] Shuai Bai, Yuxuan Cai, Ruizhe Chen, Keqin Chen, Xionghui
+Chen, Zesen Cheng, Lianghao Deng, Wei Ding, Chang Gao,
+Chunjiang Ge, Wenbin Ge, Zhifang Guo, Qidong Huang,
+Jie Huang, Fei Huang, Binyuan Hui, Shutong Jiang, Zhao-
+hai Li, Mingsheng Li, Mei Li, Kaixin Li, Zicheng Lin, Jun-
+yang Lin, Xuejing Liu, Jiawei Liu, Chenglong Liu, Yang Liu,
+Dayiheng Liu, Shixuan Liu, Dunjie Lu, Ruilin Luo, Chenxu
+Lv, Rui Men, Lingchen Meng, Xuancheng Ren, Xingzhang
+Ren, Sibo Song, Yuchong Sun, Jun Tang, Jianhong Tu, Jian-
+qiang Wan, Peng Wang, Pengfei Wang, Qiuyue Wang, Yux-
+uan Wang, Tianbao Xie, Yiheng Xu, Haiyang Xu, Jin Xu,
+Zhibo Yang, Mingkun Yang, Jianxin Yang, An Yang, Bowen
+Yu, Fei Zhang, Hang Zhang, Xi Zhang, Bo Zheng, Humen
+Zhong, Jingren Zhou, Fan Zhou, Jing Zhou, Yuanzhi Zhu,
+and Ke Zhu.
+Qwen3-vl technical report.
+arXiv preprint
+arXiv:2511.21631, 2025. 2
+[5] Eric Battenberg, RJ Skerry-Ryan, Soroosh Mariooryad,
+Daisy Stanton, David Kao, Matt Shannon, and Tom Bagby.
+Location-relative attention mechanisms for robust long-form
+speech synthesis.
+In ICASSP 2020-2020 IEEE Interna-
+tional Conference on Acoustics, Speech and Signal Process-
+ing (ICASSP), pages 6194–6198. IEEE, 2020. 7
+[6] Zalán Borsos, Raphaël Marinier, Damien Vincent, Eugene
+Kharitonov, Olivier Pietquin, Matt Sharifi, Dominik Roblek,
+Olivier Teboul, David Grangier, Marco Tagliasacchi, et al.
+Audiolm: a language modeling approach to audio genera-
+tion.
+IEEE/ACM transactions on audio, speech, and lan-
+guage processing, 31:2523–2533, 2023. 3
+[7] Jianlv Chen, Shitao Xiao, Peitian Zhang, Kun Luo, Defu
+Lian,
+and Zheng Liu.
+Bge m3-embedding:
+Multi-
+lingual, multi-functionality, multi-granularity text embed-
+dings through self-knowledge distillation, 2023. 19
+[8] Zhiyuan Chen, Jiajiong Cao, Zhiquan Chen, Yuming Li, and
+Chenguang Ma. Echomimic: Lifelike audio-driven portrait
+animations through editable landmark conditions. In Pro-
+ceedings of the AAAI Conference on Artificial Intelligence,
+pages 2403–2410, 2025. 2, 6, 7, 8
+[9] Aakanksha Chowdhery, Sharan Narang, Jacob Devlin,
+Maarten Bosma, Gaurav Mishra, Adam Roberts, Paul
+Barham, Hyung Won Chung, Charles Sutton, Sebastian
+Gehrmann, et al.
+Palm: Scaling language modeling with
+pathways. Journal of Machine Learning Research, 24(240):
+1–113, 2023. 2, 5
+[10] Joon Son Chung and Andrew Zisserman. Out of time: auto-
+mated lip sync in the wild. In Asian conference on computer
+vision, pages 251–263. Springer, 2016. 6, 7
+[11] Gheorghe Comanici, Eric Bieber, Mike Schaekermann, Ice
+Pasupat, Noveen Sachdeva, Inderjit Dhillon, Marcel Blis-
+tein, Ori Ram, Dan Zhang, Evan Rosen, et al. Gemini 2.5:
+Pushing the frontier with advanced reasoning, multimodality,
+long context, and next generation agentic capabilities. arXiv
+preprint arXiv:2507.06261, 2025. 5, 6, 15
+[12] Jiahao Cui, Hui Li, Yun Zhan, Hanlin Shang, Kaihui Cheng,
+Yuqi Ma, Shan Mu, Hang Zhou, Jingdong Wang, and Siyu
+Zhu. Hallo3: Highly dynamic and realistic portrait image an-
+imation with diffusion transformer networks. arXiv e-prints,
+pages arXiv–2412, 2024. 2, 6, 7, 8
+[13] Radek Danˇeˇcek, Michael J Black, and Timo Bolkart. Emoca:
+Emotion driven monocular face capture and animation. In
+Proceedings of the IEEE/CVF Conference on Computer Vi-
+sion and Pattern Recognition, pages 20311–20322, 2022. 2,
+17
+[14] Google
+Deepmind.
+Gemini
+3.
+https://deepmind.google/models/gemini/, 2025. 19
+[15] Chaorui Deng, Deyao Zhu, Kunchang Li, Chenhui Gou,
+Feng Li, Zeyu Wang, Shu Zhong, Weihao Yu, Xiaonan Nie,
+Ziang Song, et al. Emerging properties in unified multimodal
+pretraining. arXiv preprint arXiv:2505.14683, 2025. 2, 3
+[16] Danny Driess, Fei Xia, Mehdi SM Sajjadi, Corey Lynch,
+Aakanksha
+Chowdhery,
+Brian
+Ichter,
+Ayzaan
+Wahid,
+Jonathan Tompson, Quan Vuong, Tianhe Yu, et al. Palm-
+e: An embodied multimodal language model. arXiv preprint
+arXiv:2303.03378, 2023. 3
+[17] Bernhard Egger, William AP Smith, Ayush Tewari, Stefanie
+Wuhrer, Michael Zollhoefer, Thabo Beeler, Florian Bernard,
+Timo Bolkart, Adam Kortylewski, Sami Romdhani, et al.
+3d morphable face models—past, present, and future. ACM
+Transactions on Graphics (ToG), 39(5):1–38, 2020. 17
+[18] Patrick Esser, Robin Rombach, and Bjorn Ommer. Taming
+transformers for high-resolution image synthesis.
+In Pro-
+ceedings of the IEEE/CVF conference on computer vision
+and pattern recognition, pages 12873–12883, 2021. 3, 13
+[19] Yao Feng, Haiwen Feng, Michael J Black, and Timo Bolkart.
+Learning an animatable detailed 3d face model from in-the-
+wild images. ACM Transactions on Graphics (ToG), 40(4):
+1–13, 2021. 2
+[20] Shunsuke Goto,
+Kotaro Onishi,
+Yuki Saito,
+Kentaro
+Tachibana, and Koichiro Mori. Face2speech: Towards multi-
+speaker text-to-speech synthesis using an embedding vector
+predicted from a face image. In Interspeech, pages 1321–
+1325, 2020. 2
+[21] Aaron Grattafiori, Abhimanyu Dubey, Abhinav Jauhri, Ab-
+hinav Pandey, Abhishek Kadian, Ahmad Al-Dahle, Aiesha
+Letman, Akhil Mathur, Alan Schelten, Alex Vaughan,
+9
+
+et al.
+The llama 3 herd of models.
+arXiv preprint
+arXiv:2407.21783, 2024. 5
+[22] Robert Gray. Vector quantization. IEEE Assp Magazine, 1
+(2):4–29, 1984. 14
+[23] Agrim Gupta, Lijun Yu, Kihyuk Sohn, Xiuye Gu, Meera
+Hahn, Fei-Fei Li, Irfan Essa, Lu Jiang, and José Lezama.
+Photorealistic video generation with diffusion models.
+In
+European Conference on Computer Vision, pages 393–411.
+Springer, 2024. 5
+[24] Martin Heusel, Hubert Ramsauer, Thomas Unterthiner,
+Bernhard Nessler, and Sepp Hochreiter. Gans trained by a
+two time-scale update rule converge to a local nash equilib-
+rium. Advances in neural information processing systems,
+30, 2017. 7
+[25] Minki Kang, Wooseok Han, and Eunho Yang.
+Face-
+stylespeech: Improved face-to-voice latent mapping for nat-
+ural zero-shot speech synthesis from a face image. arXiv
+preprint arXiv:2311.05844, 2023. 2
+[26] Rawal Khirodkar, Timur Bagautdinov, Julieta Martinez, Su
+Zhaoen, Austin James, Peter Selednik, Stuart Anderson, and
+Shunsuke Saito. Sapiens: Foundation for human vision mod-
+els.
+In European Conference on Computer Vision, pages
+206–228. Springer, 2024. 3
+[27] Diederik Kinga, Jimmy Ba Adam, et al.
+A method for
+stochastic optimization.
+In International conference on
+learning representations (ICLR). California;, 2015. 6
+[28] Dan Kondratyuk, Lijun Yu, Xiuye Gu, José Lezama,
+Jonathan Huang, Grant Schindler, Rachel Hornung, Vigh-
+nesh Birodkar, Jimmy Yan, Ming-Chang Chiu, et al.
+Videopoet: A large language model for zero-shot video gen-
+eration. arXiv preprint arXiv:2312.14125, 2023. 2, 3, 4
+[29] Jiyoung Lee, Joon Son Chung, and Soo-Whan Chung. Imag-
+inary voice: Face-styled diffusion model for text-to-speech.
+In ICASSP 2023-2023 IEEE International Conference on
+Acoustics, Speech and Signal Processing (ICASSP), pages
+1–5. IEEE, 2023. 2, 7, 8
+[30] Tianye Li, Timo Bolkart, Michael J Black, Hao Li, and Javier
+Romero. Learning a model of facial shape and expression
+from 4d scans. ACM Trans. Graph., 36(6):194–1, 2017. 4
+[31] Gaojie Lin, Jianwen Jiang, Jiaqi Yang, Zerong Zheng, Chao
+Liang, Yuan Zhang, and Jingtuo Liu. Omnihuman-1: Re-
+thinking the scaling-up of one-stage conditioned human an-
+imation models. In Proceedings of the IEEE/CVF Interna-
+tional Conference on Computer Vision, pages 13847–13858,
+2025. 3
+[32] Haoyu Lu, Wen Liu, Bo Zhang, Bingxuan Wang, Kai
+Dong, Bo Liu, Jingxiang Sun, Tongzheng Ren, Zhuoshu Li,
+Hao Yang, et al. Deepseek-vl: towards real-world vision-
+language understanding. arXiv preprint arXiv:2403.05525,
+2024. 2
+[33] Arun Mallya, Ting-Chun Wang, Karan Sapra, and Ming-Yu
+Liu. World-consistent video-to-video synthesis. In European
+Conference on Computer Vision, pages 359–378. Springer,
+2020. 4
+[34] Maxime Oquab, Timothée Darcet, Théo Moutakanni, Huy
+Vo, Marc Szafraniec, Vasil Khalidov, Pierre Fernandez,
+Daniel Haziza, Francisco Massa, Alaaeldin El-Nouby, et al.
+Dinov2: Learning robust visual features without supervision.
+arXiv preprint arXiv:2304.07193, 2023. 4, 6, 17
+[35] Youxin Pang, Yong Zhang, Weize Quan, Yanbo Fan, Xi-
+aodong Cun, Ying Shan, and Dong-ming Yan. Dpe: Dis-
+entanglement of pose and expression for general video por-
+trait editing. In Proceedings of the IEEE/CVF Conference on
+Computer Vision and Pattern Recognition, pages 427–436,
+2023. 2
+[36] Zhiliang Peng, Wenhui Wang, Li Dong, Yaru Hao, Shaohan
+Huang, Shuming Ma, and Furu Wei. Kosmos-2: Ground-
+ing multimodal large language models to the world. arXiv
+preprint arXiv:2306.14824, 2023. 2, 3
+[37] Alec Radford, Jong Wook Kim, Tao Xu, Greg Brockman,
+Christine McLeavey, and Ilya Sutskever.
+Robust speech
+recognition via large-scale weak supervision.
+In Interna-
+tional conference on machine learning, pages 28492–28518.
+PMLR, 2023. 6, 17
+[38] Colin Raffel, Noam Shazeer, Adam Roberts, Katherine Lee,
+Sharan Narang, Michael Matena, Yanqi Zhou, Wei Li, and
+Peter J. Liu. Exploring the limits of transfer learning with a
+unified text-to-text transformer. Journal of Machine Learn-
+ing Research, 21(140):1–67, 2020. 3
+[39] Colin Raffel, Noam Shazeer, Adam Roberts, Katherine Lee,
+Sharan Narang, Michael Matena, Yanqi Zhou, Wei Li, and
+Peter J Liu. Exploring the limits of transfer learning with a
+unified text-to-text transformer. Journal of machine learning
+research, 21(140):1–67, 2020. 4
+[40] Tim Salimans and Jonathan Ho.
+Progressive distillation
+for fast sampling of diffusion models.
+arXiv preprint
+arXiv:2202.00512, 2022. 5
+[41] Noam Shazeer and Mitchell Stern.
+Adafactor: Adaptive
+learning rates with sublinear memory cost. In International
+Conference on Machine Learning, pages 4596–4604. PMLR,
+2018. 6
+[42] David Snyder, Daniel Garcia-Romero, Gregory Sell, Daniel
+Povey, and Sanjeev Khudanpur. X-vectors: Robust dnn em-
+beddings for speaker recognition.
+In 2018 IEEE interna-
+tional conference on acoustics, speech and signal processing
+(ICASSP), pages 5329–5333. IEEE, 2018. 7
+[43] Shuai Tan, Bill Gong, Bin Ji, and Ye Pan. Fixtalk: Taming
+identity leakage for high-quality talking head generation in
+extreme cases. arXiv preprint arXiv:2507.01390, 2025. 2
+[44] Gemini Team, Rohan Anil, Sebastian Borgeaud, Jean-
+Baptiste Alayrac, Jiahui Yu, Radu Soricut, Johan Schalkwyk,
+Andrew M Dai, Anja Hauth, Katie Millican, et al. Gemini: a
+family of highly capable multimodal models. arXiv preprint
+arXiv:2312.11805, 2023. 2, 3
+[45] Thomas Unterthiner, Sjoerd Van Steenkiste, Karol Kurach,
+Raphael Marinier, Marcin Michalski, and Sylvain Gelly. To-
+wards accurate generative models of video: A new metric &
+challenges. arXiv preprint arXiv:1812.01717, 2018. 7
+[46] Aaron Van Den Oord, Oriol Vinyals, et al. Neural discrete
+representation learning. Advances in neural information pro-
+cessing systems, 30, 2017. 4
+[47] Aaron Van Den Oord, Oriol Vinyals, et al. Neural discrete
+representation learning. Advances in neural information pro-
+cessing systems, 30, 2017. 14, 17
+10
+
+[48] Li Wan, Quan Wang, Alan Papir, and Ignacio Lopez Moreno.
+Generalized end-to-end loss for speaker verification. In 2018
+IEEE International Conference on Acoustics, Speech and
+Signal Processing (ICASSP), pages 4879–4883. IEEE, 2018.
+7
+[49] Wenhai Wang, Zhe Chen, Xiaokang Chen, Jiannan Wu,
+Xizhou Zhu, Gang Zeng, Ping Luo, Tong Lu, Jie Zhou, Yu
+Qiao, et al. Visionllm: Large language model is also an open-
+ended decoder for vision-centric tasks. Advances in Neural
+Information Processing Systems, 36:61501–61513, 2023. 4
+[50] Yufu Wang, Yu Sun, Priyanka Patel, Kostas Daniilidis,
+Michael J Black, and Muhammed Kocabas.
+Prompthmr:
+Promptable human mesh recovery.
+In Proceedings of the
+Computer Vision and Pattern Recognition Conference, pages
+1148–1159, 2025. 3
+[51] Cong Wei, Bo Sun, Haoyu Ma, Ji Hou, Felix Juefei-Xu,
+Zecheng He, Xiaoliang Dai, Luxin Zhang, Kunpeng Li,
+Tingbo Hou, et al. Mocha: Towards movie-grade talking
+character synthesis. arXiv preprint arXiv:2503.23307, 2025.
+2
+[52] Huawei Wei, Zejun Yang, and Zhisheng Wang. Aniportrait:
+Audio-driven synthesis of photorealistic portrait animation.
+arXiv preprint arXiv:2403.17694, 2024. 2, 7, 8
+[53] Erroll Wood, Tadas Baltrušaitis, Charlie Hewitt, Sebastian
+Dziadzio, Thomas J Cashman, and Jamie Shotton. Fake it
+till you make it: face analysis in the wild using synthetic
+data alone. In Proceedings of the IEEE/CVF international
+conference on computer vision, pages 3681–3691, 2021. 6
+[54] Haoning Wu, Zicheng Zhang, Weixia Zhang, Chaofeng
+Chen, Liang Liao, Chunyi Li, Yixuan Gao, Annan Wang,
+Erli Zhang, Wenxiu Sun, et al. Q-align: Teaching lmms for
+visual scoring via discrete text-defined levels. arXiv preprint
+arXiv:2312.17090, 2023. 7
+[55] Shengqiong Wu, Hao Fei, Leigang Qu, Wei Ji, and Tat-Seng
+Chua. Next-gpt: Any-to-any multimodal llm. In Forty-first
+International Conference on Machine Learning, 2024. 2, 3,
+18, 19
+[56] Jinheng Xie, Zhenheng Yang, and Mike Zheng Shou. Show-
+o2: Improved native unified multimodal models.
+arXiv
+preprint arXiv:2506.15564, 2025. 2, 18
+[57] Jin Xu, Zhifang Guo, Hangrui Hu, Yunfei Chu, Xiong Wang,
+Jinzheng He, Yuxuan Wang, Xian Shi, Ting He, Xinfa Zhu,
+Yuanjun Lv, Yongqi Wang, Dake Guo, He Wang, Linhan
+Ma, Pei Zhang, Xinyu Zhang, Hongkun Hao, Zishan Guo,
+Baosong Yang, Bin Zhang, Ziyang Ma, Xipin Wei, Shuai
+Bai, Keqin Chen, Xuejing Liu, Peng Wang, Mingkun Yang,
+Dayiheng Liu, Xingzhang Ren, Bo Zheng, Rui Men, Fan
+Zhou, Bowen Yu, Jianxin Yang, Le Yu, Jingren Zhou, and
+Junyang Lin. Qwen3-omni technical report. arXiv preprint
+arXiv:2509.17765, 2025. 2, 18
+[58] Sicheng Xu, Guojun Chen, Yu-Xiao Guo, Jiaolong Yang,
+Chong Li, Zhenyu Zang, Yizhong Zhang, Xin Tong, and
+Baining Guo.
+Vasa-1: Lifelike audio-driven talking faces
+generated in real time. Advances in Neural Information Pro-
+cessing Systems, 37:660–684, 2024. 2
+[59] Jiaxin Ye, Boyuan Cao, and Hongming Shan.
+Emotional
+face-to-speech. arXiv preprint arXiv:2502.01046, 2025. 2
+[60] Lijun Yu, Yong Cheng, Kihyuk Sohn, José Lezama, Han
+Zhang, Huiwen Chang, Alexander G Hauptmann, Ming-
+Hsuan Yang, Yuan Hao, Irfan Essa, et al.
+Magvit:
+Masked generative video transformer.
+In Proceedings of
+the IEEE/CVF Conference on Computer Vision and Pattern
+Recognition, pages 10459–10469, 2023. 3
+[61] Lijun Yu, José Lezama, Nitesh Bharadwaj Gundavarapu,
+Luca Versari, Kihyuk Sohn, David Minnen, Yong Cheng,
+Agrim Gupta, Xiuye Gu, Alexander G Hauptmann, et al.
+Language model beats diffusion-tokenizer is key to visual
+generation. In ICLR, 2024. 2, 3, 4, 12
+[62] Neil Zeghidour, Alejandro Luebs, Ahmed Omran, Jan
+Skoglund, and Marco Tagliasacchi. Soundstream: An end-
+to-end neural audio codec. IEEE/ACM Transactions on Au-
+dio, Speech, and Language Processing, 30:495–507, 2021.
+3, 4, 17
+[63] Jun Zhan, Junqi Dai, Jiasheng Ye, Yunhua Zhou, Dong
+Zhang, Zhigeng Liu, Xin Zhang, Ruibin Yuan, Ge Zhang,
+Linyang Li, et al. Anygpt: Unified multimodal llm with dis-
+crete sequence modeling. In Proceedings of the 62nd An-
+nual Meeting of the Association for Computational Linguis-
+tics (Volume 1: Long Papers), pages 9637–9662, 2024. 2,
+3
+[64] Dong Zhang, Shimin Li, Xin Zhang, Jun Zhan, Pengyu
+Wang, Yaqian Zhou, and Xipeng Qiu. Speechgpt: Empow-
+ering large language models with intrinsic cross-modal con-
+versational abilities. In The 2023 Conference on Empirical
+Methods in Natural Language Processing, 2023. 3
+[65] Wenxuan Zhang, Xiaodong Cun, Xuan Wang, Yong Zhang,
+Xi Shen, Yu Guo, Ying Shan, and Fei Wang.
+Sadtalker:
+Learning realistic 3d motion coefficients for stylized audio-
+driven single image talking face animation. In Proceedings
+of the IEEE/CVF conference on computer vision and pattern
+recognition, pages 8652–8661, 2023. 2
+[66] Zhimeng Zhang, Lincheng Li, Yu Ding, and Changjie
+Fan.
+Flow-guided one-shot talking face generation with
+a high-resolution audio-visual dataset.
+In Proceedings of
+the IEEE/CVF conference on computer vision and pattern
+recognition, pages 3661–3670, 2021. 6, 7, 8, 17, 19
+[67] Chunting Zhou, Lili Yu, Arun Babu, Kushal Tirumala,
+Michihiro Yasunaga, Leonid Shamis, Jacob Kahn, Xuezhe
+Ma, Luke Zettlemoyer, and Omer Levy. Transfusion: Pre-
+dict the next token and diffuse images with one multi-modal
+model. arXiv preprint arXiv:2408.11039, 2024. 2
+[68] Hang Zhou, Yasheng Sun, Wayne Wu, Chen Change Loy,
+Xiaogang Wang, and Ziwei Liu. Pose-controllable talking
+face generation by implicitly modularized audio-visual rep-
+resentation. In Proceedings of the IEEE/CVF conference on
+computer vision and pattern recognition, pages 4176–4186,
+2021. 2
+[69] Hao Zhu, Wayne Wu, Wentao Zhu, Liming Jiang, Siwei
+Tang, Li Zhang, Ziwei Liu, and Chen Change Loy. Celebv-
+hq: A large-scale video facial attributes dataset. In European
+conference on computer vision, pages 650–667. Springer,
+2022. 6, 7, 8, 17
+11
+
+Supplementary Material
+This supplementary material provides additional imple-
+mentation details, experimental results and a brief discus-
+sion on ethics. In Sec. A, we claim that our work adheres to
+ethical guidelines. In Sec. C, we elaborate on the architec-
+tural designs and training protocols for our semantic and an-
+imation tokenizers, followed by the detailed specifications
+of our multimodal task formulation. Sec. D describes the
+data acquisition and preprocessing pipelines employed for
+each modality, including description, script, speech, anima-
+tion, semantic video and video. Finally, Sec. E presents
+extended qualitative results showcasing multimodal gener-
+ation and editing capabilities, alongside further quantita-
+tive ablation studies on the semantic-guided video diffusion
+model.
+A. Ethical Considerations
+We acknowledge the dual-use nature of high-fidelity avatar
+generation. While promising for telepresence and content
+creation, this technology carries risks. We strictly condemn
+the misuse of our work for harassment or misinformation
+and emphasize that this research is intended solely for aca-
+demic purposes. We utilize data in strict adherence to their
+licenses. We are fully committed to the Ethics Guidelines,
+advocating for safeguards like invisible watermarking and
+continuous bias monitoring to ensure responsible deploy-
+ment.
+B. Discussion
+Archon employs semantic video as a memory-efficient in-
+termediate representation to compress redundant visual in-
+formation from RGB frames for cross-modal reasoning.
+To reconstruct high-quality video output, a semantic-driven
+diffusion model decodes the semantic sequence under the
+conditioning of a textual description. This design enables
+the synthesis of vivid, fine-grained facial dynamics, such as
+frowning and forehead wrinkles, that are not explicitly en-
+coded in the semantic masks, as illustrated in the left exam-
+ples of Fig. G, while also supporting rich, film-grade emo-
+tional expression as shown on the right. Moving forward,
+the semantic representation could be substituted with more
+detailed, memory-efficient alternatives to capture subtler vi-
+sual cues. Furthermore, the expressiveness and diversity of
+avatars may be enhanced by fine-tuning the model on high-
+quality cinematic datasets. Additionally, while Archon cur-
+rently generates single-speaker talking videos, multi-turn
+dialogues, where only one person appears per frame and
+different persons speak one-by-one, could be realized by
+integrating an external agent system that parses conversa-
+tion turns and iteratively queries the model with alternating
+speaker identities for each turn. Generating multiple per-
+sons within the same frame simultaneously, however, would
+require fine-tuning on dedicated multi-person datasets.
+C. Implementation Details
+C.1. Semantic Video Tokenizer
+Model Architecture. Our semantic tokenizer is built upon
+a 3D convolutional encoder-decoder architecture, designed
+to map a semantic video to discrete latent codes. The archi-
+tecture is fully convolutional, consisting of an encoder, a de-
+coder, and look-up free quantizer. We initialize our model’s
+weights from a pre-trained MAGVIT-v2 [61] checkpoint
+and introduce a key architectural modification to achieve
+a higher spatial compression rate suitable for semantic tok-
+enization. Specifically, we add an additional downsampling
+operation at the beginning of the encoder. This is imple-
+mented as a 3D convolution with a spatial stride of 2, which
+immediately halves the spatial resolution (H × W) of the
+input video. Correspondingly, a final upsampling block is
+added at the end of the decoder to restore the original reso-
+lution. This modification doubles the spatial downsampling
+factor of the feature maps before they are quantized, leading
+to a more compressed grid of semantic tokens. The detailed
+architectures of the encoder and decoder are presented in
+Table D and Table E, respectively.
+The encoder processes an input video tensor of shape
+T × H × W × Cin. It begins with a 3 × 3 × 3 3D con-
+volution with a stride of (1, 2, 2), halving the spatial dimen-
+sions (H, W) from the outset. This is followed by a series of
+downsampling stages. Each stage consists of multiple resid-
+ual blocks (ResBlocks) followed by a downsampling layer,
+which is a strided 3D convolution that reduces spatial reso-
+lution and, in some stages, temporal resolution. The number
+of feature channels is progressively increased through the
+encoder. The final stage consists of additional ResBlocks
+and a 1 × 1 × 1 convolution to project the features into the
+desired embedding dimension, Demb, before quantization.
+The decoder is architecturally symmetric to the encoder.
+It takes the quantized latent tensor of shape T ′ ×H′ ×W ′ ×
+Demb and reconstructs the video to its original dimensions.
+It begins with a 3×3×3 convolution and several ResBlocks.
+Subsequently, a series of upsampling stages, each compris-
+ing multiple ResBlocks and an upsampling layer, progres-
+12
+
+Avatar generation
+Script-driven animation based on reference image
+Reference Image
+Movie-level Ref. Image
+Figure G. Micro-expression and rich motion generation. Qualitative results are presented for video generation from textual inputs and
+script-driven image animation.
+Layer
+Kernel / Stride
+Output Shape
+Output Channels
+Input
+-
+T × H × W
+Cin
+Conv3D (Strided)
+(3, 3, 3) / (1, 2, 2)
+T × H
+2 × W
+2
+F
+For i = 0 to Nblocks −1: (Downsampling Stage i)
+Nres× ResBlock
+(3, 3, 3) / (1, 1, 1)
+Ti × Hi × Wi
+F · Mi
+Downsample Conv3D
+(4, 4, 4) / (St,i, 2, 2)
+Ti+1 × Hi+1 × Wi+1
+F · Mi+1
+Nres× ResBlock
+(3, 3, 3) / (1, 1, 1)
+T ′ × H′ × W ′
+F · Mlast
+Group Norm + SiLU
+-
+T ′ × H′ × W ′
+F · Mlast
+Conv3D (to Embedding)
+(1, 1, 1) / (1, 1, 1)
+T ′ × H′ × W ′
+Demb
+Table D. The architecture of our 3D CNN Encoder. The input video has dimensions T × H × W × Cin. F is the base number of filters,
+Mi are the channel multipliers for each block, Nres is the number of residual blocks per stage, and St,i is the temporal stride for the i-th
+downsampling layer.
+Layer
+Kernel / Stride
+Output Shape
+Output Channels
+Input (Quantized Latent)
+-
+T ′ × H′ × W ′
+Demb
+Conv3D
+(3, 3, 3) / (1, 1, 1)
+T ′ × H′ × W ′
+F · Mlast
+Nres× ResBlock
+(3, 3, 3) / (1, 1, 1)
+T ′ × H′ × W ′
+F · Mlast
+For i = Nblocks −2 down to 0: (Upsampling Stage i)
+Nres× ResBlock
+(3, 3, 3) / (1, 1, 1)
+Ti+1 × Hi+1 × Wi+1
+F · Mi+1
+Upsample + Conv3D
+(3, 3, 3) / (1, 1, 1)
+Ti × Hi × Wi
+F · Mi
+Group Norm + SiLU
+-
+T × H
+2 × W
+2
+F
+Upsample + Conv3D
+(3, 3, 3) / (1, 1, 1)
+T × H × W
+F
+Conv3D (to Output)
+(3, 3, 3) / (1, 1, 1)
+T × H × W
+Cout
+Table E. The architecture of our 3D CNN Decoder. The input is the latent tensor of shape T ′ × H′ × W ′ × Demb.
+sively increase the spatial and temporal resolution while de-
+creasing the number of channels. Upsampling is performed
+using nearest-neighbor interpolation followed by a 3×3×3
+convolution. To mirror the encoder’s design, the final layer
+of the decoder is an upsampling block that doubles the spa-
+tial resolution, followed by a final convolution to produce
+the output video with Cout channels.
+Training. The model is trained as a VQ-GAN [18], fine-
+tuning from the aforementioned MAGVIT-v2 checkpoint.
+The training was conducted on 4 TPU v4 platform and took
+140 hours to complete. We train on clips at a 128 × 128
+13
+
+spatial resolution, with a batch size of 8. The training objec-
+tive is a composite loss function designed to produce high-
+fidelity reconstructions that also align with ground-truth se-
+mantic segmentation maps. The overall loss function L is
+defined as:
+L = Lrecon + λadvLadv + Lcommit + λsegLseg
+(3)
+where the components are as follows: Lrecon is L2 recon-
+struction loss between the original semantic video x and
+the reconstructed semantic video ˆx. Ladv is the adversarial
+loss from a patch-based temporal discriminator that encour-
+ages perceptual realism. We set the adversarial loss weight
+λadv to 0.3. Lcommit is the commitment loss from the vec-
+tor quantization layer, which regularizes the latent embed-
+ding space. Lseg is a pixel-wise cross-entropy loss between
+the reconstructed output and the ground-truth segmentation
+map. The logits for this loss are derived from the negative
+squared L2 distance between the generated pixel colors and
+a predefined 21-class color palette, sharpened by a temper-
+ature τ = 10. This loss component is crucial for learning
+a semantic representation, and we set its weight λseg to 3.0.
+The model is trained end-to-end using the Adam optimizer
+with a cosine learning rate schedule and a warm-up phase.
+C.2. 3DMM Tokenizer
+We develop three distinct tokenizers for identity, expres-
+sion, and pose respectively, which are fundamental com-
+ponents of a 3D facial parametric model. Each tokenizer is
+an autoencoder trained using a vector quantization objective
+(VQ-VAE [47]). While they operate on different input fea-
+tures, they share the same underlying network architecture.
+Below, we detail this architecture and the training procedure
+for each tokenizer.
+Model Architecture. Our animation tokenizer is a fully
+convolutional autoencoder that operates on 1D temporal se-
+quences of animation parameters. The architecture consists
+of an encoder, a decoder, and a Residual Vector Quantizer
+(RVQ) [22]. The encoder maps the input sequence to a com-
+pressed latent representation, which is then quantized by the
+RVQ. The decoder reconstructs the original sequence from
+the quantized latents. The encoder and decoder are symmet-
+ric and built upon a series of 1D convolutional layers and
+residual blocks (ResBlocks). The specific configuration is
+detailed in Table F. The architecture is consistent across all
+three tokenizers, with the only variation being the input and
+output feature dimensions.
+Training.
+The three tokenizers for identity, expression,
+and pose are trained independently on their respective data
+streams. First, each set of animation parameters (expres-
+sion, identity, and pose) is normalized independently. We
+compute the mean and standard deviation for each param-
+eter dimension across the entire training dataset. Then, for
+each sample, we subtract the mean and divide by the stan-
+dard deviation. This standardizes the distribution of each
+parameter, which is essential for stable training of the subse-
+quent quantization model. Second, the training objective is
+to minimize the reconstruction error, regularized by the vec-
+tor quantization loss. The total loss function is a weighted
+sum of an L2 reconstruction loss and a VQ commitment
+loss, as defined in the original VQ-VAE work. All mod-
+els are trained using the AdamW optimizer with a cosine
+learning rate schedule, including a warm-up phase over the
+first 0.5% of training steps. The base learning rate is set to
+4×10−4. The training is performed using 128 TPU v2. The
+specific hyperparameters for each tokenizer are detailed be-
+low:
+• Identity Tokenizer: Trained for 200k steps with a global
+batch size of 1024. The RVQ consists of 12 codebooks,
+each with a size of 512. The reconstruction loss weight is
+50.0, and the commitment loss weight is 1.0.
+• Expression Tokenizer: Trained for 200k steps with a
+global batch size of 1024. The RVQ uses 8 codebooks,
+each of size 2048. The loss weights are the same as for
+the identity tokenizer.
+• Pose Tokenizer: Trained for 100k steps with a larger
+global batch size of 1024 to stabilize training. The RVQ
+has 12 codebooks, each with a size of 512.
+The loss
+weights are the same as for the identity tokenizer.
+C.3. Multimodal Task Formulation and Training
+Our primary objective is to train a single, versatile multi-
+modal model capable of holistic avatar generation. This
+necessitates that the model understands and generates the
+wide array of modalities that constitute a digital avatar. To
+this end, we have meticulously designed a comprehensive
+suite of 72 multimodal tasks. These tasks are structured
+to teach the model not only to generate individual modal-
+ities but also to understand the intricate relationships and
+dependencies between them, enabling a cohesive and real-
+istic generation of a holistic avatar.
+The model is trained on a rich set of modalities, en-
+compassing textual (description, script), acoustic
+(speech), semantic (semantic), and a hierarchical set
+of visual modalities (identity, expression, pose,
+image).
+Modalities such as identity, image, and
+description are considered time-invariant. The other
+modalities can be either from past or current depending on
+if they are the conditions or the predictions in task defini-
+tion.
+Our training tasks are formulated as sequence-to-
+sequence problems, where the model is given a set of input
+modalities and is asked to generate a target output modality.
+The tasks can be categorized as follows:
+• Continuation Tasks: These tasks involve predicting the
+current state of a modality given its past state (e.g.,
+14
+
+Layer
+Output Shape
+Details
+Encoder
+Input
+T × Cin
+Cin
+Conv1D
+T × F
+kernel=3, stride=1
+Stage 1
+T/2 × F
+2 × ResBlock(F), Downsample
+Stage 2
+T/4 × F
+2 × ResBlock(F), Downsample
+Stage 3
+T/4 × F
+2 × ResBlock(F)
+Bottleneck
+T/4 × F
+2 × ResBlock(F)
+Conv1D
+T/4 × D
+kernel=1, stride=1
+Residual Vector Quantizer
+Quantization
+T/4 × D
+Residual VQ
+Decoder
+Input
+T/4 × D
+Quantized Latents
+Conv1D
+T/4 × F
+kernel=3, stride=1
+Bottleneck
+T/4 × F
+2 × ResBlock(F)
+Stage 1
+T/2 × F
+2 × ResBlock(F), Upsample
+Stage 2
+T × F
+2 × ResBlock(F), Upsample
+Stage 3
+T × F
+2 × ResBlock(F)
+Conv1D
+T × Cout
+kernel=3, stride=1
+Output
+T × Cout
+Tanh activation
+Table F. Architecture of the Animation Tokenizer. We denote the input sequence length as T and the feature dimension as Cin/out. The
+number of residual blocks per stage is set to 2. The base number of channels is F = 1024, and the latent dimension is D = 128.
+Downsampling and upsampling operations have a stride of 2.
+speech (past) →speech (current)).
+This
+helps the model learn the temporal dynamics of the
+modality.
+• Cross-Modal Generation Tasks:
+The majority of
+our tasks fall into this category.
+The model learns
+to generate a target modality from one or more dif-
+ferent source modalities (e.g., speech (current),
+identity (time-invariant) →expression
+(current)).
+• Chained
+Generation
+Tasks:
+The
+tasks
+are
+de-
+signed to be composable, enabling a chained gener-
+ation pipeline in our "Thinking in Modality" (e.g.,
+image (time-invariant)
+→
+identity
+(time-invariant),
+then speech (current)
+→expression (current), etc.).
+Our task suite
+includes all these intermediate steps to facilitate such
+chained inference.
+This extensive set of 72 tasks, detailed in Table G, ensures
+that the model is exposed to a vast number of input-output
+combinations, fostering a deep multimodal understanding
+and enabling the generation of high-fidelity, holistic avatars.
+D. Multimodal Data Details
+In this section, we provide a detailed description of the data
+acquisition and preprocessing pipeline for the all modalities
+used in our model: description, script, speech, animation,
+semantic video and image/video. Our pipeline is designed
+to extract temporally synchronized multimodal data from a
+large-scale video source, which are essential for training our
+holistic avatar generation model.
+D.1. Description
+The description modality provides a rich, structured repre-
+sentation of the person in the video. This modality is de-
+signed to capture a holistic set of attributes encompassing
+appearance, actions, and environmental context. To ensure
+consistency and comprehensiveness, we employ Gemini 2.5
+Pro [11] for the annotation process.
+A detailed prompt,
+shown in Figure L, guides the model to analyze a video and
+return a structured JSON object containing all discernible
+attributes.
+The resulting JSON object is organized into three pri-
+mary keys: appearance, action, and environment.
+• appearance:
+This category captures the subject’s
+physical characteristics.
+It includes static attributes
+such as gender, age_group, ethnicity, and
+body_build, as well as more detailed features like
+hair_color, hair_style, facial_features,
+and detailed descriptions of clothing and other
+physical_attributes.
+• action:
+This section details the dynamic aspects
+of the subject’s performance.
+It describes the over-
+all
+activity_type,
+emotional
+expression,
+and
+nuanced
+behaviors
+such
+as
+mouth_action,
+eyebrow_action,
+head_action,
+and
+15
+
+Output Modality
+Input Modality Combinations
+script (c)
+[desc (t)], [script (p)], [speech (c)], [expr (c)], [semantic (c)]
+speech (c)
+[desc (t)], [desc (t), script (c)], [script (c)], [script (c), speech
+(p)],
+[speech (p)],
+[script (c), image (t)],
+[script (c), semantic
+(c)],
+[script (c), speech (p), semantic (c)],
+[id (t), expr (c)],
+[semantic (c)], [script (c), id (t)]
+image (t)
+[desc (t)], [speech (c)], [id (t)], [id (t), expr (t), pose (t)], [desc
+(t), id (t), expr (t), pose (t)]
+identity (t)
+[desc (t)], [desc (t), script (c), speech (c)], [speech (c)], [image
+(t)]
+expression (c)
+[desc (t)],
+[desc (t), script (c), speech (c), image (t), id (t)],
+[script (c)], [script (c), speech (c), id (t)], [speech (c)], [speech
+(c), id (t)],
+[speech (c), id (t), image (t)],
+[speech (c), image
+(t)], [semantic (c)], [expr (p), speech (c)]
+pose (c)
+[desc (t)],
+[speech (c)],
+[speech (c), id (t), expr (c)],
+[speech
+(c), expr (c), image (t)],
+[speech (c), id (t), expr (c), image
+(t)], [image (t), id (t), expr (c)], [image (t), expr (c)], [id (t),
+expr (c)], [semantic (c)]
+semantic (c)
+[desc (t)],
+[desc (t), script (c)],
+[desc (t), script (c), speech
+(c)],
+[desc (t), script (c), speech (c), id (t), expr (c), pose
+(c)],
+[desc (t), image (t)],
+[desc (t), script (c), speech (c),
+id (t), expr (c), pose (c), image (t)],
+[script (c)],
+[script (c),
+image (t)],
+[script (c), speech (c), id (t), expr (c), pose (c),
+image (t)],
+[speech (c)],
+[speech (c), id (t), expr (c), pose (c)],
+[speech (c), id (t), expr (c), pose (c), image (t)],
+[speech (c),
+image (t)], [speech (c), expr (c), pose (c), image (t)], [image (t)],
+[image (t), id (t), expr (c), pose (c)], [image (t), expr (c), pose
+(c)], [image (t), expr (c)], [id (t), expr (c), pose (c)], [semantic
+(p)], [semantic (p), speech (c)], [semantic (p), expr (c), pose (c)]
+description (t)
+[speech (c)],
+[image (t), semantic (c), speech (c)],
+[image (t),
+semantic (c), speech (c), script (c)],
+[image (t)],
+[image (t),
+semantic (c)], [id (t), expr (c), pose (c)]
+Table G. Overview of the 72 Multimodal Training Tasks. The model is trained to predict the output modality from various input combi-
+nations. The state of each modality is indicated in parentheses: (c) for current, (p) for past, and (t) for time-invariant. For brevity in long
+combinations, we use abbreviations: desc (description), id (identity), and expr (expression).
+gaze_direction.
+It also captures the overall
+emotion and energy_level conveyed.
+• environment:
+This category provides context for
+the scene, describing the lighting_conditions,
+background_description,
+and
+the
+general
+scene_context (e.g., indoor/outdoor).
+This structured approach ensures that our model is
+trained on a consistent and detailed descriptive modality,
+enabling it to generate holistic and high-fidelity avatars. An
+example of the generated JSON data is presented in Fig. K.
+D.2. Script
+The script modality is derived from word-level caption data,
+which includes precise start timestamps and durations for
+each word. This allows for fine-grained alignment between
+the text, speech, and video. When a audio-video clip is ex-
+tracted, we query the caption data to find all words whose
+time intervals overlap with the clip’s duration. These se-
+lected words are then concatenated in their original order to
+form the final script that corresponds precisely to the spo-
+ken content within that segment. This method ensures that
+the script is accurately aligned with its corresponding au-
+dio and video, which is critical for training our multimodal
+16
+
+Label Name
+Label Name
+Label Name
+background
+hair
+pupil
+face
+brows
+iris
+neck
+lashes
+sclera
+ears
+beard
+clothes
+upper_lip
+teeth
+glasses
+lower_lip
+tongue
+headwear
+nostrils
+other_in_the_mouth
+accessory
+Table H. The 21 semantic labels used for generating semantic seg-
+mentation maps.
+model.
+The aforementioned process applies to our training data
+where precise word-level annotations are available.
+For
+our test sets, specifically CelebV-HQ [69] and HDTF [66],
+ground-truth captions are not provided. Therefore, we uti-
+lize OpenAI’s Whisper model [37] to transcribe the audio
+into text. This allows us to evaluate our model’s perfor-
+mance on datasets with automatically generated scripts, re-
+flecting a more realistic, in-the-wild scenario.
+D.3. Speech
+The speech modality is processed to be tightly synchro-
+nized with the corresponding video segment. The raw audio
+track is first resampled to a standard 16 kHz sampling rate.
+To enhance signal quality and improve model robustness
+to acoustic variations, we apply a denoising model [62] to
+50% of the audio samples, selected at random. The remain-
+ing 50% are left unchanged to improve the robustness of
+model. To align the audio with the video, we extract an au-
+dio segment corresponding to the sampled video clip using
+its timestamps. If the source audio is shorter than the tar-
+get duration at the sampled point, we pad the segment with
+silence to ensure a consistent length across all samples.
+D.4. Animation
+The animation modality in our model is derived from 3D
+Morphable Model (3DMM) parameters [17], which provide
+a rich, structured representation of the human head’s geom-
+etry and dynamics. These parameters are not directly avail-
+able in the raw video data and are obtained through a pre-
+processing step where a 3DMM is fitted to each video frame
+using an optimization-based approach [13]. This fitting pro-
+cess yields a set of continuous parameters for each frame,
+which contains facial expression, person-specific identity,
+head rotation , and head translation.
+To make these continuous parameters suitable for our
+multimodal language model, we convert them into a se-
+quence of discrete tokens. This tokenization process is cru-
+cial as it allows our model to handle animation in a manner
+analogous to text. The process involves two main steps:
+normalization and vector quantization. First, we use pre-
+calculated mean and standard deviation of each parameter
+to normalize itself independently. Second, the normalized
+continuous parameters are quantized into discrete tokens
+using three separate, learned Vector Quantized-Variational
+Autoencoders [47] (VQ-VAEs). We use distinct VQ-VAEs
+for expression, identity, and pose (where pose is the con-
+catenation of rotation and translation parameters).
+Each
+VQ-VAE has its own learned codebook, effectively creating
+a unique vocabulary for each animation component. This
+process maps the high-dimensional, continuous animation
+signals into compact sequences of discrete tokens. By tok-
+enizing the animation parameters, we can seamlessly inte-
+grate them into our transformer-based MLLM architecture,
+enabling it to learn cross-modal associations between ani-
+mation, script, speech, and video frames.
+D.5. Semantic Video
+For the semantic video modality, we process each frame to
+generate a semantic segmentation map. This provides our
+model with a context-efficient representation of video, par-
+ticularly focusing on the human subject. We utilize the DI-
+NOv2 model [34] to parse segmentation, which delineates
+21 distinct classes corresponding to key facial features, hair,
+and accessories. This fine-grained labeling scheme enables
+our model to learn detailed representations of the human
+head and upper body. The complete list of the 21 semantic
+labels is provided in Table H. This detailed decomposition
+is instrumental for the model to generate realistic textures
+and geometry for each part of the avatar, from the subtle
+nuances of eye components to various accessories.
+D.6. Image/Video
+Our video processing pipeline is designed to generate nor-
+malized, head-centric video clips. Initially, raw videos are
+decoded and uniformly downsampled to a frame rate of 30
+frames per second (fps).
+To achieve a consistent, head-
+centric view, we first detect the facial landmarks to the face
+in each frame. From the 3DMM fit, we derive a bounding
+box that encompasses the face and a portion of the upper
+body. To ensure a stable view without jitter, we compute a
+common crop region based on the union of these bounding
+boxes across the entire video sequence. The size of this crop
+is randomly scaled to introduce variations in framing, from
+tight close-ups to wider shoulder-level shots. This cropped
+region is then resized to a final resolution of 256 × 256 pix-
+els using bicubic interpolation with anti-aliasing.
+17
+
+{ “appearance”: {“hair_style”: “wavy”, ..}, “action”:
+{“energy_level”: “moderate”, ..}, “environment”: 
+{“background”: “blurred_painting”, ..}}
+“I thought was consummate, I mean a real kind 
+of masterclass.”
+(b) Input  Modality
+(b) Output Modalities
+{ “appearance”: {“clothing”: “dress_shirt”, ..}, 
+“action”: {“emotion”: “serious”, ..}, “environment”: 
+{“background”: “wooden_wall”, ..}}
+“stage and there are people who say there's no 
+such thing about audience”
+(a) Input Modality
+(a) Output Modalities
+Figure H. Multimodal Generation. We show our model is capable of doing text or speech-to-all generation and can support a variety of
+cross-modality reasoning and generation tasks.
+Methods/Metrics
+FID↓
+FVD↓
+Ours w/o text cond
+17.2310
+32.3772
+Ours w/o joint crossattention
+22.7003
+36.1064
+Ours
+16.8678
+26.6860
+Table I. We show the ablation study on the different condition ways
+to the diffusion model.
+E. More Results
+E.1. Multimodal Generation
+We present additional qualitative results of our multimodal
+generation framework. As illustrated in Fig. H (a), when
+conditioned on a description of a subject (e.g., a man in
+a suit) and a corresponding script, our model success-
+fully synthesizes all complementary modalities, including
+speech, animation, semantic segmentation, and the final
+RGB video.
+These generated modalities exhibit precise
+temporal synchronization, with the output video demon-
+strating high visual fidelity and strict alignment with the
+input conditions. Besides, in Fig. H (b), we demonstrate
+generation from semantic inputs; given a semantic video,
+our model synthesizes a photorealistic video that faithfully
+adheres to the semantic appearance and motion. Further-
+more, the model demonstrates its understanding capabilities
+by accurately inferring the description, script, speech, and
+animation directly from the semantic video input.
+E.2. Modality-specific Editing
+We further demonstrate our model’s versatility in multi-
+modal editing in Fig. I. In Fig. I (a), we perform script
+editing, where we synthesize a new talking video that ar-
+ticulates a modified script while faithfully preserving the
+subject’s original appearance and vocal identity. In Fig. I
+(b), we illustrate disentangled attribute editing by altering
+the speaker’s gender from male to female while retaining
+fine-grained attributes such as hairstyle and clothing. No-
+tably, the model simultaneously adapts the generated voice
+to align with the modified visual appearance, demonstrating
+robust cross-modal consistency. Finally, Fig. I (c) depicts
+animation editing (face reenactment); by utilizing 3DMM
+coefficients extracted from a reference video, we drive the
+source subject to replicate the reference’s pose and expres-
+sions with high fidelity.
+E.3. Comparisons with Unified Models.
+Current unified models are not truly “holistic” in the context
+of digital human. While models such as Qwen-Omni [57]
+can understand multimodal inputs, their outputs are con-
+fined to text and audio. Similarly, Show-o2 [56] supports
+text, image, and video but omits audio. NExT-GPT [55],
+though capable of audio generation, produces environmen-
+tal or musical sounds rather than intelligible speech. In con-
+trast, Archon is the first model to learn the joint distribution
+of holistic human-centric modalities.
+Video Understanding. We evaluate human talking video
+understanding against Qwen-Omni [57], a 30B Mixture-of-
+18
+
+“to be earnest and yeah, that was a 
+difficult task..”
+/jɛə/
+/kəl/
+/tɑː/
+Original 
+Video
+Modality
+Editing
+Edited
+Video
+“years later and the fact that this rivalry is 
+still boiling is inherently funny.”
+“gender: male” 
+“gender: female” (change voice 
+according to appearance) 
+(a) Speech editing with reference 
+appearance and voice 
+(b) Appearance and voice editing 
+from text prompt
+(c) Motion editing for face 
+reenactment
+Figure I. Modality-specific Editing. We demonstrate that our model support editing mutlimodal input with remarkable flexibility - modi-
+fying arbitrary chosen modal while maintains the others untouched. The icons on the top showing the modalities used in the example, and
+the highlighted icons are the ones that are varied.
+Experts model. The test set, drawn from HDTF [66], is
+annotated using Gemini3 [14] to provide ground-truth de-
+scriptions. The query 2prompt is shown in Fig. L and is also
+used for Qwen-Omni. Performance is measured by the av-
+erage F1 score across all descriptive attributes, where preci-
+sion Ps and recall Rs are derived from the cosine similarity
+of BGE embeddings [7]:
+Ps =
+1
+|P|
+X
+p∈P
+max
+g∈G cos (BGE(p), BGE(g)) ,
+Rs = 1
+|G|
+X
+g∈G
+max
+p∈P cos (BGE(g), BGE(p)) .
+with P and G denoting the predicted and ground-truth at-
+tribute sets, respectively. Despite its compact 1B parameter
+size, Archon attains an F1 score of 0.90, which is compa-
+rable to the 0.93 achieved by the substantially larger Qwen-
+Omni model.
+Text-to-AV. For talking video and audio synthesis from
+text, we compare with NExT-GPT [55], the most closely re-
+lated unified model. Input prompts define human attributes
+and dialogue scripts, as shown on the left of Fig. J. We use
+Gemini [14] to translate this JSON-formatted description to
+natural language and input it to NExT-GPT. As illustrated in
+Fig. J, we synthesize significantly higher-quality video and
+audio than NExT-GPT. NExT-GPT produces visually cor-
+rupted video lacking recognizable facial features or motion,
+along with unintelligible or silent audio. We generate high-
+fidelity talking head video that accurately reflects the pro-
+vided description, with well-synchronized lip movements
+and clear audio corresponding to the input script.
+E.4. Ablation of Semantic-driven Video Diffusion
+Model
+We investigate the impact of different conditioning mech-
+anisms on the video diffusion backbone, with quantitative
+results summarized in Tab. I. All ablations are performed
+on the held-out test split. Given the dense temporal nature
+of the semantic video input, we employ channel-wise con-
+catenation with the noisy latents rather than cross-attention,
+adhering to computational memory constraints. In Sec. 3.3,
+we propose concatenating the reference image with its cor-
+responding segmentation mask for cross-attention (“Ours”).
+This strategy establishes a structural bridge, facilitating the
+effective transfer of appearance from the reference to the
+synthesized video. We contrast this with a baseline that uti-
+lizes only the RGB reference image in the cross-attention
+module (“Ours w/o joint cross-attention”). As observed in
+Tab. I, the degradation in FID and FVD scores in the ab-
+sence of segmentation image underscores their critical role
+in guiding the diffusion model to accurately map reference
+appearance to generated motion. Finally, we assess the con-
+tribution of textual prompts. The configuration “Ours w/o
+text cond” omits text embeddings from the cross-attention
+19
+
+{"appearance": { "gender": "male", 
+"age_group": "adult", "ethnicity": 
+["caucasian"], "hair_color": 
+["blonde"]..},
+"action": {"emotion": 
+["serious"]..}, 
+"environment": {{"context": 
+"indoor" }..}}
+Says “And there are people who say 
+there's no such thing about 
+audience”
+Audio
+(CER↓)
+Video
+NExTGPT
+Ours
+Ref. TTS Expert
+(0%)
+NExTGPT
+(100%)
+Ours
+(10.94%)
+{ "appearance": { "gender": 
+"female", "age_group": 
+"young_adult", "ethnicity": [ 
+"caucasian" ], "hair_color": [ 
+"blonde" ],..}, 
+"action": {"impression": [ 
+"speaking to the camera"],..}, 
+"environment": {"background": 
+"wooden planks”, ..} }
+Says “That if you are a new fan to 
+Watchmen, that you can be a new”
+Video
+NExTGPT
+Ours
+Ref. TTS Expert
+(5.08%%)
+NExTGPT
+(89.83%)
+Ours
+(6.67%)
+Text-to-AV
+Text-to-AV
+Audio
+(CER↓)
+Figure J. Text-to-AV Comparisons. We present a comparative evaluation against NExT-GPT for the generation of audio and video from
+textual input (comprising both description and script).
+layers. The resulting decline in metrics confirms that multi-
+modal conditioning is essential for maintaining high video
+fidelity.
+20
+
+{
+"appearance": {
+"gender": "male",
+"age_group": "adult",
+"ethnicity": ["caucasian"],
+"body_build": ["average"],
+"hair_color": ["black"],
+"hair_style": ["short"],
+"facial_features": ["none_discernible"],
+"clothing": {
+"upper_body": "button-down shirt over t-shirt",
+"lower_body": "none",
+"footwear": "none",
+"accessories": ["watch", "ring", "bracelet"],
+"dominant_colors": ["black", "blue", "white", "red"]
+},
+"physical_attributes": {
+"visible_tattoos": "none",
+"visible_piercings": "none",
+"distinctive_marks": "none",
+"posture": "upright",
+"gait": "not_applicable",
+"physical_aids": ["none"]
+}
+},
+"action": {
+"activity_type": "speaking",
+"expression": "smile",
+"overall_impression": ["gesturing with hands while speaking", "raising hands to chest level", "
+making a fist"],
+"emotion": ["positive and engaging", "enthusiastic"],
+"energy_level": ["medium to high", "animated"],
+"mouth_action": ["wide_opening", "narrow_opening", "relaxed_lips", "pulling_of_lip_corners", "
+synchronization_and_precision_with_spoken_words"],
+"eyebrow_action": ["raising_inner_eyebrows", "raising_outer_eyebrows", "brow_furrowing"],
+"blink_frequency": "medium",
+"head_action": ["mostly_centered", "tilts_inquisitively", "nods_rhythmically", "
+amplitude_and_tempo_of_movements", "directional_changes_pitch/yaw/roll", "frequency_of_changes"
+, "transitions_between_stillness_and_motion"],
+"eye_state": ["fully_wide_alert"],
+"gaze_direction": ["straight_ahead", "fixed_forward_focus"],
+"nonverbal_habits": ["habitual_eyebrow_flicks", "frequent_micro-nods", "timing_and_context_of_cues"
+, "consistency_of_cues", "typical_amplitude_subtle_vs_pronounced"],
+"interactions": ["with_object_e.g._microphone/instrument", "none"],
+"props_used": ["microphone", "none"]
+},
+"environment": {
+"lighting_conditions": "bright",
+"background_description": "light colored wall with a framed certificate and a model of a watch on a
+shelf",
+"time_of_day": "unknown",
+"weather_conditions": "indoor_not_applicable",
+"context": "indoor"
+}
+}
+Figure K. An example of the structured JSON description obtained from Gemini 2.5 Pro.
+21
+
+Enhanced Video/Image Analysis Prompt
+You are an expert video and image analysis AI. Your task is to meticulously analyze a given video or sequence of
+images featuring a person performing, and extract all possible relevant attributes about the person, their
+actions, and the surrounding environment.
+Critical Instruction for JSON Output
+Your output MUST be a single, complete, and perfectly valid JSON object. Do NOT include any introductory or concluding
+text, explanations, or extraneous characters outside of the JSON. Ensure proper syntax, including all commas,
+brackets, and quotes.
+Data Extraction Schema
+Here's the information you need to extract, grouped into three main categories, and the precise JSON format you must
+adhere to. For attributes specified as lists (e.g., body_build, hair_color, hair_style, facial_features,
+accessories, dominant_colors, physical_aids, interactions, props_used, overall_impression, Mouth_Action,
+Eyebrow_Action, Head_Action, Eye_State, Gaze_Direction, Nonverbal_Habits), ensure you return a list containing
+ALL discernible attributes. The attribute values given below are just examples, but use them for inspiration.
+Attributes should be strings with undescores instead of space where_necessary.
+{
+"appearance": {
+"gender": "male/female/non-binary/unknown",
+"age_group": "child/preteen/teenager/young_adult/adult/older_adult/senior/unknown",
+"ethnicity": ["list_ethnicities_if_discernible", "caucasian", "asian", "african_american", "hispanic", "
+middle_eastern", "unknown", "etc."],
+"body_build": ["slim", "average", "athletic", "muscular, "heavy", "unknown"],
+"hair_color": ["black", "brown", "blonde", "red", "gray", "white", "green", "blue", "pink", "other", "unknown"],
+"hair_style": ["bald", "long", "short", "curly", "straight", "wavy", ...],
+"eye_color": ["light_brown", "dark_brown", "light_blue", ...],
+"eye_style": ["long_eyelashes", "short_eyelashes", ...],
+"teeth": ["straight", "missing_teeth",...],
+"facial_features": ["glasses", "beard", "wrinkly_skin", "elastic_skin", "clean_skin", "sideburns", "mustache", "
+freckles", ...],
+"clothing": {
+"upper_body": ["description_of_upper_garment_e.g._t-shirt/dress_shirt/blouse/hoodie/jacket/sweater/tank_top/
+sports_bra/suit/tie/none"],
+"lower_body": ["description_of_lower_garment_e.g._jeans/trousers/skirt/shorts/leggings/sweatpants/none"],
+},
+"physical_attributes": {
+"visible_tattoos": "description_of_tattoos_and_location_if_visible_e.g._full_sleeve_right_arm/small_design_neck/
+none",
+...
+}
+},
+"action": {
+"activity_type": "dancing/singing/playing_instrument/speaking/acting/sports/walking/running/sitting/standing/other
+",
+"expression": "smile/frown/closed mouth/etc.",
+"overall_impression": ["brief_descriptive_summary_of_the_performance", "e.g._head_turn_to_the_left", "e.g.
+_raising_her_left_arm"],
+"emotion": ["description_of_general_energy_and_dominant_emotional_tone", "e.g._animated_and_joyful", ...],
+"energy_level": ["overall_magnitude_of_emotional_display", "e.g._faint_micro-expressions_to_vivid_reactions", "e.g
+._consistently_low-key"],
+...
+},
+"environment": {
+"lighting_conditions": "bright/dim/natural_light/artificial_light/backlit/etc.",
+"background_description": "detailed_description_of_the_background_e.g._blurred_trees/crowded_street/
+empty_white_wall",
+"time_of_day": "morning/afternoon/evening/night/unknown",
+"weather_conditions": "sunny/cloudy/rainy/snowy/indoor_not_applicable/etc.",
+"scene_context": "indoor/outdoor/stage/street/home/office/natural_environment/etc."
+}
+}
+Figure L. The part of the prompt provided to Gemini 2.5 Pro for video annotation.
+22

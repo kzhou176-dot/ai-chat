@@ -1,0 +1,1629 @@
+Can We Break LLMs Out of Self-Loops? Fine-Grained
+Reasoning Control with Activation Steering
+Sheldon Yu1, Tong Yu2, Xunyi Jiang1, Rohan Surana1, Gagan Mundada1,
+Sungchul Kim2, Lina Yao3, Julian McAuley1, Junda Wu1
+1UC San Diego
+2Adobe Research
+3University of New South Wales
+{ziy040,xuj003,rsurana,gmundada,jmcauley,juw069}@ucsd.edu
+{tyu,sukim}@adobe.com
+lina.yao@unsw.edu.au
+Abstract
+Extended reasoning has become standard for frontier Large Language Models
+(LLMs), yet the trajectories these models produce remain largely uncontrollable.
+Existing methods for shaping how a model reasons are prompt based approaches
+and operate at the input level, offering no fine-grained control over the reasoning
+process itself. Related work analyzes and discovers latent transition dynamics in
+the reasoning traces from Large Language Models. Building on this, we statistically
+characterize these states, and show that failure trajectories get stuck in self-loops,
+exhausting the token budget without progress toward the final answer. To intervene
+on these failures, We propose SOPHIA: Steering Of reasoning Processes via
+Hidden-state Intervention and Activations. We treat each reasoning trace as a
+sequence of latent states rather than an unstructured texts, and investigate whether
+inference time interventions can provide fine-grained control over the self-looping
+reasoning process. We classify every prefix to a latent state, record step level
+transitions, and use them to construct a bank of steering vectors indexed by state
+pairs. At inference time, a controller infers the current state and, given a target
+state, retrieves the corresponding vector and can also detect self-loops online from
+the transition structure to prevent the model from sinking into a reasoning black
+hole. Through extensive experiments, our method reliably intervenes on self-loop
+failures, with steering vectors that generalize to different state pairs. End task
+accuracy and token efficiency indicate that fine-grained controllability results in
+better reasoning quality.
+1
+Introduction
+Large Reasoning Models (LRMs), such as OpenAI’s o1-series have demonstrated compelling ca-
+pabilities for complex reasoning tasks via the extended chain-of-thought Wei et al. [2023], Kojima
+et al. [2023], Surana et al. [2026], Wu et al. [2025, 2024] reasoning mechanism. By generating
+intermediate reasoning trace, a model can allocate additional computation to arithmetic Ahn et al.
+[2024], Luo et al. [2025], planning Wang et al. [2024], Valmeekam et al. [2023], and multi-hop
+question answering Zhong et al. [2024]. These models are designed to explore diverse reasoning
+strategies, reflect on their decisions, and iteratively refine solutions. The same mechanism, however,
+can also waste computation. Long traces often include repeated verification Marjanovic et al. [2026],
+injected prompts Wang et al. [2026], stuck in self-loops Keskar et al. [2019], Welleck et al. [2020],
+or late detours that increase latency without improving the final answer Arcuschin et al. [2025].
+For reasoning models, the question is therefore not only how to elicit more thinking, but how to
+keep the reasoning trajectory moving through productive states. This paper takes a transition-level
+view of that problem. We treat each reasoning trace as a sequence of latent reasoning states rather
+Preprint.
+arXiv:2607.18100v1  [cs.AI]  20 Jul 2026
+
+This is a complex or challenging question, and … I need to think about it. Well, let's tackle this problem step by step.
+So, Alice starts with 20 quarters.First, I should figure out how much money that is in total, maybe?
+Wait, but actually, she's exchanging them for nickels, so maybe we need to know how many nickels she gets?
+Wait, the iron nickels are $3 each, the standard nickels are still 5 cents each.
+Wait, "exchange them for nickels" — s. 20 quarters = 500 cents / 5 cents per nickel = 100 nickels.
+Then 20% of 100 = 20 iron nickels × $3 = $60. Remaining 80 standard nickels × $0.05 = $4.00. Total: $64.00.
+Maybe "exchange for nickels" just means she now has nickels instead of quarters.
+Confirm : $3 means dollars (not cents); 20 × $3 = $60. Standard at $0.05 each: 80 × 0.05 = $4. Total = $60 + $4 = $64.
+Iron nickels: 20 × $3 = $60.00. Standard nickels: 80 × $0.05 = $4.00. Total: $60 + $4 = $64.00.
+Is there another way?
+The final answer is $64.
+…
+…
+…
+Cluster 1
+Cluster 5
+Cluster 4
+Cluster 3
+Cluster 2
+Alice has 20 quarters. She wants to exchange them for nickels and so she goes to the bank. After getting back from 
+the bank, she discovers that 20% of the nickels are iron nickels worth $3 each. What is the total value of her money 
+now?
+Reasoning
+Figure 1: Self-loops in LRM reasoning traces. The model computes the correct value early (purple,
+$64) but cycles through redundant verification and re-questioning steps (red) before committing,
+wasting budget on work it has already done. Box colors denote latent reasoning states K = 5
+that are induced unsupervisedly from activations rather than assigned from a hand-defined thought
+taxonomy Chen et al. [2025], with transitions discovered automatically from generated traces. This
+makes failure modes like the loop above targetable as transition events at finer granularity than token-
+or prompt-level control allows.
+than only as a sequence of tokens. At step t, the prefix ξt is mapped to a discrete state zt, and
+the next generated step induces a transition zt →zt+1. Under this view, the most concrete and
+damaging form of unproductive reasoning is the self-loop: the model repeatedly transitions back to
+the same state, re-verifying, restating, or revisiting prior work without producing new information,
+frequently exhausts its token budget on redundant computation before reaching an answer as shown
+in Figure2.Moreover, we show that overlong reasoning highly correlated with incorrect examples,
+resulting a trajectory problem, cycle through a small set of states without step to the next meaningful
+reasoning step. This perspective suggests a more precise target for inference-time control. Instead of
+steering the whole response toward a global attribute, we can ask whether a model can be guided
+from its current reasoning state to a desired next state—and, in particular, whether self-loops can be
+detected and broken before the token budget runs out.
+Prior work on controlling reasoning behaviour falls into two camps. Reinforcement-learning ap-
+proaches—L1 Aggarwal and Welleck [2025] for length control and SCoRe Kumar et al. [2024]
+for self-correction—shape the generation policy as a whole, but require expensive training and
+offer no mechanism for intervening once the model is deployed. Inference-time methods avoid
+retraining but intervene at coarse granularity: thought-switching penalties Wang et al. [2023] and
+underthinking-triggered prompt insertions Zhang et al. [2025] act on the surface token stream.
+Yet standard steering vectors are typically state-agnostic and is applied uniformly throughout genera-
+tion, regardless of where the model is in its reasoning trajectory Turner et al. [2023], Tan et al. [2024],
+Huang et al. [2026]. For CoT reasoning, this is a structural mismatch rather than a tuning issue.
+The corrective signal needed to break out of a redundant verification loop is fundamentally different
+from the signal needed to consolidate a candidate answer or continue a multi-step decomposition;
+collapsing these into one direction yields a force that is too weak in the cases that matter and too
+strong elsewhere. Figure 3b confirms this empirically: contrast directions extracted for different
+transition types separate into distinct clusters in activation space, indicating that the signals required
+for different transitions are not perturbations of a single global vector but genuinely different direc-
+tions. The transition graph itself is highly structured Figure 3a, with self-loops and a small set of
+dominant transitions accounting for most observed steps. Figure 3b makes the consequence concrete:
+2
+
+a state-agnostic vector that breaks one self-loop fails on another, while a transition-specific vector
+handles both. Effective control therefore requires a dictionary of context-aware, source-to-target
+directions rather than a single global vector.
+We propose SOPHIA: Steering Of reasoning Processes via Hidden-state Intervention and Activations,
+a training-free framework that addresses this gap. First, we collect model-generated reasoning traces
+and segment them into step-level prefixes.
+AQuA
+GSM8K
+LogiQA
+MATH
+0
+500
+1000
+1500
+2000
+2500
+3000
+3500
+4000
+Token length
+correct
+incorrect
+Figure 2: Average reasoning-trace token length for cor-
+rect (hatched) vs. incorrect (solid) responses across AQUA,
+GSM8K, LOGIQA, and MATH. Incorrect responses consume
+substantially more tokens on every dataset, suggesting that
+longer traces correlate with failure rather than additional use-
+ful reasoning.
+Second, we fit a latent state abstrac-
+tion over prefix activations and record
+loop statistics for each observed tran-
+sition. Third, for each source-target-
+context cell with statistics and seman-
+tics support, we extract a contrastive
+residual-stream direction that sepa-
+rates steps realizing the target transi-
+tion from competing transitions out
+of the same source state. Finally, at
+inference time, a controller infers the
+model’s current state, retrieves the ap-
+propriate vector for a chosen target
+successor, and applies it through a
+support-aware gate before the next rea-
+soning step is generated. The same
+controller can detect self-loops online
+from the transition structure and trig-
+ger a corrective transition without ex-
+ternal supervision, this self-loop cor-
+rection setting is well defined by our
+analysis, while the underlying mecha-
+nism applies to arbitrary state-to-state transitions.
+Our contributions are:
+• We reframe model reasoning control as the problem of steering latent reasoning-state transitions,
+with the current prefix state and desired successor state as the basic unit of intervention.
+• We characterize the transition structure of reasoning traces both semantically and statistically,
+identifying systematic patterns that distinguish correct from incorrect trajectories with self-loops
+emerging as a dominant failure mode.
+• We show that contrastive residual-stream directions extracted at the transition level can reliably
+induce specified state-to-state transitions and break self-loops at inference time, without modifying
+model weights.
+• We develop SOPHIA, a training-free framework that operationalizes this mechanism into an
+end-to-end inference-time controller, providing fine-grained mid-trace control of reasoning at
+accuracy and token efficiency comparable to strong steering baselines.
+2
+Reasoning-State Transition Analysis
+To understand the structure of reasoning trajectories produced by LRMs and to motivate transition-
+level intervention, we analyze how these models move through their own reasoning process. Our
+analysis proceeds in three stages: segmentation, clustering, and characterization of the resulting
+trajectory dynamics. We segment each reasoning trace at sentence-initial discourse markers, rather
+than paragraph breaks, since the latter often split a coherent thought.
+Cluster induction from mean-pool step features.
+Rather than commit to a fixed number of human
+pre-defined thought types Chen et al. [2025], we embed each segmented thought as the mean of its last-
+layer hidden statesYu et al. [2025], Wu et al. [2026], under a base reference model (Qwen3-4B-Base),
+z-score the resulting features per dataset, and apply K-means with K=5 to recover latent reasoning
+states; details are deferred to Section 4.1. The number of clusters K is a free parameter that controls
+3
+
+C0
+C1
+C2
+C3
+C4
+C0
+C1
+C2
+C3
+C4
+4662
+0
+445
+0
+0
+0
+1001
+0
+32
+0
+0
+0
+3303
+0
+202
+0
+0
+0
+492
+0
+0
+74
+0
+0
+1739
+0
+1000
+2000
+3000
+4000
+C0
+C1
+C2
+C3
+C4
+C0
+C1
+C2
+C3
+C4
+1461
+0
+0
+56
+0
+0
+2763
+144
+0
+0
+90
+0
+2046
+0
+0
+0
+0
+0
+1197
+0
+0
+233
+0
+0
+3081
+0
+500
+1000
+1500
+2000
+2500
+3000
+C0
+C1
+C2
+C3
+C4
+C0
+C1
+C2
+C3
+C4
+3222
+0
+0
+145
+0
+0
+4980
+349
+0
+0
+0
+0
+4155
+0
+220
+0
+0
+0
+2734
+0
+176
+0
+0
+0
+3733
+0
+1000
+2000
+3000
+4000
+C0
+C1
+C2
+C3
+C4
+C0
+C1
+C2
+C3
+C4
+4669
+0
+0
+0
+244
+0
+6290
+0
+490
+0
+0
+0
+2530
+0
+0
+357
+0
+0
+5670
+0
+0
+0
+165
+0
+3681
+0
+1000
+2000
+3000
+4000
+5000
+6000
+(a) Inter-step cluster transition counts (raw, unnor-
+malized) in KMeans-ID order on GSM8K (top-left),
+AQUA (top-right), LOGIQA (bottom-left), and MATH
+(bottom-right); per-panel colorbars show dataset-
+specific scales. Diagonal entries are stayers (self-
+loops); red off-diagonals are crossers. Heavy diag-
+onals indicate consecutive steps overwhelmingly stay
+within the same cluster.
+(b) t-SNE projections: MATH (top-left), GSM8K (top-
+right), and 3D views on the bottom. For GSM8K,
+the transition between the cluster is 0 - 2 - 4 - 1 - 3
+according to the step average statistics. Which align
+with the t-SNE projections in different dimension.
+granularity. The surface discourse marker of a segment is treated as auxiliary information rather than
+as the category itself, which decouples segmentation granularity from clustering granularity and lets
+us steer at any desired resolution.
+Correct and incorrect traces visit different numbers of clusters.
+A first signal that the recovered
+cluster structure is failure-mode-aware comes from comparing correct and incorrect traces on matched
+difficulty. Incorrect traces visit substantially more distinct clusters than correct ones (Figure 2): the
+model bounces among a wider set of reasoning modes rather than progressing through a focused
+subset. This is consistent with prior reports that excessive thought transitions correlate with degraded
+reasoning quality [Wang et al., 2025, Fu et al., 2025], and provides early empirical motivation for a
+control mechanism that can keep the trajectory within a productive subset of states.
+Latent trajectories from average step position.
+To characterize how the model traverses these
+clusters over time, we compute the mean step position at which each cluster appears across traces,
+separately for each dataset. Sorting clusters by this mean position reveals a clear and reproducible
+latent trajectory: traces begin in setup-like clusters, progress through exploration and calculation
+clusters, and conclude in consolidation clusters. This trajectory structure holds across all four datasets
+we examine (GSM8K, AQUA, LOGIQA, MATH), suggesting that the recovered latent state structure
+reflects a genuine progression of reasoning rather than dataset-specific artifacts. We further use LLM
+as a judge to label each cluster by the dominant reasoning role of its segments, the resulting labels
+follow the same ordering as the position-based trajectory above.
+Transition structure and self-loops.
+We plot inter-step cluster transitions as both heatmaps (Fig-
+ure 3a) and tSNE projections (Figure 7). Two findings stand out. First, when clusters are reordered by
+mean step position, the dominant off-diagonal mass of the heatmap forms a band moving from setup
+to consolidation clusters, recovering the same trajectory structure identified above through statistical
+analysis. Second, the heatmaps exhibit a pronounced diagonal: a substantial fraction of transitions
+are self-loops, in which the model remains in the same cluster from one step to the next. While some
+level of cluster-internal transition is expected, the heaviness of the diagonal of the incorrect traces
+directly visualizes the failure mode that motivates this work.
+4
+
+3
+Contrastive Transition Vectors
+The method introduced in Section 4 extracts a per-cluster steering vector as the residual-stream
+contrast between crossers and stayers,
+v(ℓ)
+c
+= ¯h(ℓ)
+c,→−¯h(ℓ)
+c,⟳,
+and adds a positive multiple of v(ℓ)
+c
+to the residual stream of the steering target whenever the model is
+detected to be self-looping in cluster c. This section explains why this is a principled local control
+primitive for breaking self-loops, even though it does not attempt to approximate the full transition
+gradient of an autoregressive model.
+Setup.
+Fix a decoder layer ℓ, a step i whose prefix ξi is assigned to cluster zi = c, and the
+residual-stream activation h := h(ℓ)
+i
+∈Rd at the discourse-marker token that opens step i. Let
+pc(e) := Pr
+
+zi+1 ̸= c
+ zi = c, h 7→h + e
+
+(1)
+denote the probability that the next step exits cluster c when the residual at layer ℓis offset by e ∈Rd,
+with pc(0) the unperturbed exit probability. The goal of the intervention is a small offset e that
+increases pc(e) relative to pc(0).
+Lemma 1 (Local exit response). If pc is differentiable at e = 0, then
+pc(e) = pc(0) + ∇e pc(0)⊤e + o
+ ∥e∥2
+
+.
+(2)
+In particular, any sufficiently small e with ⟨e, ∇e pc(0)⟩> 0 raises the exit probability to first order.
+Proof. First-order Taylor expansion of pc at the origin.
+Lemma 1 identifies ∇e pc(0) as the ideal local control direction. It is, however, not directly accessible:
+pc is induced jointly by the autoregressive generation policy of the steering target, the cluster classifier
+on the next step, and the discourse-marker segmentation rule, none of which we differentiate through
+end-to-end. We therefore seek a tractable proxy that only requires recorded residual states from past
+traces.
+Proposition 1 (Contrastive direction as a Fisher discriminant). Conditional on zi = c, suppose the
+residual states at layer ℓof crossers (zi+1 ̸= c) and stayers (zi+1 = c) are approximately Gaussian
+with class means µ→
+c , µ⟳
+c and shared covariance Σc. Then the linear discriminant maximising the
+Fisher separation between crossers and stayers is
+v Fisher
+c
+∝Σ−1
+c
+ µ→
+c −µ⟳
+c
+
+,
+(3)
+and in the special case Σc ∝I this reduces to the unwhitened mean difference µ→
+c −µ⟳
+c up to a
+positive scale.
+Proof. Under shared-covariance Gaussian class-conditionals the log-likelihood ratio between the two
+classes is affine in the activation vector with linear coefficient Σ−1
+c (µ→
+c −µ⟳
+c ); the same direction
+maximises the Rayleigh quotient of between-class mean separation to within-class variance.
+4
+Methodology
+Building on the trajectory analysis in Section 2 and the local justification in Section 3, we propose a
+training-free framework that operationalises self-loop intervention as cluster-conditioned activation
+steering. As illustrated in Figure 4, the framework has three offline stages and one online controller:
+(i) mean-pool embedding of every step using a base reference model; (ii) per-dataset K-means on the
+embeddings to recover K=5 latent reasoning states; (iii) re-aggregation of cached residual-stream
+activations of the steering target into per-(cluster, layer) crosser-minus-stayer directions; and (iv) at
+decoding time, online classification of each completed step into a cluster, detection of self-loops, and
+residual-stream patching along the corresponding direction.
+5
+
+Cluster 1
+Cluster 2
+Cluster 3
+Cluster 4
+Cluster 5
+Stayer
+Crosser
+…
+…
+…
+LRMs Reasoning Trace
+Spectrum Clustering
+Figure 4: Pipeline for cluster-conditioned reasoning-state steering. Stage I embeds each segmented
+step with a base reference model Memb and clusters the resulting features into K=5 latent reasoning
+states. Stage II re-aggregates cached residual-stream activations of the steering target Mtgt into one
+crosser-minus-stayer direction per (cluster, decoder layer). Stage III is the online controller: after
+each step closes, it re-classifies the step in cluster space, detects self-loops, and patches the residual
+stream of Mtgt along the corresponding direction during the next step.
+The pipeline runs two models with different roles, which we keep distinct throughout the paper: an
+embedding model Memb (Qwen3-4B-Base in our main runs), used purely to compute step features and
+cluster assignments, and a steering target Mtgt (Qwen3-4B-Thinking-2507 in the main results)Yang
+et al. [2025], the deployed model whose residual stream is intervened on and whose generations are
+evaluated. The split is deliberate: Memb has not been chat-tuned, so its hidden states depend on step
+content rather than on instruction-following geometry, and it provides stable cluster features that do
+not drift as the target model is changed.
+4.1
+Latent Reasoning-State Induction
+Mean-pool step features.
+For each segmented trace (q, T1, . . . , Tn) we run a single forward pass
+of Memb over the concatenation (q ∥T1 ∥· · · ∥Tn) and extract the last-layer hidden states {h emb
+t
+}.
+For step Ti spanning tokens [si, ei), the step feature is the token-mean
+zi =
+1
+ei −si
+ei−1
+X
+t=si
+h emb
+t
+∈Rdemb.
+(4)
+We use the simple mean-pool feature in (4) rather than the cumulative-Gram eigenvalue feature
+considered in earlier drafts of this work. The cumulative-Gram feature integrates over the entire
+prefix, which causes a single trace’s step features to drift slowly with position and produces partitions
+where almost every step of a trace falls in the same cluster (mean longest mono-cluster run of 25–30
+out of ∼35-step traces in our corpus). The mean-pool feature in contrast partitions by step content
+and yields trajectories that genuinely move between clusters (mean longest mono-cluster run drops to
+7–15).
+Per-dataset K-means.
+We z-score the step features {zi} across all steps of a dataset, fitting per-
+dimension (µ, σ) once per dataset, and run K-means with K = 5 clusters and seed 42 on the z-scored
+features. The result is a per-dataset partition with cluster ids zi ∈{0, . . . , K−1} and centroids
+{µc}K−1
+c=0 , all stored in z-scored coordinates.
+We fit clusters per dataset rather than pool across datasets because Hungarian alignment of cluster
+ids across (gsm8k, aqua, logiqa, math) fell below 0.4 in our setting, indicating that the partitions are
+not in fact aligned and that forcing a shared id space would mix unlike states. Each cluster therefore
+has a dataset-local id; the cluster c on logiqa is not the same latent state as the cluster c on math, and
+the steering vector bank below is fit and used per dataset.
+6
+
+4.2
+Per-Cluster Crosser-Minus-Stayer Vectors
+Crosser and stayer pools.
+Given the cluster ids from Section 4.1, we define a binary indicator on
+each non-terminal step i of every trace,
+βi = 1
+
+zi ̸= zi+1
+
+.
+(5)
+Steps with βi = 1 are crossers (the trajectory exits cluster zi on the next step); steps with βi = 0
+are stayers (the trajectory remains in zi). For each cluster c ∈{0, . . . , K−1} we collect all of its
+crossers and all of its stayers across the dataset:
+Cc = { i : zi = c, βi = 1 },
+Sc = { i : zi = c, βi = 0 }.
+(6)
+We deliberately do not condition the pools on trace correctness at extraction time. Per-cluster pools
+are already thin – a few hundred crossers per cluster on a typical 4-dataset corpus – and conditioning
+on correctness halves them again without a measurable hit-rate gain in preliminary runs. Trace
+correctness only enters the pipeline at evaluation time, where we restrict the held-out stayer prefixes
+to incorrect traces (Section 5.1).
+Residual-state contrast.
+Independently of the embedding pass, we record at every step i the
+residual-stream activation h(ℓ)
+i
+∈Rd of the steering target Mtgt at the discourse-marker token that
+opens step i, for every decoder layer ℓin a patched range L (see hyperparameters below). The states
+are recorded once, during a one-shot cache-extraction pass over the same corpus. For each cluster c
+and each patched layer ℓwe form the contrastive direction
+v(ℓ)
+c
+= ¯h(ℓ)
+c,→−¯h(ℓ)
+c,⟳,
+¯h(ℓ)
+c,→=
+1
+|Cc|
+X
+i∈Cc
+h(ℓ)
+i ,
+¯h(ℓ)
+c,⟳=
+1
+|Sc|
+X
+i∈Sc
+h(ℓ)
+i .
+(7)
+By Proposition 1, v(ℓ)
+c
+is the unwhitened Fisher direction separating crossers from stayers in cluster c
+at layer ℓ, and by Lemma 1 a positive multiple of v(ℓ)
+c
+raises the local probability of exiting c to first
+order under the residual-stream perturbation model of Section 3.
+A cluster c for which either pool is empty after extraction-time filtering receives no vector and is
+excluded from the online controller and the eval. In our corpus this affects the intro-tag cluster –
+whose steps are the leading discourse-marker openers, filtered before residual caching – on most
+datasets, and one further cluster on Gemma-4-E2B / aqua.
+4.3
+Online Controller: Self-Loop Detection and Residual Patching
+At inference time we run Mtgt with greedy decoding and run Memb alongside it as an online cluster
+classifier. Both models share an architecture, so residual-stream offsets recorded at layer ℓof Mtgt
+are compatible with the corresponding layer of the deployed model.
+Step boundaries and online cluster assignment.
+We maintain a rolling text buffer of the tokens
+emitted by Mtgt and apply the same sentence-initial discourse-marker regex used during segmentation.
+When a marker fires we treat the substring between the previous boundary and the new marker as the
+just-completed step Ti. We pass Ti through Memb – reusing a running KV cache so only the new
+tokens require a forward pass – mean-pool the last-layer hidden states over the step span, z-score
+with the dataset’s saved (µ, σ), and assign the cluster id by nearest centroid:
+zi =
+arg min
+c∈{0,...,K−1}
+z feat
+i
+−µc
+
+2.
+(8)
+Self-loop gate.
+We declare a self-loop when the most recently completed step lies in the same
+cluster as the one before it: zi = zi−1. This minimal two-step gate is what triggers the intervention.
+It avoids steering on the model’s first visit to a cluster (which is generally productive) and only acts
+when the model has already failed to leave the cluster once on its own; it requires only the two most
+recent cluster ids and adds no learned parameters.
+7
+
+Table 1: Per-cluster hit-rate (%) on N=30 stayer prefixes from held-out incorrect traces, across four
+reasoning datasets and three steering targets. SOPHIA patches the next step’s residual stream with
++αv(ℓ)
+c ; Negative steering uses −αv(ℓ)
+c ; Random steering is a norm-matched Gaussian; Greedy
+decoding is the unintervened baseline. Cluster ids are dataset- and model-local; layer set L and
+intervention strength α follow Section 4.3. For Gemma-4-E2B aqua only three clusters survive
+intro-tag filtering.
+gsm8k
+aqua
+logiqa
+math
+Method
+C0
+C1
+C2
+C3
+C0
+C1
+C2
+C3
+C0
+C1
+C2
+C3
+C0
+C1
+C2
+C3
+Qwen3-32B-Thinking
+Greedy decoding
+28.6
+89.7
+20.0
+42.9
+53.3
+34.5
+17.9
+44.8
+16.7
+11.5
+81.8
+0.0
+10.3
+75.9
+73.3
+29.6
+Random steering
+20.7
+82.8
+17.2
+40.7
+48.3
+34.5
+17.9
+39.3
+16.7
+7.7
+79.2
+0.0
+10.0
+73.3
+75.9
+21.4
+Negative steering 26.7
+96.7
+17.2
+70.0
+83.3 27.6
+20.7
+25.0
+3.3
+4.0
+57.9
+0.0
+20.7
+64.3
+86.2
+20.0
+SOPHIA
+28.6
+100.0
+23.3
+67.9
+92.9
+31.0
+21.4
+70.8 13.3
+7.7
+85.2
+0.0
+16.7
+82.8
+81.2 39.3
+Gemma-4-E2B
+Greedy decoding
+98.3
+81.2
+0.0
+32.0
+33.3
+5.0
+33.3
+34.8 40.0
+9.1
+0.0
+6.9
+40.9
+4.8
+10.0
+20.0
+Random steering
+94.2
+83.6
+21.4
+35.7
+39.3
+4.5
+50.0
+30.2
+36.7
+15.4
+0.0
+10.7
+19.0
+3.8
+20.0
+12.5
+Negative steering 86.7
+71.5
+5.0
+24.0
+26.9
+4.3
+16.7
+42.5
+20.0
+15.4
+0.0
+9.1
+18.5
+10.3
+5.3
+18.5
+SOPHIA
+97.4
+85.1
+15.4
+41.7
+30.8
+29.2
+37.5
+32.9 40.7
+13.6
+0.0
+10.3
+34.8
+5.3
+30.8 26.3
+Qwen3-4B-Thinking-2507
+Greedy decoding
+7.1
+26.7
+17.9
+25.0
+0.0
+66.7
+27.6
+23.3
+3.4
+31.0
+23.3 50.0
+17.4
+50.0
+11.1 11.1
+Random steering
+6.7
+33.3
+10.0
+62.5
+3.4
+63.3
+34.5
+20.7
+6.7
+31.0
+26.7 60.0
+22.2
+63.0
+3.7
+3.8
+Negative steering
+3.7
+10.0
+20.0
+75.0
+0.0
+46.7
+0.0
+6.7
+0.0
+23.1
+20.0
+34.5
+33.3
+34.5
+0.0
+5.6
+SOPHIA
+20.7
+43.3
+62.1 100.0
+51.7
+88.5
+76.7
+23.3 30.0
+80.0
+37.9 65.5
+70.0
+48.0
+48.0 17.9
+Residual-stream patching.
+When the gate fires for a cluster c that has a steering vector, the
+controller patches the residual stream of Mtgt across the entirety of the next decoded step. At every
+patched layer ℓ∈L and every token position t inside the next step we apply
+eh(ℓ)
+t
+←h(ℓ)
+t
++ α ·
+h(ℓ)
+t
+
+2 ·
+v(ℓ)
+c
+v(ℓ)
+c
+
+2
+.
+(9)
+Two design choices appear in (9). Per-layer unit-normalisation of v(ℓ)
+c
+followed by scaling by the
+ambient residual norm ∥h(ℓ)
+t ∥2 makes the offset insensitive to the absolute residual scale, which
+varies substantially across decoder depth; a single global α then controls the intervention strength.
+Every-token, every-patched-layer application (rather than a single-token boundary patch) is what we
+found in practice to produce reliable cluster-level effects at the small α values that keep generations
+coherent. Once the next step closes and is re-classified by (8), the patch is removed and the controller
+returns to standard greedy decoding.
+Hyperparameters.
+We use K = 5 clusters per dataset (KMeans, seed 42, on z-scored mean-pool
+features). The patched layer set L is the upper half of the decoder for the small models (layers
+18–35 for Qwen3-4B-Thinking-2507, 17–34 for Gemma-4-E2B) and the mid-stack for Qwen3-32B-
+Thinking (18–35 out of 64 layers); deeper-stack patching follows the rationale from prior work
+that mid-to-late layers carry the abstract conceptual content most relevant to reasoning behaviour.
+The intervention strength α is tuned per model: α = 0.05 for the two Qwen-Thinking models, and
+α = 0.025 for Gemma-4-E2B, above which generations on Gemma degenerate into token loops – a
+useful sanity signal that the patched offset is exerting real effect on the residual stream rather than
+being absorbed as noise. All other choices (K, seed, layer-range scheme, every-token patch mode)
+are fixed across datasets and models.
+5
+Steerable Reasoning State Transitions
+The trajectory analysis in Section 2 identified self-loops as a dominant failure mode of LRM reasoning,
+and Section 4 extracted, for each latent cluster, a crosser-minus-stayer steering direction predicted by
+8
+
+Section 3 to be a usable local exit primitive. We now ask whether that direction has the predicted
+causal effect: can a small additive offset along v(ℓ)
+c
+actually push the model out of cluster c on the
+next step, when the model would otherwise have self-looped?
+5.1
+Evaluation Protocol: Per-Cluster Hit Rate
+To test whether vc breaks self-loops, we sample N=30 stayer prefixes per cluster from held-out
+incorrect traces. A stayer prefix is a step i in an incorrect trace with zi = zi−1 (the model has
+already failed to leave c once on its own) and zi = c. For each prefix we replay the model under
+four conditions, decode the next reasoning step, and re-classify the produced step into a cluster
+using Memb (Section 4.3). The per-cluster hit rate is the fraction of stayer prefixes for which the
+produced next step is assigned to a cluster other than c. This metric is intentionally local: it asks only
+whether the intervention moved the trajectory out of c on the very next step, decoupling the test of
+the steering direction itself from any downstream effect on final-answer accuracy or token count. A
+high per-cluster hit rate is necessary for the framework to be useful, but it is the headline scientific
+claim of this paper rather than the end-to-end task gain.
+The four conditions are: Greedy decoding (no intervention; the natural rate at which the model
+spontaneously escapes c from a two-step stayer prefix); Random steering (a norm-matched Gaussian
+vector, deterministic per (cluster, dataset, sample_id, step_idx), which controls for the effect of
+perturbing the residual stream at all); Negative steering (−α v(ℓ)
+c
+applied via Equation 9, which
+should keep the model in c if v(ℓ)
+c
+is sign-meaningful); and SOPHIA (+α v(ℓ)
+c
+via Equation 9). Cluster
+ids are dataset-local and model-local: Hungarian alignment of clusters across (model, dataset) pairs
+fell below 0.4, so we re-fit the latent state structure for each pair rather than impose a shared identity
+on clusters that are not in fact aligned across models.
+5.2
+Results
+Table 1 reports per-cluster hit rates across three models and four reasoning datasets. Several patterns
+are robust across the grid.
+SOPHIA breaks self-loops where greedy decoding cannot.
+Of the cells where SOPHIA is applica-
+ble, it attains the highest hit rate in the majority. The improvement over Greedy decoding is largest
+where Greedy is weakest – that is, on stayer prefixes the model would otherwise have remained stuck
+on. On Qwen3-4B-Thinking-2507, gsm8k C3 rises from 25.0% to 100%, gsm8k C2 from 17.9% to
+62.1%, aqua C0 from 0.0% to 51.7%, and logiqa C2 from 31.0% to 80.0%. The pattern persists at
+scale on Qwen3-32B-Thinking (e.g. aqua C0: 53.3% →92.9%, math C3: 29.6% →39.3%) and on
+a different model family with Gemma-4-E2B (aqua C1: 5.0% →29.2%, math C2: 10.0% →30.8%).
+These cells are direct causal evidence that the contrastive direction vc encodes a usable “leave-c” sig-
+nal, and that the signal transfers across model sizes and architectures without re-tuning the extraction
+procedure.
+The effect is direction-specific, not magnitude-driven.
+Random steering at the same residual
+norm produces hit rates that are typically indistinguishable from Greedy decoding, confirming that
+arbitrary residual-stream perturbations do not by themselves move the trajectory out of c. Negative
+steering, which uses the same vector with reversed sign, generally lowers the hit rate further (e.g. on
+Qwen3-4B aqua C2 it falls from 27.6% to 0.0%, and on aqua C4 from 23.3% to 6.7%), as Lemma 1
+predicts if vc is positively aligned with ∇e pc(0). A handful of cells – e.g. Qwen3-4B gsm8k C3 –
+show negative steering also improving over greedy; we read these as evidence that some clusters are
+unstable equilibria where any sufficiently large perturbation forces an exit. Together, the random and
+negative controls rule out the hypothesis that the SOPHIA effect is a generic decoding-perturbation
+artefact.The hit-rate gain from SOPHIA over Greedy varies sharply across clusters within a single
+(model, dataset) pair. On Qwen3-4B logiqa, for instance, SOPHIA produces a +49pt gain on C2 but
+only a +15pt gain on C4; on math, it gains +37pts on C2 but actually trails Greedy on C1. A single
+global “break-the-loop” direction would instead produce a roughly uniform shift across clusters
+within a dataset. The cluster-specific spread is what we would expect if the corrective signals for
+different reasoning states genuinely live in different residual-stream directions – the prediction made
+in Section 2 – and it is the empirical justification for indexing the steering bank by source cluster c
+rather than collapsing to a single global direction.
+9
+
+6
+Conclusion
+We reframed inference-time control of reasoning as steering at the level of latent state transitions,
+with self-loops as the dominant failure mode. SOPHIA realizes this view training-free, pairing a
+bank of transition-specific residual-stream directions with an online controller that detects self-loops
+and intervenes before the next step. Across multiple models and benchmarks, transition-aware
+steering outperforms state-agnostic alternatives, with gains concentrated where greedy decoding
+cannot escape. Strengthening the controller, aligning states across datasets, and extending beyond
+self-loops are natural next steps.
+LLM usage disclosure: AI tools were used for minor writing, formatting, and visual editing
+assistance for generating illustrative figures
+References
+Pranjal Aggarwal and Sean Welleck. L1: Controlling how long a reasoning model thinks with
+reinforcement learning. In Second Conference on Language Modeling, 2025. URL https:
+//openreview.net/forum?id=4jdIxXBNve.
+Janice Ahn, Rishu Verma, Renze Lou, Di Liu, Rui Zhang, and Wenpeng Yin. Large language models
+for mathematical reasoning: Progresses and challenges. In Neele Falk, Sara Papi, and Mike
+Zhang, editors, Proceedings of the 18th Conference of the European Chapter of the Association
+for Computational Linguistics: Student Research Workshop, pages 225–237, St. Julian’s, Malta,
+March 2024. Association for Computational Linguistics. doi: 10.18653/v1/2024.eacl-srw.17. URL
+https://aclanthology.org/2024.eacl-srw.17/.
+Iván Arcuschin, Jett Janiak, Robert Krzyzanowski, Senthooran Rajamanoharan, Neel Nanda, and
+Arthur Conmy.
+Chain-of-thought reasoning in the wild is not always faithful, 2025.
+URL
+https://arxiv.org/abs/2503.08679.
+Runjin Chen, Zhenyu Zhang, Junyuan Hong, Souvik Kundu, and Zhangyang Wang. SEAL: Steerable
+reasoning calibration of large language models for free. In Second Conference on Language
+Modeling, 2025. URL https://openreview.net/forum?id=klPszYDIRT.
+Yichao Fu, Junda Chen, Siqi Zhu, Zheyu Fu, Zhongdongming Dai, Yonghao Zhuang, Yian Ma,
+Aurick Qiao, Tajana Rosing, Ion Stoica, and Hao Zhang. Efficiently scaling llm reasoning with
+certaindex, 2025. URL https://arxiv.org/abs/2412.20993.
+Zihan Huang, Xintong Li, Rohan Surana, Tong Yu, Rui Wang, Julian McAuley, Jingbo Shang, and
+Junda Wu. Amps: Adaptive modality preference steering via functional entropy. arXiv preprint
+arXiv:2602.12533, 2026.
+Nitish Shirish Keskar, Bryan McCann, Lav R. Varshney, Caiming Xiong, and Richard Socher.
+Ctrl: A conditional transformer language model for controllable generation, 2019. URL https:
+//arxiv.org/abs/1909.05858.
+Takeshi Kojima, Shixiang Shane Gu, Machel Reid, Yutaka Matsuo, and Yusuke Iwasawa. Large
+language models are zero-shot reasoners, 2023. URL https://arxiv.org/abs/2205.11916.
+Aviral Kumar, Vincent Zhuang, Rishabh Agarwal, Yi Su, John D Co-Reyes, Avi Singh, Kate
+Baumli, Shariq Iqbal, Colton Bishop, Rebecca Roelofs, Lei M Zhang, Kay McKinney, Disha
+Shrivastava, Cosmin Paduraru, George Tucker, Doina Precup, Feryal Behbahani, and Aleksandra
+Faust. Training language models to self-correct via reinforcement learning, 2024. URL https:
+//arxiv.org/abs/2409.12917.
+Haipeng Luo, Qingfeng Sun, Can Xu, Pu Zhao, Jian-Guang Lou, Chongyang Tao, Xiubo Geng,
+Qingwei Lin, Shifeng Chen, Yansong Tang, and Dongmei Zhang. Wizardmath: Empowering
+mathematical reasoning for large language models via reinforced evol-instruct. In The Thirteenth
+International Conference on Learning Representations, 2025. URL https://openreview.net/
+forum?id=mMPMHWOdOy.
+10
+
+Sara Vera Marjanovic, Arkil Patel, Vaibhav Adlakha, Milad Aghajohari, Parishad BehnamGhader,
+Mehar Bhatia, Aditi Khandelwal, Austin Kraft, Benno Krojer, Xing Han Lù, Nicholas Meade,
+Dongchan Shin, Amirhossein Kazemnejad, Gaurav Kamath, Marius Mosbach, Karolina Stanczak,
+and Siva Reddy. Deepseek-r1 thoughtology: Let’s think about LLM reasoning. Transactions on
+Machine Learning Research, 2026. ISSN 2835-8856. URL https://openreview.net/forum?
+id=BZwKsiRnJI.
+Rohan Surana, Gagan Mundada, Xunyi Jiang, Chuhan Wang, Zhenwei Tang, Difan Jiao, Zihan Huang,
+Yuxin Xiong, Junda Wu, Sheldon Yu, et al. Generate, filter, control, replay: A comprehensive
+survey of rollout strategies for llm reinforcement learning. arXiv preprint arXiv:2605.02913, 2026.
+Daniel Tan, David Chanin, Aengus Lynch, Brooks Paige, Dimitrios Kanoulas, Adrià Garriga-Alonso,
+and Robert Kirk. Analysing the generalisation and reliability of steering vectors. Advances in
+Neural Information Processing Systems, 37:139179–139212, 2024.
+Alexander Matt Turner, Lisa Thiergart, Gavin Leech, David Udell, Juan J Vazquez, Ulisse Mini,
+and Monte MacDiarmid. Steering language models with activation engineering. arXiv preprint
+arXiv:2308.10248, 2023.
+Karthik Valmeekam, Matthew Marquez, Sarath Sreedharan, and Subbarao Kambhampati. On the
+planning abilities of large language models - a critical investigation. In Thirty-seventh Conference
+on Neural Information Processing Systems, 2023. URL https://openreview.net/forum?id=
+X6dEqXIsEW.
+Rui Wang, Junda Wu, Yu Xia, Tong Yu, Ruiyi Zhang, Ryan A Rossi, Subrata Mitra, Lina Yao,
+and Julian McAuley. Cacheprune: Teaching llms what not to follow via kv-cache editing. In
+Proceedings of the 64th Annual Meeting of the Association for Computational Linguistics (Volume
+1: Long Papers), pages 1551–1570, 2026.
+Xuezhi Wang, Jason Wei, Dale Schuurmans, Quoc Le, Ed Chi, Sharan Narang, Aakanksha Chowdh-
+ery, and Denny Zhou. Self-consistency improves chain of thought reasoning in language models,
+2023. URL https://arxiv.org/abs/2203.11171.
+Yue Wang, Qiuzhi Liu, Jiahao Xu, Tian Liang, Xingyu Chen, Zhiwei He, Linfeng Song, Dian Yu,
+Juntao Li, Zhuosheng Zhang, Rui Wang, Zhaopeng Tu, Haitao Mi, and Dong Yu. Thoughts are
+all over the place: On the underthinking of o1-like llms, 2025. URL https://arxiv.org/abs/
+2501.18585.
+Zihao Wang, Shaofei Cai, Guanzhou Chen, Anji Liu, Xiaojian Ma, and Yitao Liang. Describe,
+explain, plan and select: Interactive planning with large language models enables open-world
+multi-task agents, 2024. URL https://arxiv.org/abs/2302.01560.
+Jason Wei, Xuezhi Wang, Dale Schuurmans, Maarten Bosma, Brian Ichter, Fei Xia, Ed Chi, Quoc Le,
+and Denny Zhou. Chain-of-thought prompting elicits reasoning in large language models, 2023.
+URL https://arxiv.org/abs/2201.11903.
+Sean Welleck, Ilia Kulikov, Stephen Roller, Emily Dinan, Kyunghyun Cho, and Jason Weston.
+Neural text generation with unlikelihood training. In International Conference on Learning
+Representations, 2020. URL https://openreview.net/forum?id=SJeYe0NtvH.
+Junda Wu, Tong Yu, Xiang Chen, Haoliang Wang, Ryan Rossi, Sungchul Kim, Anup Rao, and Julian
+McAuley. Decot: Debiasing chain-of-thought for knowledge-intensive tasks in large language
+models via causal intervention. In Proceedings of the 62nd Annual Meeting of the Association for
+Computational Linguistics (Volume 1: Long Papers), pages 14073–14087, 2024.
+Junda Wu, Yu Xia, Tong Yu, Xiang Chen, Sai Sree Harsha, Akash V Maharaj, Ruiyi Zhang,
+Victor Bursztyn, Sungchul Kim, Ryan A Rossi, et al. Doc-react: Multi-page heterogeneous
+document question-answering. In Proceedings of the 63rd Annual Meeting of the Association for
+Computational Linguistics (Volume 2: Short Papers), pages 67–78, 2025.
+Junda Wu, Yuxin Xiong, Xintong Li, Sheldon Yu, Zhengmian Hu, Tong Yu, Rui Wang, Xiang Chen,
+Jingbo Shang, and Julian McAuley. Ctrls: Chain-of-thought reasoning via latent state-transition,
+2026. URL https://arxiv.org/abs/2507.08182.
+11
+
+An Yang, Anfeng Li, Baosong Yang, Beichen Zhang, Binyuan Hui, Bo Zheng, Bowen Yu, Chang
+Gao, Chengen Huang, Chenxu Lv, Chujie Zheng, Dayiheng Liu, Fan Zhou, Fei Huang, Feng Hu,
+Hao Ge, Haoran Wei, Huan Lin, Jialong Tang, Jian Yang, Jianhong Tu, Jianwei Zhang, Jianxin
+Yang, Jiaxi Yang, Jing Zhou, Jingren Zhou, Junyang Lin, Kai Dang, Keqin Bao, Kexin Yang,
+Le Yu, Lianghao Deng, Mei Li, Mingfeng Xue, Mingze Li, Pei Zhang, Peng Wang, Qin Zhu, Rui
+Men, Ruize Gao, Shixuan Liu, Shuang Luo, Tianhao Li, Tianyi Tang, Wenbiao Yin, Xingzhang
+Ren, Xinyu Wang, Xinyu Zhang, Xuancheng Ren, Yang Fan, Yang Su, Yichang Zhang, Yinger
+Zhang, Yu Wan, Yuqiong Liu, Zekun Wang, Zeyu Cui, Zhenru Zhang, Zhipeng Zhou, and Zihan
+Qiu. Qwen3 technical report, 2025. URL https://arxiv.org/abs/2505.09388.
+Sheldon Yu, Yuxin Xiong, Junda Wu, Xintong Li, Tong Yu, Xiang Chen, Ritwik Sinha, Jingbo
+Shang, and Julian McAuley. Explainable chain-of-thought reasoning: An empirical analysis on
+state-aware reasoning dynamics. In Christos Christodoulopoulos, Tanmoy Chakraborty, Carolyn
+Rose, and Violet Peng, editors, Findings of the Association for Computational Linguistics: EMNLP
+2025, pages 16660–16667, Suzhou, China, November 2025. Association for Computational
+Linguistics. ISBN 979-8-89176-335-7. doi: 10.18653/v1/2025.findings-emnlp.904. URL
+https://aclanthology.org/2025.findings-emnlp.904/.
+Xichen Zhang, Sitong Wu, Haoru Tan, Shaozuo Yu, Yinghao Zhu, Ziyi He, and Jiaya Jia. Smartswitch:
+Advancing llm reasoning by overcoming underthinking via promoting deeper thought exploration,
+2025. URL https://arxiv.org/abs/2510.19767.
+Li Zhong, Zilong Wang, and Jingbo Shang. Debug like a human: A large language model debugger
+via verifying runtime execution step by step. In Lun-Wei Ku, Andre Martins, and Vivek Srikumar,
+editors, Findings of the Association for Computational Linguistics: ACL 2024, pages 851–870,
+Bangkok, Thailand, August 2024. Association for Computational Linguistics. doi: 10.18653/v1/
+2024.findings-acl.49. URL https://aclanthology.org/2024.findings-acl.49/.
+12
+
+A
+Appendix
+This appendix states the control objective that motivates the method, while the main text keeps the
+presentation operational. Let qϕ(z | ξt) be the latent-state abstraction and let P 0(· | i, ξt) be the
+next-state distribution induced by the base model from source state i and prefix ξt. An activation
+intervention ut = (αt, vt) changes the residual stream and induces a controlled transition distribution
+P ut(· | i, ξt).
+Definition 1 (Transition steering vector). For source state i, target state j, and context ct, a vector
+v(ℓ)
+i→j(ct) is a transition steering vector if there exists a positive strength α such that
+P (α,v(ℓ)
+i→j(ct))(j | i, ξt) > P 0(j | i, ξt).
+(10)
+The online controller can be written as a policy κ that maps the current prefix, inferred state, and
+context to an intervention. Given a desired transition policy π⋆(· | i, ξt), the ideal objective is
+min
+κ Ex,t
+
+KL (π⋆(· | it, ξt)∥P κ(· | it, ξt)) + λ∥et∥2
+2
+
+,
+(11)
+where et = αtvt and it = arg maxi qϕ(i | ξt). Equation 11 is not solved directly. The implemented
+method approximates it with a finite vector bank, a data-estimated target policy, and a gate that
+suppresses unsupported interventions. The implementation in Section 4 replaces the parametric
+latent-state model qϕ with a per-dataset K-means partition over mean-pool step features, and the
+controller κ with the two-step self-loop gate of Section 4.3; the steering vectors {v(ℓ)
+c } of Section 4.2
+are the finite vector bank that instantiates v(ℓ)
+i→j(ct) in Eq. 11.
+B
+Detailed Phase-Trajectory Analysis
+This appendix expands the trajectory analysis summarised in Section 2. We document, for each of
+the four reasoning datasets used to build the cluster bank, the per-dataset cluster→phase mapping,
+the raw and phase-ordered transition matrices, the t-SNE geometry of the step embeddings, and the
+aggregate dwell/forward/backward statistics that justify the absorbing-P5 view used by the method.
+Setup.
+We embed every reasoning step using the mean-pool last-layer features of the embedding
+model Memb described in Section 4.1, and partition the resulting step-level representations with
+KMeans (K=5) on each of four datasets: GSM8K, AQUA, LOGIQA, and MATH. The cluster identifiers
+returned by KMeans are arbitrary, so they cannot be read directly across datasets; we instead annotate
+each cluster with its empirical average step position and a short semantic reading distilled from 10
+random member steps.
+Cluster semantics.
+Tables 2–5 list, for each dataset, the five clusters together with their mean step
+index, member count, and the dominant behaviour observed in their members. A consistent five-stage
+pattern emerges across datasets: problem reading →first computation →mid verification →late
+deliberation →rumination tail. We adopt this as a canonical phase labelling P1→P5 in what follows;
+the PHASE column of each table records the mapping between KMeans IDs and these phase labels.
+Cluster
+Phase
+Avg. step
+n
+Reading
+0
+P1
+6.0
+5,162
+Problem reading and decomposition
+2
+P2
+16.8
+3,748
+First sanity checks on early arithmetic
+4
+P3
+31.5
+1,941
+Re-interpretation; partial answers
+1
+P4
+52.4
+1,075
+Final-answer scaffolds; repeated checks
+3
+P5
+83.2
+524
+Extreme re-examination; failure regime
+Table 2: GSM8K: cluster →phase mapping with mean step index and one-line semantics.
+Raw transition matrices.
+We compute the empirical inter-step transition counts between KMeans
+clusters and visualise them in Fig. 5. The same heatmaps appear in Fig. 3a of the main text as part of
+the two-panel transition / t-SNE figure; we reproduce them here in a single-row layout to make the
+13
+
+Cluster
+Phase
+Avg. step
+n
+Reading
+4
+P1
+7.5
+3,335
+Problem read; immediate second-guessing
+1
+P2
+22.2
+2,996
+Comparing intermediate results to options
+2
+P3
+41.1
+2,190
+Restarting derivations
+0
+P4
+63.1
+1,551
+Failing to match a multiple-choice option
+3
+P5
+89.0
+1,253
+Exhaustion; cyclic re-examination
+Table 3: AQUA: cluster →phase mapping with mean step index and one-line semantics.
+Cluster
+Phase
+Avg. step
+n
+Reading
+1
+P1
+7.3
+5,480
+Scanning logical conditions
+2
+P2
+23.7
+4,504
+First attempt at case analysis
+4
+P3
+43.9
+3,953
+Early commitments and case rejections
+0
+P4
+66.1
+3,398
+Long case-by-case eliminations
+3
+P5
+90.2
+2,879
+Deep nested case analysis; worst tail
+Table 4: LOGIQA: cluster →phase mapping with mean step index and one-line semantics.
+per-dataset comparison easier to read. Plotted in raw cluster-ID order the matrices appear scrambled,
+because the ID-to-phase permutation differs across datasets (Tabs. 2–5), so the same underlying
+dynamics produce different cell patterns.
+C0
+C1
+C2
+C3
+C4
+C0
+C1
+C2
+C3
+C4
+4662
+0
+445
+0
+0
+0
+1001
+0
+32
+0
+0
+0
+3303
+0
+202
+0
+0
+0
+492
+0
+0
+74
+0
+0
+1739
+0
+1000
+2000
+3000
+4000
+C0
+C1
+C2
+C3
+C4
+C0
+C1
+C2
+C3
+C4
+1461
+0
+0
+56
+0
+0
+2763
+144
+0
+0
+90
+0
+2046
+0
+0
+0
+0
+0
+1197
+0
+0
+233
+0
+0
+3081
+0
+500
+1000
+1500
+2000
+2500
+3000
+C0
+C1
+C2
+C3
+C4
+C0
+C1
+C2
+C3
+C4
+3222
+0
+0
+145
+0
+0
+4980
+349
+0
+0
+0
+0
+4155
+0
+220
+0
+0
+0
+2734
+0
+176
+0
+0
+0
+3733
+0
+1000
+2000
+3000
+4000
+C0
+C1
+C2
+C3
+C4
+C0
+C1
+C2
+C3
+C4
+4669
+0
+0
+0
+244
+0
+6290
+0
+490
+0
+0
+0
+2530
+0
+0
+357
+0
+0
+5670
+0
+0
+0
+165
+0
+3681
+0
+1000
+2000
+3000
+4000
+5000
+6000
+Figure 5: Inter-step cluster transition counts in raw KMeans-ID order on (left to right) GSM8K, AQUA,
+LOGIQA, MATH. The dominant off-diagonal cells differ across datasets because KMeans IDs are
+arbitrary; reordering by mean step position (Fig. 6) recovers a common structure.
+Phase-ordered transition matrices.
+After reindexing the clusters of each dataset using the CLUS-
+TER→PHASE maps in Tabs. 2–5, we form the phase-transition matrix Pij = Pr[ ϕt+1=j | ϕt=i ] on
+the reordered sequence ϕ1:T of every trace. All four matrices collapse to a strictly upper-bidiagonal
+absorbing form (Fig. 6): a dominant dwell mass on the diagonal, a single forward transition Pi,i+1,
+an absorbing terminal state P55=1, and skip-ahead probabilities Pi,j>i+1 that are zero up to the
+resolution of the data. Dwell probability rises monotonically from P1 to P4, indicating that later
+phases are progressively harder to leave. This is the empirical basis for the dwell-time-gated controller
+used in Section 4.3: because P5 is absorbing, an unguarded self-loop intervention that pushes the
+trace forward at every step would trap the model in the rumination tail.
+t-SNE geometry.
+Figure 7 shows 2D t-SNE projections of the step embeddings on each dataset,
+coloured by cluster. The clusters form elongated, locally coherent ribbons rather than isotropic
+blobs, and adjacent phases occupy adjacent regions of the manifold — the geometric signature of a
+one-dimensional progression rather than a categorical partition. This is the figure referenced from the
+introduction (Section 2); its full per-dataset layout is deferred here to keep the main text compact.
+Quantitative summary.
+Table 6 aggregates the four datasets along three axes derived from the
+empirical transition counts: the diagonal mass (probability a step stays in its current phase), the
+upper-triangular forward mass (probability of advancing), and the lower-triangular backward mass
+(regression to an earlier phase). Across all four datasets, dwell mass exceeds 0.93, forward mass is
+small but non-zero, and backward mass is exactly zero: no trace ever re-enters an earlier phase. The
+14
+
+Cluster
+Phase
+Avg. step
+n
+Reading
+1
+P1
+7.8
+6,790
+Formula recall and equation setup
+3
+P2
+22.0
+6,160
+Execution of chosen approach; first checks
+0
+P3
+38.4
+5,026
+Algebraic re-derivations
+4
+P4
+58.0
+3,925
+Alternative geometric/algebraic framings
+2
+P5
+80.3
+2,695
+Minimal-content stalling; longest tails
+Table 5: MATH: cluster →phase mapping with mean step index and one-line semantics.
+Figure 6: Phase-ordered transition matrix P(j | i) on (left to right) GSM8K, AQUA, LOGIQA, MATH
+after reindexing clusters by mean step position (Tabs. 2–5). All four matrices are upper-bidiagonal
+with an absorbing P5, evidencing a near-deterministic P1→P2→P3→P4→P5 trajectory.
+terminal absorption probability P(P5 | P5)=1 holds verbatim, so once a trace enters the rumination
+tail it cannot leave.1
+Dataset
+traces
+steps
+dwell
+forward
+backward
+P(P5 | P5)
+GSM8K
+500
+12,450
+0.937
+0.063
+0.000
+1.000
+AQUA
+254
+11,325
+0.953
+0.047
+0.000
+1.000
+LOGIQA
+500
+20,214
+0.955
+0.045
+0.000
+1.000
+MATH
+500
+24,596
+0.948
+0.052
+0.000
+1.000
+Table 6: Phase-trajectory statistics on four reasoning benchmarks. “Dwell” is total diagonal mass of
+the phase-transition matrix, “forward” is upper-triangular mass, and “backward” is lower-triangular
+mass after reindexing clusters by mean step position. All four datasets exhibit a strictly forward chain
+with an absorbing terminal phase.
+Takeaway.
+Together, the per-dataset cluster semantics (Tabs. 2–5), the contrast between raw and
+phase-ordered heatmaps (Figs. 5, 6), the ribbon-like t-SNE geometry, and the zero-backward / unit-
+absorption statistics establish that reasoning traces of Memb follow a near-deterministic five-phase
+trajectory rather than moving freely between qualitatively distinct reasoning modes. This justifies the
+crosser-minus-stayer interventions of Section 4.2, h ←h + α v(ℓ)
+c : because transitions are sparse and
+forward, the crosser-minus-stayer direction has a well-defined geometric meaning at each phase, and
+because P5 is absorbing, dwell-time gating (Section 4.3) is essential to prevent the controller from
+settling into the rumination tail.
+1The vanishing backward mass is partly a consequence of phase ordering by mean step index; the non-trivial empirical
+findings are (i) all skip-ahead transitions Pi,j>i+1 are zero, and (ii) the absorption P55=1 is exact, not approximate.
+15
+
+Figure 7: 2D t-SNE of mean-pool last-layer features for reasoning steps, coloured by cluster, on (left
+to right) GSM8K, AQUA, LOGIQA, MATH. Clusters appear as contiguous ribbons that connect end to
+end, consistent with a one-dimensional reasoning trajectory.
+16
+
+NeurIPS Paper Checklist
+1. Claims
+Question: Do the main claims made in the abstract and introduction accurately reflect the
+paper’s contributions and scope?
+Answer: [Yes]
+Justification: The abstract and introduction claim a transition-level formulation, an imple-
+mented extraction/controller pipeline, and generated artifact summaries. Missing end-to-end
+steering results are explicitly marked as TBD.
+2. Limitations
+Question: Does the paper discuss the limitations of the work performed by the authors?
+Answer: [Yes]
+Justification: The draft states that full steering, transfer, and ablation evaluations are pending
+and avoids unsupported numerical claims.
+3. Theory assumptions and proofs
+Question: For each theoretical result, does the paper provide the full set of assumptions and
+a complete proof?
+Answer: [Yes]
+Justification: The appendix states the local differentiability and shared-covariance assump-
+tions and gives proofs for the local response and contrastive-direction claims.
+4. Experimental result reproducibility
+Question: Does the paper fully disclose the information needed to reproduce the main
+experimental results?
+Answer: [Yes]
+Justification: The paper names the run, model, generated report interface, vector variants,
+and pending evaluation commands needed to reproduce the reported artifact tables.
+5. Open access to data and code
+Question: Does the paper provide open access to the data and code?
+Answer: [No]
+Justification: The local codebase and report script exist, but the draft does not yet provide a
+public anonymized repository or final release package.
+6. Experimental setting/details
+Question: Does the paper specify all training and test details necessary to understand the
+results?
+Answer: [Yes]
+Justification: The setup section gives the current run, model, datasets, artifact counts, and
+the appendix gives the report command and evaluation variants.
+7. Experiment statistical significance
+Question: Does the paper report error bars or other appropriate statistical significance
+information?
+Answer: [N/A]
+Justification: The current draft does not yet report completed end-to-end steering experi-
+ments, so significance tests are not applicable to the TBD result tables.
+8. Experiments compute resources
+Question: Does the paper provide sufficient information on compute resources?
+Answer: [No]
+Justification: The draft names the model and artifact scale but does not yet provide complete
+wall-clock, GPU, or memory accounting for the pending full evaluations.
+9. Code of ethics
+Question: Does the research conform with the NeurIPS Code of Ethics?
+Answer: [Yes]
+Justification: The work analyzes and intervenes on model-generated reasoning traces us-
+ing standard benchmark-style data and does not involve human subjects or private data
+collection.
+10. Broader impacts
+Question: Does the paper discuss potential positive and negative societal impacts?
+17
+
+Answer: [Yes]
+Justification: The motivation discusses efficient and controllable reasoning; a final submis-
+sion should expand this into a dedicated broader-impact paragraph.
+11. Safeguards
+Question: Does the paper describe safeguards for responsible release of high-risk data or
+models?
+Answer: [N/A]
+Justification: The paper does not release a new model or high-risk scraped dataset in its
+current form.
+12. Licenses for existing assets
+Question: Are existing assets credited and are licenses respected?
+Answer: [No]
+Justification: The draft cites the main methodological references and names benchmark
+families, but final dataset and model license details still need to be completed before
+submission.
+13. New assets
+Question: Are new assets introduced in the paper well documented?
+Answer: [Yes]
+Justification: The report script and generated tables are new local assets and are documented
+by command in the appendix.
+14. Crowdsourcing and research with human subjects
+Question: For crowdsourcing experiments and research with human subjects, does the paper
+include instructions, screenshots, and compensation details?
+Answer: [N/A]
+Justification: The work does not involve crowdsourcing experiments or research with human
+subjects.
+15. Institutional review board approvals
+Question: Does the paper describe IRB approvals or equivalent review for human-subject
+research?
+Answer: [N/A]
+Justification: The work does not involve human subjects, so IRB approval is not applicable.
+16. Declaration of LLM usage
+Question: Does the paper describe LLM usage if it is an important component of the
+research?
+Answer: [Yes]
+Justification: LLMs are the object of study and the method intervenes on their hidden states
+during reasoning; this is described throughout the main text.
+18

@@ -1,0 +1,21 @@
+{
+  "arxiv_id": "2605.18102",
+  "title": "DanceHMR: Hand-Aware Whole-Body Human Mesh Recovery from Monocular Videos",
+  "authors": [
+    "Wenhao Shen",
+    "Ming Zhou",
+    "Hengyuan Zhang",
+    "Siyuan Bian",
+    "Youjiang Xu",
+    "Yuan Zhang"
+  ],
+  "abstract": "Monocular video human mesh recovery is essential for digital humans, avatar animation, and embodied simulation, where both temporal stability and expressive whole-body motion are required. Existing video HMR methods produce coherent body motion but often overlook detailed hand articulation, while image-based whole-body methods recover SMPL-X meshes independently per frame, often leading to jittery and inaccurate hand motion. We present a temporally coherent whole-body HMR framework for challenging in-the-wild monocular videos. Our model unifies body context and part-specific hand observations through residual body-hand fusion, enabling stable body motion and detailed hand recovery within a single temporal architecture. We further introduce close-up-aware augmentation to improve robustness under upper-body framing. Experiments on whole-body and body-only benchmarks demonstrate improved hand reconstruction and competitive body accuracy. Our method also produces temporally stable and 2D-consistent SMPL-X motion in challenging real-world videos.",
+  "published": "2026-05-18T09:14:28Z",
+  "categories": [
+    "cs.CV"
+  ],
+  "keyword": "digital_human",
+  "fetched_at": "2026-07-21T03:43:53Z",
+  "abs_url": "https://arxiv.org/abs/2605.18102",
+  "pdf_url": "https://arxiv.org/pdf/2605.18102"
+}

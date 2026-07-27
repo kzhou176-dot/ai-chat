@@ -1,0 +1,942 @@
+T3HG-Editor: Text-driven 3D Human Garment Editing with Body Priors
+Embedded in SMPL-X
+Shaoru Sun1, Xingtao Wang1,2∗, Zihan Ma1, Wenrui Li1,
+Jiantao Zhou3, Debin Zhao1, Xiaopeng Fan1,2,4
+1Faculty of Computing, Harbin Institute of Technology, Harbin 150001, China
+2Harbin Institute of Technology Suzhou Research Institute, Suzhou 215000, China
+3Department of Computer and Information Science, University of Macau, Macau, China
+4Peng Cheng Laboratory, Shenzhen 518000, China
+24b903087@stu.hit.edu.cn, xtwang@hit.edu.cn, 120l020523@stu.hit.edu.cn, liwr@stu.hit.edu.cn
+jtzhou@um.edu.mo, dbzhao@hit.edu.cn, fxp@hit.edu.cn
+Abstract
+While 3D Gaussian Editing (3DGE) has seen substantial
+progress, text-driven 3D human garment editing remains
+largely underexplored. Existing 3DGE works typically
+follow a paradigm that applies 2D editing techniques
+to multi-view rendered images and updates 3D Gaus-
+sians based on the modified images. Extending such
+methods to 3D human garment editing suffers from low-
+fidelity outcomes, caused by introduced distortions and
+garment inconsistencies. A promising breakthrough op-
+portunity arises from the SMPL eXpressive (SMPL-X)
+model that embodies rich prior information for virtual
+humans. Motivated by this insight, we propose a text-
+driven 3D human garment editor termed T3HG-Editor,
+which delivers high-fidelity and garment consistent re-
+sults by leveraging geometry and joint priors embedded
+in SMPL-X. Specifically, T3HG-Editor contains three
+stages, namely obtainment of editable Gaussians, gar-
+ment consistent editing, and Gaussian updating with
+overflow pruning. The obtainment of editable Gaussians
+begins with seeding Gaussians along SMPL-X normals
+to generate sufficient near surface Gaussians, followed by
+a 2D mask constraint that precisely localizes the target
+Gaussians to be edited. The garment consistent editing
+aggregates tokens corresponding to the same SMPL-X
+vertex across multiple views and propagates them to their
+original views, enforcing garment consistency without
+requiring additional training. Gaussian updating with
+overflow pruning employs a Signed Distance Function
+(SDF) defined on SMPL-X to construct a human dis-
+tance field, which is then integrated with a 2D seman-
+tic mask to prune overflowing Gaussians, thus prevent-
+ing contamination of non-target regions. Experiments on
+multiple subjects and diverse garment types demonstrate
+that T3HG-Editor outperforms state-of-the-art methods
+in both editing quality and garment consistency.
+Introduction
+3D human garment editing holds significant value in
+meeting personalized demands across various domains
+like AIGC asset reuse, film production, e-commerce dis-
+play, and more (Wang et al. 2025; Bao et al. 2025;
+Zhang et al. 2016). Recent advances in 2D diffusion
+∗Corresponding author.
+Turn his upper body into a blue denim jacket
+Turn her T-shirt into a silk blouse
+Original views
+Ours
+DGE
+EditSplat
+GaussianEditor
+Figure 1: In the top row, existing methods alter the back-
+ground and pants colors (red arrows) while retaining
+short-sleeve details on the denim jacket (yellow box). In
+the bottom row, garment inconsistencies appear around
+the sleeves and shoes (green ellipses).
+models (Chan et al. 2024; Li et al. 2025; Ho, Jain, and
+Abbeel 2020) and 3D Gaussian splatting (3DGS) (Kerbl
+et al. 2023) have greatly advanced the development of
+3D Gaussian Editing (3DGE). However, 3D human gar-
+ment editing, which requires fine-grained and garment
+consistent modifications without disrupting background
+or human structure, remains underexplored due to the
+diversity of garment types and the complexity of their
+geometries (Sun et al. 2025; Chen et al. 2024a). Exist-
+ing 3DGE works typically apply 2D editing techniques
+to multi-view rendered images and subsequently update
+3D Gaussians based on the modified images (Vachha and
+Haque 2024; Karim et al. 2024). A straightforward ex-
+tension of such methods to human garments suffers from
+low-fidelity outcomes, primarily on account of two key
+issues. As shown in Figure 1, on the one hand, complex
+non-rigid deformations in garment regions may lead to
+inaccurate shape adaptation, while unintended Gaussian
+contamination may occur in non-garment regions. On
+arXiv:2607.13654v1  [cs.CV]  15 Jul 2026
+
+the other hand, garment diversity and independent edit-
+ing across different views may result in inconsistencies
+in garment shape, texture, and appearance.
+The SMPL-X (Skinned Multi-Person Linear Model
+with eXpressive hands and face) model (Pavlakos et al.
+2019; Loper et al. 2015), which is widely adopted in the
+virtual human domain, encapsulates rich prior informa-
+tion including human body geometry, pose joints, and
+garment-body interaction constraints (Lin et al. 2025;
+Svitov et al. 2024; Shao et al. 2025). The priors embed-
+ded in SMPL-X enable restricting edits within target gar-
+ment regions and establishing consistency constraints
+across views. Motivated by this insight, we propose a
+text-driven 3D human garment editor termed T3HG-
+Editor. T3HG-Editor leverages SMPL-X’s body geom-
+etry prior to constrain Gaussian position adjustment
+and target-non-target region decoupling, and utilizes the
+pose joint prior to achieve cross-view consistent fea-
+ture fusion. T3HG-Editor contains three stages, namely
+obtainment of editable Gaussians, garment consistent
+editing, and Gaussian updating with overflow pruning.
+The obtainment of editable Gaussians begins by seed-
+ing 3D Gaussians along the normals of the SMPL-X
+model’s surface, thus anchoring the Gaussians to the
+geometric structure of the human body. Then, 2D mask-
+based filtering eliminates Gaussians outside the target
+garment region to obtain accurately positioned Gaus-
+sians. For garment consistent editing, T3HG-Editor ag-
+gregates feature tokens associated with the same SMPL-
+X vertex across views. By tying token aggregation to the
+unified geometric framework of SMPL-X for informa-
+tion sharing, garment consistent editing aligns Gaussian
+representations across different views without requiring
+additional model training. Gaussian updating with over-
+flow pruning follows a dual-constraint paradigm. One
+constraint is a 3D human distance field, primarily de-
+rived from a Signed Distance Function (SDF) defined
+on the SMPL-X model, while the other is 2D semantic
+masks. This dual-constraint paradigm confines Gaus-
+sians to the intended regions, thus preventing the con-
+tamination of unintended regions. In summary, the con-
+tributions of this work are as follows:
+• We propose a text-driven 3D human garment edi-
+tor (T3HG-Editor) based on the SMPL-X model. To
+the best of our knowledge, T3HG-Editor is an early
+systematic exploration of text-driven 3DGS editing
+specifically designed for human garment editing.
+• Based on SMPL-X’s body geometric prior, we pro-
+pose Gaussian seeding along the surface normals and
+target-non-target region decoupling, solving shape
+deviations in the target garment region and un-
+intended Gaussian contamination in non-target re-
+gions.
+• Based on the pose joint prior, we design a garment
+consistent editing scheme by aggregating tokens cor-
+responding to the same SMPL-X vertex across key
+views.
+• We validate T3HG-Editor on garment editing tasks
+across different genders, showing that it better pre-
+serves fidelity in both target garment and non-target
+regions while simultaneously achieving superior gar-
+ment consistency over state-of-the-art editing meth-
+ods.
+Related work
+3D Human Gaussian Splatting with SMPL-X. By
+providing a parametric skeleton, vertices, and meshes,
+SMPL-X has been widely adopted in 3D human Gaus-
+sian modeling (Prospero et al. 2025; Hu, Hu, and
+Liu 2024). HumanGaussian (Liu et al. 2024) initial-
+izes Gaussian positions with SMPL-X meshes and em-
+ploys a dual-branch SDS scheme for Gaussian updating.
+DreamWaltz-G (Huang et al. 2025) uses the SMPL-
+X skeleton as a conditioning signal and SMPL-based
+Gaussian initialization to reduce multi-face artifacts and
+implausible poses. ToMiE (Zhan et al. 2024) identifies
+garment regions not covered by the base model and
+grows external data-driven joints for decoupled anima-
+tion of loose garments and hand-held objects. Gaus-
+sianAvatar (Hu et al. 2024) binds animatable Gaussians
+to the SMPL-X skeleton, applies forward LBS for repos-
+ing, and jointly refines SMPL-X pose parameters for
+monocular human reconstruction. Across these works,
+SMPL-X plays a central role in 3D human generation
+(Pan et al. 2024), reconstruction (Li et al. 2024a), and
+animation (Kocabas et al. 2024) with Gaussian repre-
+sentations. In this paper, we adopt SMPL-X priors to
+facilitate garment editing of 3D human Gaussians.
+Text-driven 3D Editing. The scarcity of large-scale
+3D training data has motivated most text-driven 3D edit-
+ing methods to leverage pretrained 2D diffusion models
+(Couairon et al. 2022; Li et al. 2024b; Narasimhaswamy
+et al. 2024; Chen et al. 2024b). InstructPix2Pix (IP2P)
+(Brooks, Holynski, and Efros 2023), conditioned on an
+input image and text instruction, is a widely adopted edit-
+ing backbone. Instruct-NeRF2NeRF (Haque et al. 2023)
+iteratively edits rendered views with IP2P and uses them
+to update a NeRF representation. However, the implicit
+representation of NeRF makes local editing difficult to
+control and computationally expensive. With the emer-
+gence of 3D Gaussian Splatting, GaussianEditor (Chen
+et al. 2024c) back-projects 2D editing masks to label tar-
+get Gaussians and employs anchor constraints to regu-
+late Gaussian densification. Nevertheless, independently
+editing individual views often causes cross-view incon-
+sistencies. Subsequent methods therefore introduce ge-
+ometric or feature-level constraints. View-consistent 3D
+editing (Wang et al. 2024b) exploits cross-view geo-
+metric correspondence, while DGE (Chen, Laina, and
+Vedaldi 2024) jointly attends to key views and propa-
+gates edited features to other views via epipolar con-
+straints. EditSplat (Lee et al. 2025) incorporates multi-
+view depth information and attention-guided Gaussian
+pruning, whereas GaussCtrl (Wu et al. 2024) jointly ed-
+its multiple views with depth conditioning and attention
+alignment. Other approaches align instruction-related
+
+Figure 2: The overall framework of T3HG-Editor, which consists of three components: (1) Obtainment of Editable
+Gaussians; (2) Garment Consistent Editing; and (3) Gaussian Updating with Overflow Pruning.
+regions with Gaussian representations to support local-
+ized updates (Wang et al. 2024a).
+Method
+As illustrated in Figure 2, T3HG-Editor comprises three
+stages: obtainment of editable Gaussians, garment con-
+sistent editing, and Gaussian updating with overflow
+pruning. The first stage combines SMPL-X-based Gaus-
+sian seeding with mask-based filtering to obtain editable
+Gaussians. The second stage establishes cross-view cor-
+respondence through SMPL-X-vertex guided attention
+and feature propagation. The third stage updates the ed-
+itable Gaussians while applying 2D and 3D pruning to
+prevent contamination of unintended regions. The fol-
+lowing subsections describe these stages.
+Obtainment of Editable Gaussians
+Existing 3D editing methods obtain editable Gaussians
+under the guidance of masks or attention weights. How-
+ever, such schemes are unsuitable for garment editing
+because garment coverage may change after editing. Re-
+stricting Gaussian updating to the pre-edit region over-
+looks newly extended parts, whereas focusing on the
+post-edit region ignores contracted parts. To address
+these limitations, T3HG-Editor seeds Gaussians along
+the SMPL-X normals to generate sufficient Gaussians
+proximate to the body surface, followed by 2D mask
+filtering to precisely position the target Gaussians.
+SMPL-X-based Gaussian Seeding. This operation
+can generate a dense set of editable Gaussians based
+on an SMPL-X mesh, effectively mitigating shape de-
+viations that arise after editing operations. As shown in
+Sampled point
+Anchor planes
+seeding
+Figure 3: SMPL-X-based Gaussian seeding. The yellow
+circles indicate the points sampled along the normals,
+while the gray circles are the positions of the seeded
+Gaussians.
+Figure 3, given an SMPL-X mesh, the SMPL-X-based
+Gaussian Seeding operation begins by uniformly sam-
+pling J points within a distance Dmax along the nor-
+mal direction of each vertex. Then, each sampled point
+is used to anchor a plane whose normal is aligned to
+the corresponding vertex normal. Afterwards, for each
+plane, a set of seeded points is generated through random
+sampling centered at the corresponding anchor point and
+confined within radius r. Formally, the position of the
+seeded points is expressed as follows:
+xi,j = vi + sj · ni + u · ti,j,
+u ∼U[0, r],
+(1)
+sj = j −1
+J −1 · Dmax,
+j = 1, 2, . . . , J.
+(2)
+Here, ni represents the normal of vertex vi, ti,j denotes
+a random unit vector, u denotes a random number sam-
+pled from the interval [0, r]. Finally, each seeded point is
+assigned appearance and geometric properties through
+KNN (Cover and Hart 1967) attribute aggregation, thus
+defining the initial state of the seeded Gaussians. The
+
+OR
+Finally
+a trench coat
+a tank top
+OR
+Finally
+pre-edit (      )
+edit(        )
+edit(        )
+Figure 4: Obtaining target masks for garments that shrink
+or expand after editing.
+color parameter ci,j, scaling factor si,j and opacity αi,j
+are initialized as the average of the corresponding at-
+tributes from the several nearest Gaussians, while the
+rotation parameter qi,j inherits directly from the single
+nearest Gaussian in the original model.
+Mask-based filtering. For the seeded Gaussians, pre-
+edit and post-edit garment changes are jointly considered
+to accurately localize the editable Gaussians. Specif-
+ically, the 3DGS scene is rendered from T views to
+obtain {It
+pre}T
+t=1, and Segment Anything Model (SAM)
+(Kirillov et al. 2023) is applied to derive the pre-edit
+garment mask Mpre. Then, {It
+pre}T
+t=1 together with the
+text prompt are fed into InstructPix2Pix (IP2P) (Brooks,
+Holynski, and Efros 2023) to generate the edited im-
+ages. IP2P generates diverse results across viewpoints,
+and such diversity facilitates selecting the outputs that
+align with the textual description, thereby establishing
+the garment’s overall shape. Accordingly, ImageReward
+(Xu et al. 2023) is used to evaluate the editing results,
+and the top N images are selected as supervision for sub-
+sequent Gaussian updates, denoted by {In
+post}N
+n=1. Sub-
+sequently, these images are fed into SAM to obtain the
+post-edit garment mask Mpost. Finally, the filtering mask
+is obtained by Mfilter = Mpre∨Mpost, which accommo-
+dates garment expansion or shrinkage, as illustrated in
+Figure 4. The filtered Gaussians are assigned semantic
+masks that are retained during subsequent splitting or
+duplication.
+According to the back-projection formulation in
+GaussianEditor (Chen et al. 2024c), the computed Gaus-
+sian weights determine whether a Gaussian is assigned
+a semantic mask, thereby integrating garment shapes
+from all edited views. To obtain a unified 2D garment
+representation, the labeled Gaussians are separately ren-
+dered to the selected camera views, and the resulting 2D
+mask Mfinal is used both as the loss region and as the
+supervision region for subsequent pruning. The editing
+loss is defined as follows:
+Ledit = min
+N
+X
+n=1
+In
+post(Mfinal) −I′
+n(Mfinal)
+ .
+(3)
+Here, I′
+n denotes the rendered image of the current 3D
+Gaussians at the n-th view. Through the above mech-
+anism, T3HG-Editor can precisely obtain the editable
+Gaussians, thereby establishing a reliable foundation for
+subsequent multi-view garment consistency enhance-
+ment and pruning.
+Garment Consistent Editing
+The independent single-view editing inevitably intro-
+duces garment inconsistencies in texture and fine details.
+Therefore, a garment consistency enhancement mecha-
+nism is designed comprising two core modules, SMPL-
+X-vertex guided attention and SMPL-X-vertex guided
+feature propagation, achieving unified semantic and vi-
+sual coherence across views.
+In the context of human garment editing, the fitted
+SMPL-X mesh carries effective structural priors for es-
+tablishing cross-view correspondences. Given the cam-
+era parameters, SMPL-X vertices are rendered into each
+view and every pixel patch is annotated with its asso-
+ciated vertex index. This yields a bidirectional lookup
+between pixel patches and mesh vertices, furnishing a
+unified and queryable coordinate reference for subse-
+quent cross-view feature alignment.
+SMPL-X-vertex Guided Attention. Unlike editing a
+single image, T3HG-Editor jointly edits multi-view im-
+ages by concatenating the tokens corresponding to the
+same SMPL-X vertex before applying attention, thereby
+enhancing consistency. Specifically, to reduce compu-
+tational cost, one key view out of every five views is
+selected in order and all key views are fed into the U-Net
+simultaneously. Then, within the U-Net’s self-attention
+module, for each key view m with queries {Qm}M
+m=1,
+keys {Km}M
+m=1, and values {Vm}M
+m=1, the tokens cor-
+responding to the same vertex l across key views are
+determined from the vertex–pixel index list. Next, these
+tokens for the same vertex are concatenated and pro-
+cessed through self-attention, enabling each view to at-
+tend to the features of other views corresponding to the
+same SMPL-X vertex. The formulation is as follows:
+STAttn
+ Ql, Kl, m
+
+= Softmax
+Ql
+m · [Kl
+1, . . . , Kl
+M]
+√
+d
+
+,
+(4)
+Φl
+m = STAttn
+ Ql, Kl, m
+
+· [V l
+1, . . . , V l
+M].
+(5)
+Here, d denotes the dimension used for computing
+queries and keys. l ∈{1, · · · , L} denotes the same ver-
+tex across key views. After computing cross-view atten-
+tion for each vertex, the output features are returned to
+their positions. Finally, tokens that cannot be matched
+to the same vertex across views, along with background
+tokens, are concatenated and processed through self-
+attention across key views.
+By performing the vertex-level cross-view attention
+only within the selected key views and processing ver-
+tex groups in batches, the memory footprint and com-
+putational overhead can be effectively controlled. This
+operation explicitly enhances the semantic and textu-
+ral consistency of the same vertex across multiple key
+views, providing a well-aligned foundation for subse-
+quent feature propagation.
+SMPL-X-vertex Guided Feature Propagation. For
+the remaining views, the features from the key views
+are propagated according to the principle of sharing the
+same vertex, thereby ensuring consistency across views.
+
+The vertex-pixel index list is used to query and com-
+pute the tokens corresponding to the same vertex in
+both normal views and key views. Then, the features
+Φl
+m obtained from Eq. (5) are fused through weighted
+aggregation and injected into the remaining views as
+self-attention outputs, as formulated below:
+ψl
+n = w1 · Φl
+1 + · · · + wM · Φl
+M.
+(6)
+The weight wm of each key view is determined by nor-
+malizing the number of vertices. It shares with the n-th
+normal view, where more shared vertices imply closer
+views and thus higher weights. For the remaining tokens
+without corresponding vertices, the cosine similarity is
+computed between the tokens of the normal and key
+views, and the most similar tokens are selected as learn-
+ing targets.
+Through the above mechanism, SMPL-X establishes
+information association and mutual learning across mul-
+tiple views, thereby improving consistency. In addition,
+some vertices may be occluded or invisible in certain
+views but remain visible in others. When performing
+cross-view self-attention and feature learning, to avoid
+losing information from invisible vertices on the human
+body, the tokens of the same vertex are processed to-
+gether with their neighboring features for attention and
+feature learning.
+Gaussian Updating with Overflow Pruning
+During Gaussian updating, some Gaussians may deviate
+from the target regions, causing contamination of non-
+target regions. To address this issue, 2D and 3D pruning
+are designed by combining a Signed Distance Func-
+tion (SDF)-based human distance field with 2D masks,
+thereby pruning Gaussians that overflow beyond the tar-
+get editing regions.
+2D Pruning. After periodic updating, the Gaussians
+labeled with the semantic mask are rendered from the
+selected camera views, and the resulting current Gaus-
+sian mask map is compared with Mfinal to identify out-
+of-bound pixel areas. These pixel areas are then back-
+projected into 3D space to track the Gaussians that have
+moved beyond the target region for pruning. It should
+be noted that this process applies only to the labeled
+Gaussians.
+For garment shrinkage, such as “Make him in a
+shorts”, Gaussians corresponding to the lower pants
+gradually become transparent or are pruned. However,
+gradient-based updating alone may introduce artifacts.
+As shown in Figure 5, a human segmentation mask
+Mhum is generated for the edited human and excludes
+the lower pants, whereas Mfinal, obtained by the logical
+OR of the pants and shorts masks, retains the original
+pants shape. Comparing Mhum with Mfinal efficiently
+localizes and prunes the Gaussians associated with the
+missing lower pants.
+3D Pruning. Due to viewpoint limitations and occlu-
+sion, some Gaussians may drift away from the human
+body while their 2D projections remain within Mfinal.
+Original view (        )  
+Edited view (        )  
+Original view  
+Finally render
+Make him in a shorts
+Figure 5: The original pants and edited human are seg-
+mented to identify pruning regions, followed by Gaus-
+sian pruning and updating to obtain the final rendering.
+To address this, an SMPL-X-derived SDF constraint is
+imposed in 3D space. For Gaussians generated through
+splitting or duplication, the signed distance from each
+centroid to the SMPL-X surface is computed, and those
+exceeding a predefined threshold β are pruned. This
+constraint removes out-of-body drift that is difficult to
+detect in 2D projections.
+Dual-domain pruning can significantly reduce the risk
+of noisy Gaussians contaminating non-target regions.
+However, given the large number of Gaussians, missed
+drifting Gaussians may still cause local contamination
+that propagates “from points to surfaces”. To prevent
+such cases, a loss is introduced in non-target regions to
+keep their appearance consistent with the original scene,
+as formulated below:
+L = Ledit+min
+N
+X
+n=1
+In
+pre(Mfinal) −I′
+n(Mfinal)
+ . (7)
+Here, Mfinal denotes the complement of Mfinal, repre-
+senting the non-target regions. Gradients are computed
+between the rendered images I′
+n of the current 3DGS and
+the original In
+pre in the unintended regions, thereby pre-
+serving these regions unchanged. This is also facilitated
+by the accurate localization of the 2D mask.
+Experiments
+Experimental Setup
+Implementation Details. T3HG-Editor adopts 3D
+Gaussian Splatting (3DGS) to represent humans and
+employs InstructPix2Pix (Brooks, Holynski, and Efros
+2023) as the image editing backbone. For each scene, the
+number of selected views N is set to 20, and the Gaussian
+updating is performed for 1200 iterations. Following the
+recommendations of IN2N (Haque et al. 2023), both
+LPIPS and L1 losses are utilized to update the 3DGS
+human scenes. The maximum seeding distance Dmax
+and the SDF-based distance threshold β are determined
+according to the size and thickness of the target garment
+to be edited, and are typically set within the range of
+0 to 0.1 m. All experiments are conducted on a work-
+station equipped with an NVIDIA GeForce RTX 4080
+
+Ours
+GaussianEditor
+DGE
+EditSplat
+Turn his upper body into a gray trench coat
+Turn his upper body into a light-brown puffer jacket
+Original views
+Make her in a formal dress
+Make her in a ruffle dress
+Figure 6: Qualitative comparison of garment editing. The regions that require attention have been annotated in the
+figure. The red arrows indicate unintended region changes, while the green ellipses highlight garment inconsistencies.
+SUPER GPU (32 GB VRAM), and the editing process
+takes approximately 7 to 9 minutes.
+Compared Methods. T3HG-Editor is compared with
+state-of-the-art 3D scene editing approaches, including
+GaussianEditor (Chen et al. 2024c), DGE (Chen, Laina,
+and Vedaldi 2024), and EditSplat (Lee et al. 2025). All
+methods adopt InstructPix2Pix as the image editor and
+have been applied to garment edits in human scenes.
+Among them, GaussianEditor is a representative ap-
+proach in this field. DGE and EditSplat further introduce
+consistency enhancing strategies, making them compet-
+itive methods for comparison.
+Evaluation Metrics. The quantitative evaluation fol-
+lows the criteria introduced in (He et al. 2024; Wang
+et al. 2024b). Specifically, 20 camera poses are randomly
+rendered from the edited 3DGS, and their similarity to
+the target text is computed using CLIP (Radford et al.
+2021). At the same time, the CLIP directional similar-
+ity is computed to evaluate the alignment between the
+image editing direction and the textual editing direction.
+All methods are assessed across ten text prompts. In
+addition, one garment editing case is selected to com-
+pare the trends of CLIP and CLIP directional similarity,
+thereby illustrating the efficiency of updating and the
+trajectory of performance improvement.
+Qualitative Comparisons
+Figure 6 presents qualitative results of garment editing
+on male and female subjects. As we can see, unintended
+changes occur in the regions indicated by the red arrows
+for GaussianEditor, DGE, and EditSplat. In addition, for
+the text prompts “Turn his upper body into a gray trench
+coat”, DGE and EditSplat exhibit garment inconsisten-
+cies in sleeve or button editing, as indicated by the green
+ellipses. In contrast, T3HG-Editor confines modifica-
+tions strictly to the target garment regions by jointly con-
+sidering masks before and after editing, thereby avoid-
+ing contamination of irrelevant areas. Moreover, when
+editing a T-shirt into a long-sleeved coat, the three base-
+line methods still leave visible short-sleeve contours.
+For large garments, such as the prompt “Turn his up-
+per body into a light-brown puffer jacket”, they do not
+
+capture the bulky texture characteristic of puffer jackets.
+These limitations stem from the insufficient distribution
+of Gaussians in garment-related regions such as sleeves,
+hems, and other structural components in the original
+3D scenes. For female subjects, similar limitations re-
+main in the compared methods, and they fail to produce
+edits consistent with textual instructions and often alter
+Gaussian features in unintended regions, as indicated by
+the red arrows. Under the prompt “Turn her T-shirt into
+a silk blouse”, as indicated by the green ellipses, DGE
+yields inconsistent sleeves between the left and right
+arms, while EditSplat produces mismatched colors on
+the legs. With the prompt “Make her in a formal dress”,
+all three baselines fail to generate results resembling a
+formal dress, producing outputs largely similar to the
+original garment.
+By contrast, T3HG-Editor leverages SMPL-X nor-
+mals to seed Gaussians, effectively supplementing miss-
+ing regions and precisely obtaining Gaussians in the tar-
+get region using 2D masks, thereby validating the effec-
+tiveness of the proposed obtainment of editable Gaus-
+sians scheme. Moreover, T3HG-Editor achieves garment
+consistent editing through cross-view attention among
+tokens corresponding to the same SMPL-X vertices,
+while pruning overflowing Gaussians to prevent con-
+tamination of unintended regions.
+Quantitative Comparisons
+Table 1 presents the CLIP similarity, CLIP directional
+similarity, and average running time of T3HG-Editor
+and the compared approaches across two scenarios and
+ten text prompts. The results show that T3HG-Editor
+outperforms state-of-the-art approaches in both CLIP
+similarity and CLIP directional similarity. T3HG-Editor
+requires time for Gaussian seeding and cross-view at-
+tention computation among tokens corresponding to the
+same SMPL-X vertices within the U-Net. Therefore, it
+takes more time than DGE, while remaining competitive
+with the other methods.
+Table 2 reports the average PSNR, SSIM, and LPIPS
+over ten text instructions. For each method, 16 of the 20
+edited views are used for 3DGS reconstruction, while
+the remaining four are used for testing. The rendered test
+views are compared with the edited images in the target
+garment regions and with the original images in the
+non-target regions. T3HG-Editor achieves the best SSIM
+and LPIPS in the target garment regions, demonstrating
+improved multi-view garment consistency. Its PSNR is
+slightly lower than that of DGE because DGE fails on
+some instructions and produces less detailed textures. In
+the non-target garment regions, T3HG-Editor performs
+best on all metrics, benefiting from accurate obtainment
+of editable Gaussians and overflow pruning.
+Ablation Study
+To validate the proposed obtainment of editable Gaus-
+sians, garment consistent editing, and pruning of Gaus-
+sian overflow, ablation studies are conducted on each
+mechanism.
+Method
+CLIPsim CLIPdir Time (min)
+GaussianEditor (CVPR 2024) 0.2524
+0.0889
+∼8
+DGE (ECCV 2024)
+0.2573
+0.1445
+∼4
+EditSplat (CVPR 2025)
+0.2554
+0.1674
+∼24
+T3HG-Editor (Ours)
+0.2660
+0.2394
+∼8
+Table 1: Quantitative comparisons. The best results are
+highlighted in bold.
+Method
+PSNR↑
+SSIM↑
+LPIPS↓
+Target Garment Region
+GaussianEditor (CVPR 2024)
+19.4225
+0.5290
+0.2904
+DGE (ECCV 2024)
+22.0834
+0.5783
+0.2085
+EditSplat (CVPR 2025)
+20.9711
+0.5731
+0.2157
+T3HG-Editor (Ours)
+21.2198
+0.5796
+0.1738
+Non-target Garment Region
+GaussianEditor
+20.0683
+0.7963
+0.2279
+DGE
+23.3919
+0.8701
+0.1644
+EditSplat
+19.7180
+0.7392
+0.3143
+T3HG-Editor (Ours)
+28.8880
+0.9300
+0.0828
+Table 2: Quantitative comparisons on the target and non-
+target garment regions.
+(c) Make him in a tuxedo
+(a) Turn his upper body into a camouflage military uniform jacket
+(b) Make him in a suit
+(c) Make him in a tuxedo
+T3HG-Editor 
+w/o Obtainment 
+of Gaussians
+Original views
+T3HG-Editor 
+w/o Garment 
+Consistent
+Original views
+T3HG-Editor 
+w/o Pruning
+Original views
+(b) Make him in a suit
+Figure 7: Ablation Study. (a)–(c) illustrate the effects of
+editable Gaussian obtainment, garment consistency en-
+forcement, and Gaussian overflow pruning, respectively.
+The red arrows indicate unintended changes, while the
+green ellipses highlight garment inconsistencies.
+First, as shown in Figure 7(a), removing the obtain-
+ment of editable Gaussians causes facial distortion and
+background corruption. The edited garment retains a T-
+shirt contour because the original scene lacks Gaussians
+around the sleeves, demonstrating the necessity of Gaus-
+sian seeding and the effectiveness of editable Gaussian
+
+obtainment.
+Second, Figure 7(b) demonstrates the contribution of
+garment consistent editing. Without this mechanism, the
+tie exhibits inconsistent colors across views, and arti-
+facts appear on the suit, as highlighted by green ellipses.
+Applying this strategy produces a uniform tie color and
+fewer artifacts, confirming its effectiveness in enhancing
+garment consistency.
+Finally, Figure 7(c) verifies the effectiveness of Gaus-
+sian overflow pruning. Without pruning, numerous noisy
+Gaussians and artifacts appear around the human body,
+as indicated by the red arrows, whereas the proposed
+pruning effectively suppresses these issues.
+Conclusion
+To address complex shape transformations and garment
+inconsistencies in 3DGS-based garment editing, we pro-
+pose T3HG-Editor, a text-driven 3D human garment
+editor. It seeds Gaussians along SMPL-X surface nor-
+mals and filters them using fused pre- and post-edit
+masks to localize editable regions. Cross-view attention
+aggregates features associated with the same SMPL-
+X vertices, while an SDF-based distance field and 2D
+masks prune overflowing Gaussians. Experiments on
+garments show that T3HG-Editor outperforms state-of-
+the-art methods qualitatively and quantitatively.
+T3HG-Editor relies on IP2P, whose ability to handle
+complex text instructions remains limited, while simul-
+taneous multi-view editing increases runtime. Future
+work will focus on accelerating editing and support-
+ing more diverse garment modifications with complex
+instructions.
+Acknowledgments
+This work was supported in part by the National Key
+R&D Program of China (2025ZD1601300), the Na-
+tional Natural Science Foundation of China (NSFC) un-
+der grants 62402138 and 624B2049.
+References
+Bao, Z.; Liao, G.; Zhou, K.; Liu, K.; Li, Q.; and Qiu,
+G. 2025.
+LoopSparseGS: Loop-Based Sparse-View
+Friendly Gaussian Splatting. IEEE Trans. Image Pro-
+cess., 34: 3889–3902.
+Brooks, T.; Holynski, A.; and Efros, A. A. 2023. In-
+structPix2Pix: Learning to follow image editing instruc-
+tions. In Proc. IEEE/CVF Conf. Comput. Vis. Pattern
+Recognit., 18392–18402.
+Chan, C.-Y.; Siu, W.-C.; Chan, Y.-H.; and An-
+thony Chan, H. 2024. AnlightenDiff: Anchoring Diffu-
+sion Probabilistic Model on Low Light Image Enhance-
+ment. IEEE Trans. Image Process., 33: 6324–6339.
+Chen, H.; Huang, Y.; Huang, H.; Ge, X.; and Shao,
+D. 2024a. GaussianVTON: 3D human virtual try-on
+via multi-stage gaussian splatting editing with image
+prompting. arXiv preprint arXiv:2405.07472.
+Chen, J.-K.; Bulo, S. R.; Müller, N.; Porzi, L.;
+Kontschieder, P.; and Wang, Y.-X. 2024b.
+Consist-
+Dreamer: 3D-consistent 2D diffusion for high-fidelity
+scene editing. In Proc. IEEE/CVF Conf. Comput. Vis.
+Pattern Recognit., 21071–21080.
+Chen, J.-K.; and Wang, Y.-X. 2024. Proedit: Simple
+Progression is All You Need for High-Quality 3D Scene
+Editing. Adv. Neural Inf. Process. Syst., 37: 4934–4955.
+Chen, M.; Laina, I.; and Vedaldi, A. 2024. DGE: Direct
+gaussian 3D editing by consistent multi-view editing. In
+Eur. Conf. Comput. Vis., 74–92. Springer.
+Chen, Y.; Chen, Z.; Zhang, C.; Wang, F.; Yang, X.;
+Wang, Y.; Cai, Z.; Yang, L.; Liu, H.; and Lin, G. 2024c.
+GaussianEditor: Swift and controllable 3D editing with
+gaussian splatting. In Proc. IEEE/CVF Conf. Comput.
+Vis. Pattern Recognit., 21476–21485.
+Couairon, G.; Verbeek, J.; Schwenk, H.; and Cord, M.
+2022. DiffEdit: Diffusion-based semantic image editing
+with mask guidance. arXiv preprint arXiv:2210.11427.
+Cover, T.; and Hart, P. 1967. Nearest neighbor pattern
+classification. IEEE Trans. Inf. Theory, 13(1): 21–27.
+Haque, A.; Tancik, M.; Efros, A. A.; Holynski, A.; and
+Kanazawa, A. 2023. Instruct-NeRF2NeRF: Editing 3D
+scenes with instructions. In Proc. IEEE/CVF Int. Conf.
+Comput. Vis., 19740–19750.
+He, R.; Huang, S.; Nie, X.; Hui, T.; Liu, L.; Dai, J.;
+Han, J.; Li, G.; and Liu, S. 2024. Customize your NeRF:
+Adaptive source driven 3D scene editing via local-global
+iterative training. In Proc. IEEE/CVF Conf. Comput.
+Vis. Pattern Recognit., 6966–6975.
+Ho, J.; Jain, A.; and Abbeel, P. 2020. Denoising diffusion
+probabilistic models. Adv. Neural Inf. Process. Syst., 33:
+6840–6851.
+Hu, L.; Zhang, H.; Zhang, Y.; Zhou, B.; Liu, B.; Zhang,
+S.; and Nie, L. 2024. GaussianAvatar: Towards realistic
+human avatar modeling from a single video via animat-
+able 3D gaussians. In Proc. IEEE/CVF Conf. Comput.
+Vis. Pattern Recognit., 634–644.
+Hu, S.; Hu, T.; and Liu, Z. 2024. GauHuman: Articulated
+gaussian splatting from monocular human videos. In
+Proc. IEEE/CVF Conf. Comput. Vis. Pattern Recognit.,
+20418–20431.
+Huang, Y.; Wang, J.; Zeng, A.; Zha, Z.-J.; Zhang, L.; and
+Liu, X. 2025. DreamWaltz-G: Expressive 3D gaussian
+avatars from skeleton-guided 2D diffusion. IEEE Trans.
+Pattern Anal. Mach. Intell.
+Karim, N.; Iqbal, H.; Khalid, U.; Chen, C.; and Hua,
+J. 2024. Free-Editor: Zero-shot text-driven 3D scene
+editing. In Eur. Conf. Comput. Vis., 436–453. Springer.
+Kerbl, B.; Kopanas, G.; Leimkühler, T.; and Drettakis,
+G. 2023. 3D Gaussian splatting for real-time radiance
+field rendering. ACM Trans. Graph., 42(4): 139–1.
+Kirillov, A.; Mintun, E.; Ravi, N.; Mao, H.; Rolland,
+C.; Gustafson, L.; Xiao, T.; Whitehead, S.; Berg, A. C.;
+Lo, W.-Y.; et al. 2023.
+Segment anything.
+In Proc.
+IEEE/CVF Int. Conf. Comput. Vis., 4015–4026.
+
+Kocabas, M.; Chang, J.-H. R.; Gabriel, J.; Tuzel, O.; and
+Ranjan, A. 2024. HUGS: Human Gaussian splats. In
+Proc. IEEE/CVF Conf. Comput. Vis. Pattern Recognit.,
+505–515.
+Lee, D. I.; Park, H.; Seo, J.; Park, E.; Park, H.; Baek,
+H. D.; Shin, S.; Kim, S.; and Kim, S. 2025. EditSplat:
+Multi-view fusion and attention-guided optimization for
+view-consistent 3D scene editing with 3D gaussian splat-
+ting. In Proc. IEEE/CVF Conf. Comput. Vis. Pattern
+Recognit., 11135–11145.
+Li, L.; Hou, J.; Liu, W.; Fang, Y.; and Yan, J. 2025.
+Diffusion-Based Facial Aesthetics Enhancement With
+3D Structure Guidance. IEEE Trans. Image Process.,
+34: 1879–1894.
+Li, M.; Yao, S.; Xie, Z.; and Chen, K. 2024a. Gaussian-
+Body: Clothed human reconstruction via 3D Gaussian
+splatting. arXiv preprint arXiv:2401.09720.
+Li, W.; Cai, F.; Mi, Y.; Yang, Z.; Zuo, W.; Wang, X.;
+and Fan, X. 2024b. Scenedreamer360: Text-driven 3D-
+consistent scene generation with panoramic Gaussian
+splatting. arXiv preprint arXiv:2408.13711.
+Lin, Z.; Wang, R.; Ling, J.; and Song, L. 2025. Siavatar:
+Animatable 3D Gaussian Avatar from a Single Image.
+In Proc. IEEE Int. Conf. Image Process., 1067–1072.
+Liu, X.; Zhan, X.; Tang, J.; Shan, Y.; Zeng, G.; Lin,
+D.; Liu, X.; and Liu, Z. 2024. HumanGaussian: Text-
+driven 3D human generation with gaussian splatting. In
+Proc. IEEE/CVF Conf. Comput. Vis. Pattern Recognit.,
+6646–6657.
+Loper, M.; Mahmood, N.; Romero, J.; Pons-Moll, G.;
+and Black, M. J. 2015. SMPL: A Skinned Multi-Person
+Linear Model. ACM Trans. Graph., 34(6): 1–16.
+Narasimhaswamy, S.; Bhattacharya, U.; Chen, X.; Das-
+gupta, I.; Mitra, S.; and Hoai, M. 2024. HanDiffuser:
+Text-to-image generation with realistic hand appear-
+ances. In Proc. IEEE/CVF Conf. Comput. Vis. Pattern
+Recognit., 2468–2479.
+Pan, P.; Su, Z.; Lin, C.; Fan, Z.; Zhang, Y.; Li, Z.; Shen,
+T.; Mu, Y.; and Liu, Y. 2024. HumanSplat: Generalizable
+single-image human gaussian splatting with structure
+priors. Adv. Neural Inf. Process. Syst., 37: 74383–74410.
+Pavlakos, G.; Choutas, V.; Ghorbani, N.; Bolkart, T.;
+Osman, A. A.; Tzionas, D.; and Black, M. J. 2019. Ex-
+pressive body capture: 3D hands, face, and body from
+a single image. In Proc. IEEE/CVF Conf. Comput. Vis.
+Pattern Recognit., 10975–10985.
+Prospero, L.; Hamdi, A.; Henriques, J. F.; and Rup-
+precht, C. 2025. GST: Precise 3D Human Body from a
+Single Image with Gaussian Splatting Transformers. In
+Proc. IEEE/CVF Conf. Comput. Vis. Pattern Recognit.,
+6007–6017.
+Radford, A.; Kim, J. W.; Hallacy, C.; Ramesh, A.; Goh,
+G.; Agarwal, S.; Sastry, G.; Askell, A.; Mishkin, P.;
+Clark, J.; et al. 2021. Learning transferable visual mod-
+els from natural language supervision.
+In Int. Conf.
+Mach. Learn., 8748–8763. PMLR.
+Shao, Z.; Wang, D.; Tian, Q.-Y.; Yang, Y.-D.; Meng,
+H.; Cai, Z.; Dong, B.; Zhang, Y.; Zhang, K.; and Wang,
+Z. 2025. DEGAS: Detailed expressions on full-body
+gaussian avatars. In Int. Conf. 3D Vis., 1529–1540.
+Sun, Y.; Hao, Z.; Wang, Z.; Jin, J.; Ye, Q.; and Lyu,
+Y. 2025. Deep learning for 3D garment generation: A
+review. Textile Research Journal.
+Svitov, D.; Morerio, P.; Agapito, L.; and Del Bue,
+A. 2024. HAHA: Highly articulated gaussian human
+avatars with textured mesh prior. In Proc. Asian Conf.
+Comput. Vis., 4051–4068.
+Vachha, C.; and Haque, A. 2024.
+Instruct-GS2GS:
+Editing 3D gaussian splats with instructions.
+URL
+https://instruct-gs2gs. github. io.
+Wang, J.; Fang, J.; Zhang, X.; Xie, L.; and Tian, Q.
+2024a. GaussianEditor: Editing 3D gaussians delicately
+with text instructions. In Proc. IEEE/CVF Conf. Com-
+put. Vis. Pattern Recognit., 20902–20911.
+Wang, Y.; Wei, X.; Lu, M.; and Kang, G. 2025. PLGS:
+Robust Panoptic Lifting With 3D Gaussian Splatting.
+IEEE Trans. Image Process., 34: 3377–3388.
+Wang, Y.; Yi, X.; Wu, Z.; Zhao, N.; Chen, L.; and Zhang,
+H. 2024b. View-consistent 3D editing with gaussian
+splatting. In Eur. Conf. Comput. Vis., 404–420. Springer.
+Wu, J.; Bian, J.-W.; Li, X.; Wang, G.; Reid, I.; Torr,
+P.; and Prisacariu, V. A. 2024. GaussCtrl: Multi-view
+consistent text-driven 3D gaussian splatting editing. In
+Eur. Conf. Comput. Vis., 55–71. Springer.
+Xu, J.; Liu, X.; Wu, Y.; Tong, Y.; Li, Q.; Ding, M.; Tang,
+J.; and Dong, Y. 2023. ImageReward: Learning and eval-
+uating human preferences for text-to-image generation.
+Adv. Neural Inf. Process. Syst., 36: 15903–15935.
+Zhan, Y.; Zhu, Q.; Niu, M.; Ma, M.; Zhao, J.; Zhong,
+Z.; Sun, X.; Qiao, Y.; and Zheng, Y. 2024. ToMiE: To-
+wards Modular Growth in Enhanced SMPL Skeleton for
+3D Human with Animatable Garments. arXiv preprint
+arXiv:2410.08082.
+Zhang, Y.; Jiang, F.; Rho, S.; Liu, S.; Zhao, D.; and Ji,
+R. 2016. 3D object retrieval with multi-feature collab-
+oration and bipartite graph matching. Neurocomputing,
+195: 40–49.

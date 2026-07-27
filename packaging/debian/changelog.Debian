@@ -1,0 +1,10 @@
+aichat-hub (1.0.2) stable; urgency=medium
+
+  * v1.0.2 端到端 demo runner,5 阶段 38 step 100% 通过
+  * v1.0.1 性能基准工具,74 endpoint p95 mean 0.23ms
+  * v1.0.0 第一个稳定发布
+  * 26 scripts / 27 test files / 838 tests / 100% pass
+  * 60 篇 arxiv 论文 / 28 篇市场调研
+  * 真·桌面 GUI app(tkinter)+ 跨架构 DEB(arm64/armhf/amd64/all)
+
+ -- yuefeng <yuefeng@aichat-hub.local>  Mon, 27 Jul 2026 17:00:00 +0800

@@ -1,0 +1,3025 @@
+GeoChrono: Benchmarking and Rethinking Long-Term Temporal
+Understanding in Remote Sensing
+Yujie Li
+Beijing University of Posts and
+Telecommunications
+Haidian, Beijing, China
+liyujie2003@bupt.edu.cn
+Jiancheng Pan
+Tsinghua University
+Haidian, Beijing, China
+jiancheng.pan.plus@gmail.com
+Zhiwei Wei
+Hunan Normal University
+Changsha, Hunan, China
+trentonwei@whu.edu.cn
+Jiuniu Wang
+City University of Hong Kong
+Hong Kong, China
+wangjiuniu@gmail.com
+Mugen Peng
+Beijing University of Posts and
+Telecommunications
+Haidian, Beijing, China
+pmg@bupt.edu.cn
+Wenjia Xu∗
+Beijing University of Posts and
+Telecommunications
+Haidian, Beijing, China
+xuwenjia@bupt.edu.cn
+Figure 1: We propose ChronoBench, a multi-dimensional benchmark decomposing long-term remote sensing understanding
+into a four-level cognitive hierarchy. Built upon this foundation, GeoChrono constructs per-location temporal trajectories to
+model the long-term evolution of geographic parcels, enabling powerful long-term remote sensing comprehension. GeoChrono
+achieves state-of-the-art performance on ChronoBench, reaching human-level accuracy on several sub-tasks.
+Abstract
+Remote sensing offers an unparalleled vantage point for observing
+the Earth’s long-term surface evolution, yet it demands that a model
+not only perceive land cover at isolated moments, but also track
+changes, memorize evolution histories, and reason across time and
+space. However, existing studies lack a systematic evaluation that
+dissects these distinct competencies. To fill this gap, we introduce
+ChronoBench, a multidimensional benchmark that decomposes
+this task into four progressive cognitive levels (i.e., Land Cover
+Perception, Temporal Recognition, Long-Term Memory, and Spatio-
+Temporal Reasoning). The ChronoBench comprises 12 sub-tasks
+∗Corresponding author.
+Conference’17, Washington, DC, USA
+2026. ACM ISBN 978-x-xxxx-xxxx-x/YYYY/MM
+https://doi.org/10.1145/nnnnnnn.nnnnnnn
+and 17,689 rigorously validated QA (Question-Answer) pairs. Ex-
+tensive evaluations reveal that mainstream MLLMs fall drastically
+behind human experts, with Long-Term Memory emerging as the
+most critical bottleneck. Motivated by this finding, we further pro-
+pose GeoChrono, an MLLM with enhanced capabilities for tracing,
+memorizing, and reasoning about long-term geographic evolution.
+Leveraging the physical prior that geographic parcels remain spa-
+tially fixed while their semantics evolve, we design a Temporal
+Trajectory Encoder (TempEnc) that constructs per-location tempo-
+ral trajectories for dedicated land cover evolution modeling, and
+we introduce a Coarse-to-Fine Token Compressor (C2FComp) that
+adaptively preserves dynamic regions while compressing the static
+background. To support training, we also construct ChronoInstruct,
+a 104K-sample instruction-tuning dataset spanning all competency
+levels for training. GeoChrono achieves state-of-the-art perfor-
+mance on ChronoBench, surpassing the leading commercial MLLMs
+arXiv:2607.15768v1  [cs.CV]  17 Jul 2026
+
+Conference’17, July 2017, Washington, DC, USA
+Trovato et al.
+by over 20%, while C2FComp reduces visual tokens by over 56%
+while retaining GeoChrono’s 94.6% performance. The code and data
+will be available at https://github.com/IntelliSensing/GeoChrono.
+CCS Concepts
+• Computing methodologies →Scene understanding.
+Keywords
+Multimodal large language model, remote sensing, temporal under-
+standing
+1
+Introduction
+The Earth is a dynamic system evolving along two fundamental
+axes: space and time. Remote sensing provides an unparalleled van-
+tage point from which to observe this evolution, yet the overwhelm-
+ing majority of existing interpretation methods confine themselves
+to i) static snapshots, i.e., understanding what exists at a single
+moment [20, 24, 48]; or ii) bi-temporal comparisons that capture
+change between two discrete time points [15, 36]. This leaves a
+critical dimension largely untapped: the continuous, long-term
+temporal trajectory of landscape transformation, urban expansion,
+and ecosystem shifts. Meanwhile, multimodal large language mod-
+els (MLLMs) have demonstrated remarkable capabilities in long
+video understanding [27, 28, 40], exhibiting an increasingly promis-
+ing capacity to comprehend extended temporal contexts and rea-
+son over complex visual narratives. However, long-term remote
+sensing image sequences differ fundamentally from natural video:
+geographic parcels remain spatially fixed while their semantics
+evolve over time, and wide-area scenes contain substantial spa-
+tial redundancy because only a small fraction of regions change
+meaningfully across frames, as illustrated in Figure 1. These unique
+characteristics call for dedicated investigation.
+Recent efforts have explored the temporal interpretation
+of MLLMs in remote sensing through dedicated benchmarks.
+TEOChatlas [10] curates the first temporal remote sensing dataset
+covering tasks such as temporal scene classification, damage assess-
+ment, and change detection, but is constrained by low-resolution
+imagery (224 × 224) and short sequences (maximum length of 8).
+DynamicVL [42] constructs a high-resolution multi-temporal data
+suite spanning 42 U.S. cities with 6 urban understanding tasks,
+revealing that mainstream MLLMs fail in long-term remote sensing
+understanding. Nevertheless, its task taxonomy is organized
+around specific application scenarios rather than dissecting the
+underlying cognitive competencies that models must possess for
+long-term temporal understanding. While both works reveal that
+existing MLLMs struggle in long-term remote sensing contexts,
+neither establishes a structured competency framework that
+diagnoses where and why these models fall short. This prompts us
+to rethink: What competencies are missing in current MLLMs for
+long-term remote sensing understanding, and how can we bridge
+these gaps?
+To rigorously investigate this question, we decompose long-term
+remote sensing understanding into a four-level competency hierar-
+chy, as shown in Figure 1. Level 0 Land Cover Perception: what
+is here at a given time? Level 1 Temporal Recognition: what
+has changed between two time points? Level 2 Long-Term Mem-
+ory: what was here before, and what transitions have occurred
+throughout the observation period? Level 3 Spatio-Temporal
+Reasoning: given all perceived changes and memorized histories,
+what spatio-temporal relationships can be inferred? Inspired by hu-
+man cognition [33], these four levels form a progressive hierarchy
+from basic perception, through change recognition and historical
+change events memorization, to high-level reasoning, together con-
+stituting the cognitive foundation for comprehensive long-term
+remote sensing understanding.
+To this end, we introduce ChronoBench, a comprehensive, multi-
+dimensional, and multi-granularity benchmark for high-resolution
+long-temporal remote sensing understanding. ChronoBench is or-
+ganized around the four competencies outlined above, encompass-
+ing 12 sub-tasks and 17,689 rigorously validated QA pairs derived
+from 3,469 high-resolution images (1024×1024) spanning 500 dis-
+tinct regions across 39 major U.S. cities, selected for their rich and
+diverse land-cover dynamics over extended time spans. During
+construction, we first design structured question templates for each
+sub-task, then employ deterministic rule-based programs to tra-
+verse pre-existing manually annotated semantic change masks and
+automatically populate the templates at scale, followed by rigor-
+ous manual verification to ensure quality. We evaluate a broad
+spectrum of mainstream MLLMs, e.g., GPT-5 [22], Gemini-3 [31],
+Qwen3-VL [2], on ChronoBench, and additionally recruit three
+domain experts to establish a human-level baseline. The results
+reveal a substantial performance gap between current models and
+human-level understanding, particularly on tasks related to track-
+ing long-term evolution histories, where existing models exhibit
+pronounced deficiencies in memorizing and retrieving temporal
+trajectories of geographic entities.
+Motivated by these findings, we develop GeoChrono, an MLLM
+that enhances tracing, memorization, and reasoning over the long-
+term evolution of geographic entities. Leveraging the physical prior
+that each geographic parcel remains spatially fixed while its seman-
+tics evolve, we design a Temporal Trajectory Encoder (TempEnc)
+that explicitly constructs per-location temporal evolution trajecto-
+ries, strengthening the model’s capacity for perceiving temporal
+changes, memorizing evolution histories, and reasoning across time.
+Furthermore, to alleviate the substantial computational overhead
+imposed by high-resolution long-temporal sequences, we exploit
+the spatial redundancy inherent in wide-area remote sensing scenes
+and introduce a Coarse-to-Fine Token Compressor (C2FComp).
+C2FComp leverages prompt text embeddings to assess the task rel-
+evance of each spatial region, selectively preserving full-resolution
+fine tokens for salient areas while condensing the static background
+into compact coarse representations, thereby drastically compress-
+ing the visual token sequence input to the LLM. To support training
+across all competency dimensions, we further construct ChronoIn-
+struct, a large-scale instruction-tuning dataset containing over 104K
+samples. Extensive experiments on ChronoBench demonstrate that
+GeoChrono outperforms previous MLLMs by a substantial margin,
+achieving an overall accuracy of 78.34%. Moreover, the C2FComp
+reduces the visual token count by over 56% while retaining 94.6%
+of the full model’s performance (74.11% vs. 78.34%), demonstrating
+
+GeoChrono: Benchmarking and Rethinking Long-Term Temporal Understanding in Remote Sensing
+Conference’17, July 2017, Washington, DC, USA
+that instruction-guided selective compression can effectively rec-
+oncile computational efficiency with long-temporal understanding
+capability. The contributions of our work are as follows:
+• We establish a comprehensive data foundation for long-
+term remote sensing understanding. Specifically, we
+propose a four-level cognitive hierarchy, from land cover
+perception through temporal recognition and long-term
+memory to spatio-temporal reasoning, and instantiate it as
+ChronoBench, a multi-dimensional benchmark comprising
+12 sub-tasks and 17,689 QA pairs. We further construct
+ChronoInstruct, a large-scale instruction-tuning dataset
+comprising over 104K samples spanning all competency
+levels to support advanced model development.
+• We design a Temporal Trajectory Encoder (TempEnc) mod-
+ule that leverages the geostationary prior in remote sensing
+imagery to decouple the spatio-temporal feature volume into
+per-location temporal trajectories, thereby enabling dedi-
+cated long-term temporal modeling in remote sensing.
+• We propose a Coarse-to-Fine Token Compressor (C2FComp)
+that leverages the spatial sparsity of temporal change to selec-
+tively compress visual token sequences under the guidance
+of prompt text embeddings, thereby substantially balancing
+the computational overhead of long temporal sequences and
+model performance.
+• Extensive experiments on ChronoBench demonstrate that
+GeoChrono surpasses the leading commercial MLLMs by
+over 20%, significantly advancing capabilities across all four
+competency dimensions of long-term remote sensing under-
+standing. Furthermore, C2FComp reduces the visual token
+count by over 56% while retaining 94.6% of the full model’s
+performance, validating the effectiveness of prompt-guided
+selective compression.
+2
+Related Work
+2.1
+Multimodal Large Language Models for RS
+Multimodal large language models (MLLMs) [1, 13, 17, 18] have
+achieved remarkable performance across a wide range of vision-
+language understanding tasks [4, 7, 39, 41, 43, 50]. In remote sens-
+ing, representative works such as GeoChat [12], EarthGPT [47],
+and LHRS-Bot [21] have been developed for various static inter-
+pretation tasks [19, 32, 34, 45, 46], yet they predominantly focus
+on spatial understanding of single-time imagery, leaving tempo-
+ral evolution largely underexplored. Recent studies have begun to
+address temporal aspects of remote sensing. ChangeChat [6] and
+BTCChat [14] target bi-temporal change comprehension. Further-
+more, TEOChat [10], EarthDial [29], and DVLChat [42] further
+extend this capability to longer temporal sequences by curating
+multi-temporal instruction-following datasets and training MLLMs
+accordingly. Nevertheless, these models are developed and trained
+around specific pre-defined temporal tasks, such as temporal scene
+classification [25], building damage assessment [36], and change
+detection [16], without systematically analyzing and addressing the
+intrinsic challenges that long-temporal remote sensing understand-
+ing itself poses. In this work, we revisit this problem and propose
+GeoChrono, a dedicated temporal trajectory modeling approach
+for long-term earth observation.
+2.2
+Multimodal Benchmarks in Remote Sensing
+The development of remote sensing MLLMs has been accompa-
+nied by a growing ecosystem of benchmarks, spanning single-
+image understanding [9, 23, 26, 35, 49] and bi-temporal change
+reasoning [36, 44], yet extension to longer temporal sequences
+remains nascent. TEOChatlas [10] assembles samples from multi-
+ple EO datasets covering bi-temporal to multi-temporal sequences,
+while DVL-Bench [42] targets long-term urban dynamics with high-
+resolution imagery organized into six urban understanding tasks.
+Despite these valuable efforts, existing benchmarks remain pri-
+marily task-oriented, capable of revealing that MLLMs perform
+poorly on specific long-term remote sensing tasks, yet offering
+limited insight into which underlying cognitive competencies are
+deficient. To address these gaps, we construct ChronoBench, a multi-
+dimensional, multi-granularity evaluation framework organized
+around a four-level cognitive hierarchy.
+3
+ChronoBench
+To comprehensively evaluate the capabilities of MLLMs in
+long-term earth observation, we introduce ChronoBench, a
+high-resolution, long-temporal remote sensing benchmark that
+probes spatio-temporal intelligence across a four-level cognitive
+hierarchy at multiple granularities, from class-level transitions to
+object-level trajectory tracking.
+3.1
+Task Taxonomy
+We decompose long-term remote sensing understanding into a four-
+level cognitive hierarchy, each framed by a core question. Level
+0 Land Cover Perception: What is here at a given time? Level
+1 Temporal Recognition: What changed between specified time
+points? Level 2 Long-Term Memory: When did changes occur, and
+what is the complete evolution history? Level 3 Spatio-Temporal
+Reasoning: What can be inferred by comparing across locations and
+time? Note that Levels 1 and 2 differ in a key aspect: Level 1 takes
+time points as given inputs, whereas Level 2 requires the model to
+recall temporal information as outputs. Guided by this hierarchy, we
+design 12 sub-tasks across the four levels, as illustrated in Figure 2.
+Level 0: Land Cover Perception. We design a basic Object
+Perception (OP) task to assess whether the model can identify the
+land cover present at a specified location and timestamp. To ensure
+robust spatial anchoring, we employ two localization modalities:
+normalized horizontal bounding boxes (HBB), where coordinates
+are scaled within [0, 999], and geographic coordinates, where the
+target location is defined within the image extent specified by its
+upper-left and lower-right corner coordinates.
+Level 1: Temporal Recognition. We evaluate this capability at
+both class-level and object-level granularities. At the class level, i)
+Bi-Temporal Class-Level Change Recognition (BCC) requires com-
+paring two specified timestamps to identify all transition types
+undergone by a given land cover category, and ii) Bi-Temporal
+Class-Level Area Change Recognition (BCAC) requires determin-
+ing whether its overall spatial extent has expanded or contracted.
+iii) Long-Temporal Class-Level Change Recognition (LCC) extends
+this to the full observation period, aggregating all transitions a
+specified category has undergone across the entire sequence. At
+
+Conference’17, July 2017, Washington, DC, USA
+Trovato et al.
+Figure 2: Task taxonomy in ChronoBench. Except for the Cross-Sequence Object Construction Ordering task, models process
+only one image sequence (from either Seq. A or Seq. B) for all other tasks. Note that the labels “Seq. A / Seq. B” shown before
+task prompts are for conceptual illustration only. Additionally, the [Prefix] denotes the introduction of the coordinate reference
+system, along with the geographic coordinates of the top-left and bottom-right corners of the input image.
+the object level, iv) Bi-Temporal Object-Level Change Recogni-
+tion (BOC) narrows the scope to a localized region defined by HBB
+Box or Geographic Coordinate, requiring identification of all land
+cover transitions within this area between two given time points.
+Level 2: Long-Term Memory. We design three sub-tasks with
+increasing complexity. i) Object Appear Memory (OAM) asks when
+a specified land cover type first appeared at a given location. ii)
+Object Change Memory (OCM) asks when the land cover at a
+given location changed to a different category. iii) Object History
+Memory (OHM) poses the most demanding challenge, requiring
+the model to reconstruct the complete chronological sequence of
+distinct land cover phases at a given location.
+Level 3: Spatio-Temporal Reasoning. We design four sub-
+tasks that require cross-location or cross-temporal comparative
+reasoning. i) Object Construction Ordering (OCO) presents two
+localized objects and requires determining which was constructed
+earlier. ii) Cross-Sequence Object Construction Ordering (CSOCO)
+extends this to a cross-scene setting where the two objects reside
+in different geographic regions with independent image sequences.
+iii) Region Development Comparison (RDC) specifies four regions
+using HBB boxes and requires identifying the one that exhibits
+the highest degree of urban development. iv) Class-level Change
+Magnitude Estimation (CCME) requires the model to compare the
+magnitude of transitions for a specified land cover category across
+all consecutive time intervals and identify the period of most sub-
+stantial change.
+3.2
+Data Statistics and Characteristics
+ChronoBench spans 500 distinct regions across 39 major U.S.
+cities, capturing the rich land-cover dynamics driven by rapid
+urbanization. The benchmark comprises 3,469 high-resolution
+images (1024×1024) and a total of 17,689 rigorously validated QA
+pairs, yielding an average of 35.38 QA pairs per image sequence.
+The QA pairs are distributed across the four levels: Land Cover
+Perception (7.5%), Temporal Recognition (54.2%), Long-Term
+Memory (26.0%), and Spatio-Temporal Reasoning (12.3%). Each
+QA pair uses an average of 7.26 temporal frames as visual input,
+
+GeoChrono: Benchmarking and Rethinking Long-Term Temporal Understanding in Remote Sensing
+Conference’17, July 2017, Washington, DC, USA
+Figure 3: Overview of the data construction pipeline.
+mostly between 6 and 8, and up to 19. The benchmark also
+incorporates cross-sequence QA pairs that require the model to
+jointly reason over two image sequences from different geographic
+regions. To accommodate varying levels of task complexity, three
+question formats are employed: single-choice questions (62.9%),
+multiple-choice questions (32.1%), and ordered-sequence ques-
+tions (5.0%) requiring chronologically faithful output. In parallel,
+we construct ChronoInstruct, a large-scale instruction-tuning
+dataset comprising 1,534 image sequences and 104,949 QA
+pairs, with three answer formats: multiple-choice, short-text,
+and free-form natural-language responses. Additional statistical
+analyses are provided in the supplementary material.
+3.3
+Data Construction Pipeline
+To ensure annotation reliability, we adopt a fully rule-based con-
+struction pipeline grounded in human-annotated semantic change
+masks, as is shown in Figure 3. ChronoBench builds on the meta-
+data provided by the DynamicVL team [42], which includes pixel-
+level semantic change masks annotated at consecutive timestamps.
+These human-annotated masks provide a reliable basis for inferring
+land-cover states and transition events at arbitrary spatial locations
+along the temporal axis.
+For each sub-task, we design deterministic rule-based programs
+that traverse the semantic masks to extract ground-truth answers,
+and pair them with 5 stylistically diverse prompt templates to en-
+sure linguistic variety (Figure 3). All prompt templates are carefully
+calibrated to eliminate potential ambiguities, and the order of an-
+swer options is fully randomized to prevent positional bias.
+The automatically generated QA pairs undergo a two-stage hu-
+man quality control process. In the first stage, multiple independent
+annotators review each sample against the source images and se-
+mantic masks, flagging entries with ambiguous visual evidence,
+incorrect ground-truth labels, or ill-formed questions. In the second
+stage, a domain-expert supervisor adjudicates a random subset of
+flagged samples, making accept-or-reject decisions to ensure the
+benchmark meets a rigorous quality standard.
+ChronoInstruct shares the same construction pipeline for its
+multiple-choice and short-text answer components. For free-form
+natural-language responses, we further employ Gemini-3-Flash [31]
+to generate answers from the extracted ground-truth information,
+followed by the same two-stage human quality-control process to
+ensure the reliability. Additional annotation details are provided in
+the supplementary material.
+4
+How Well Do MLLMs Understand Long-Term
+Remote Sensing Dynamics?
+4.1
+Evaluation Setting
+To establish a comprehensive comparison, we evaluate represen-
+tative models across three distinct categories: i) Commercial
+MLLMs, i.e., Gemini-3-Flash [31], Seed-1.6-Vision [3] and
+GPT-5.4 [22]; ii) Open-source General MLLMs, comprising the
+InternVL-3.5 series (4B, 8B, 14B) [38], and the Qwen3-VL series (4B,
+8B, 32B) [2]; and iii) Remote Sensing Domain Models with tem-
+poral remote sensing understanding capabilities, i.e., TEOChat [10],
+EarthDial [29], and DVLChat [42]. Additionally, we recruit three
+domain experts to establish human-level performance, providing
+an upper-bound reference for evaluating model capabilities.
+4.2
+Benchmarking MLLMs on ChronoBench
+The quantitative results on ChronoBench, as detailed in Table 1,
+reveal a severe performance bottleneck across all evaluated models.
+While commercial models hold a relative lead, all three categories
+perform poorly on long-term memory tasks. This universal short-
+fall reflects not merely a limited parameter scale, but the lack of
+dedicated temporal modeling.
+Substantial Human-Machine Gap: Human experts achieve
+an average OA of 92.28%, confirming that the benchmark tasks are
+unambiguous and solvable. In contrast, the best evaluated com-
+mercial model, Gemini-3-Flash, reaches only 57.48%. Open-source
+models peak at 46.73% (Qwen3-VL-32B), and RS domain models fare
+no better, with DVLChat at 44.07%, while TEOChat and EarthDial
+struggle at 26.82% and 30.11%. This gap confirms that long-term RS
+interpretation remains an open challenge for current MLLMs.
+Long-Term Memory as the Critical Bottleneck: Long-
+Term Memory stands out as the dimension with the largest
+human-machine gap. Human experts achieve 91.73% on this
+dimension, yet even the best evaluated commercial model,
+Gemini-3-Flash, averages only 47.52%. Open-source general models
+fare far worse (13.33%–24.06%), and RS domain models perform
+comparably (14.64%–22.91%) despite being specifically trained
+on temporal RS data. The gap widens further on Object History
+Memory (OHM), which requires reconstructing complete evolution
+trajectories: open-source models nearly collapse (0.45%–4.55%),
+RS domain models stay below 2.50%, and even Gemini-3-Flash
+manages only 25%. This universal failure reveals that current
+MLLMs lack the capacity to accurately memorize and recall
+long-term evolutionary trajectories of geographic entities.
+Inconsistent Scaling Effect in General MLLMs: While ex-
+panding model parameters generally improves the Overall Aver-
+age (OA), e.g., Qwen3-VL scales from 35.10% (4B) to 46.73% (32B),
+and InternVL-3.5 from 33.25% (4B) to 37.76% (14B), this benefit is
+inconsistent in specific capability dimensions. Notably, within the
+
+Conference’17, July 2017, Washington, DC, USA
+Trovato et al.
+Table 1: Quantitative evaluation results on ChronoBench. We compare human expert performance against commercial MLLMs,
+open-source general MLLMs, remote sensing domain models, and our GeoChrono. All values are reported in percentage (%).
+Method
+Land Cover Perception
+Temporal Recognition
+Long-Term Memory
+Spatio-Temporal Reasoning
+OA
+OP
+AVG
+BCAC BCC
+LCC
+BOC
+AVG
+OAM
+OCM
+OHM
+AVG
+CCME RDC
+OCO
+CSOCO
+AVG
+Coord
+Box
+Coord
+Box
+Coord
+Box
+Coord
+Box
+Coord
+Box
+Coord
+Box
+Coord
+Box
+Human
+98.52
+95.56
+97.04
+94.81
+82.96
+82.96
+98.52
+89.63
+89.78
+98.52
+97.04
+91.11
+87.41
+85.93
+90.37
+91.73
+78.52
+97.78
+99.26
+100.00
+99.26
+98.52
+95.56
+92.28
+Commercial models
+Gemini-3-Flash[31]
+65.06
+65.96
+65.51
+82.00
+50.53
+52.45
+55.85
+56.16
+61.38
+56.44
+58.44
+46.68
+47.75
+25.00
+21.36
+47.52
+37.79
+63.64
+68.05
+78.01
+54.36
+66.67
+59.89
+57.48
+GPT-5.4[22]
+47.07
+40.00
+43.53
+80.00
+50.76
+53.87
+66.13
+60.00
+67.57
+47.69
+41.52
+35.36
+46.09
+26.14
+20.00
+39.21
+30.73
+30.51
+53.83
+70.60
+52.43
+69.12
+50.42
+56.29
+Seed-1.6-Vision[3]
+50.98
+73.23
+62.11
+81.91
+46.27
+53.73
+47.08
+58.47
+63.87
+37.08
+47.05
+37.22
+41.85
+20.00
+18.41
+36.86
+31.22
+38.98
+56.52
+73.29
+55.83
+79.41
+53.74
+55.48
+Open-source models
+InternVL-3.5-4B[38]
+45.41
+58.65
+52.03
+54.83
+32.57
+27.95
+24.51
+24.20
+38.19
+22.03
+21.49
+6.09
+10.20
+1.36
+0.91
+13.33
+22.76
+33.33
+54.66
+49.28
+50.49
+52.45
+42.07
+33.25
+InternVL-3.5-8B[38]
+33.08
+45.56
+39.32
+56.29
+28.31
+28.49
+35.60
+39.35
+43.21
+25.11
+24.30
+13.91
+16.95
+1.60
+3.41
+16.93
+30.40
+39.55
+51.35
+53.21
+57.77
+47.55
+45.11
+36.32
+InternVL-3.5-14B[38]
+40.90
+55.94
+48.42
+64.15
+33.41
+30.66
+36.43
+30.08
+45.67
+22.39
+21.76
+15.76
+19.07
+0.45
+0.91
+16.45
+21.95
+28.25
+52.38
+53.83
+48.06
+49.51
+41.42
+37.76
+Qwen3-VL-4B[2]
+35.19
+41.35
+38.27
+66.94
+31.13
+36.77
+23.96
+16.73
+42.07
+22.76
+18.95
+18.94
+22.52
+2.95
+4.55
+17.54
+21.30
+23.16
+47.83
+47.83
+54.85
+53.92
+39.53
+35.10
+Qwen3-VL-8B[2]
+39.40
+41.96
+40.68
+69.21
+29.15
+43.15
+31.98
+29.26
+47.12
+29.74
+28.56
+17.48
+20.00
+2.95
+0.91
+20.52
+23.74
+28.81
+54.66
+53.00
+55.83
+47.06
+42.80
+39.19
+Qwen3-VL-32B[2]
+42.86
+44.66
+43.76
+75.42
+44.29
+47.90
+45.68
+46.16
+57.88
+29.92
+30.73
+25.03
+27.95
+3.86
+4.55
+24.06
+28.78
+32.77
+51.76
+59.83
+59.71
+62.25
+47.23
+46.73
+Remote sensing domain models
+TEOChat-7B[10]
+32.63
+36.99
+34.81
+48.85
+14.23
+4.21
+17.27
+24.25
+30.07
+24.75
+27.83
+4.11
+6.62
+1.59
+1.14
+14.64
+17.40
+27.68
+50.93
+53.21
+9.22
+22.06
+33.35
+26.82
+EarthDial-4B[29]
+36.99
+40.30
+38.65
+54.83
+18.04
+4.34
+17.72
+24.09
+33.08
+26.20
+26.20
+17.48
+17.75
+0.68
+1.36
+18.56
+15.61
+22.03
+48.44
+46.38
+41.75
+52.45
+36.25
+30.11
+DVLChat-4B[42]
+48.57
+46.92
+47.74
+85.90
+31.81
+37.18
+34.21
+30.46
+54.48
+29.56
+26.93
+24.37
+29.93
+2.50
+2.05
+22.91
+17.24
+25.42
+50.72
+51.76
+58.74
+55.39
+40.59
+44.07
+Ours
+GeoChrono
+83.91
+93.38
+88.65
+93.66
+65.91 76.66
+77.83
+80.27 83.03
+72.71
+87.04
+68.61
+75.10
+31.59
+32.73 68.10
+62.60
+61.58
+61.49
+92.55
+75.24
+92.16 72.92 78.34
+InternVL series, scaling up does not yield uniform improvements;
+its performance on memory and reasoning tasks fluctuates or even
+degrades as parameter size increases. Furthermore, even when a pos-
+itive correlation exists (as in Qwen3-VL), the absolute performance
+still remains in a bottleneck. This underscores that brute-force pa-
+rameter scaling is not a silver bullet, and bridging the massive gap
+to human cognition requires methodological innovation.
+5
+GeoChrono
+As shown in Section 4.2, existing MLLMs struggle with long-term
+remote sensing dynamics, especially in long-term memory. To ad-
+dress this, we introduce GeoChrono, an MLLM tailored for long-
+term remote sensing interpretation. Given an image sequence 𝐼𝑠=
+{𝐼1, 𝐼2, . . . , 𝐼𝑇} spanning 𝑇frames and a text prompt 𝑄, GeoChrono
+generates a response 𝐴through spatio-temporal reasoning.
+GeoChrono comprises four core components: i) a Visual Encoder
+E𝑣that extracts per-frame visual features, ii) a Vision-Language
+Projector E𝑝that maps visual representations into the language
+embedding space, iii) a Temporal Trajectory Encoder (TempEnc)
+E𝑡𝑒that models per-location temporal evolution to strengthen the
+perception of land-cover change history, and iv) a Large Language
+Model (LLM) E𝑙that performs multimodal reasoning and generates
+the textual response 𝐴as Figure 4 shows. Specifically, TempEnc
+takes the projected visual features 𝐹𝑣𝑖𝑠∈R𝑇×𝑆×𝐷(𝑇: temporal
+frames, 𝑆: spatial tokens per frame, 𝐷: embedding dimension) with
+text instruction embeddings 𝐸𝑡𝑥𝑡∈R𝐿×𝐷, and outputs temporally
+enhanced representations 𝐹𝑡𝑒that are fed into the LLM. Beyond
+the core architecture, we further introduce a Coarse-to-Fine Token
+Compressor (C2FComp) E𝐶2𝐹that alleviates the computational bur-
+den of long high-resolution sequences by adaptively compressing
+static backgrounds while preserving task-relevant dynamic features.
+Sections 5.1 and 5.2 detail TempEnc and C2FComp, respectively.
+5.1
+Temporal Trajectory Encoder
+Unlike natural videos, temporal remote sensing sequences exhibit
+a distinctive geostationary prior: the sensor’s perspective varies
+negligibly, so each spatial patch across frames corresponds to the
+same geographic location. This allows the semantic evolution at any
+location to be modeled as an independent 1D temporal trajectory
+tracking land-cover change at a fixed spatial point. TempEnc explic-
+itly exploits this prior by decoupling the entangled spatio-temporal
+feature volume into per-location trajectories for dedicated temporal
+modeling. It comprises three stages: Spatial Context Aggrega-
+tion, which enriches each token with local spatial context; Hybrid
+Temporal Attention, which models per-location dynamics via
+hybrid attention; and Semantic Focusing, which uses text-guided
+cross-attention to suppress task-irrelevant temporal information.
+Spatial Context Aggregation. Constructing trajectories from
+isolated patches neglects the regional continuity inherent in remote
+sensing land cover. To inject local spatial context before trajectory
+formation, we apply a lightweight 3×3 depthwise convolution over
+the 2D-reshaped features as a pre-norm residual block:
+˜𝐹𝑣𝑖𝑠= 𝐹𝑣𝑖𝑠+ Flatten
+
+Conv3×3
+ Reshape(LN(𝐹𝑣𝑖𝑠))
+,
+(1)
+where LN(·) denotes Layer Normalization and Reshape transposes
+the spatial tokens into a 2D grid.
+Hybrid Temporal Attention. From the enriched features ˜𝐹𝑣𝑖𝑠∈
+R𝑇×𝑆×𝐷, we extract per-location temporal trajectories by grouping
+tokens sharing the same spatial index across all frames:
+𝑧𝑠=
+ ˜𝐹1,𝑠
+𝑣𝑖𝑠; ˜𝐹2,𝑠
+𝑣𝑖𝑠; . . . ; ˜𝐹𝑇,𝑠
+𝑣𝑖𝑠
+
+∈R𝑇×𝐷,
+(2)
+where each 𝑧𝑠encapsulates the complete temporal evolution at a
+single geographic location, and
+
+;
+
+denotes concatenation.
+We first inject 1D Rotary Position Embeddings (RoPE) [30] along
+the temporal axis of 𝑧𝑠to encode relative temporal distances. We
+then model the temporal trajectories with dual-stream hybrid at-
+tention, where the 𝐻attention heads are partitioned into two equal
+streams: the first 𝐻/2 heads apply bidirectional self-attention G𝑏𝑖
+over the full temporal sequence to capture global change patterns
+and long-range correlations, yielding 𝐴𝑏𝑖= G𝑏𝑖(𝑧𝑠) ∈R𝑇×𝐷/2,
+while the remaining 𝐻/2 heads apply causal self-attention G𝑐𝑎
+
+GeoChrono: Benchmarking and Rethinking Long-Term Temporal Understanding in Remote Sensing
+Conference’17, July 2017, Washington, DC, USA
+Figure 4: Overview of the GeoChrono framework. The middle panel illustrates the overall architecture. The right panel
+details the Temporal Trajectory Encoder (TempEnc), which decouples the spatio-temporal feature volume into per-location
+temporal trajectories via hybrid bidirectional-causal attention and text-guided semantic focusing. The left panel details the
+Coarse-to-Fine Token Compressor (C2FComp), which leverages text-guided saliency scoring to selectively preserve fine-grained
+tokens for task-relevant regions while compressing the background.
+to preserve chronological progression, yielding 𝐴𝑐𝑎= G𝑐𝑎(𝑧𝑠) ∈
+R𝑇×𝐷/2. The two streams are concatenated and projected to produce
+the hybrid attention output H (z𝑠) for each layer:
+H (z𝑠) =
+
+𝐴𝑏𝑖; 𝐴𝑐𝑎
+
+𝑊𝑂,
+(3)
+where 𝑊𝑂∈R𝐷×𝐷is the output projection matrix. After 𝐿layers,
+the output trajectories are reassembled into 𝐹𝑡𝑒𝑚𝑝∈R𝑇×𝑆×𝐷and
+combined via a residual connection:
+𝐹𝑡𝑟𝑎𝑗= 𝐹𝑡𝑒𝑚𝑝+ ˜𝐹𝑣𝑖𝑠.
+(4)
+Semantic Focusing. Remote sensing long temporal sequences
+inevitably carry substantial task-irrelevant information. We employ
+cross-attention with 𝐹𝑡𝑟𝑎𝑗as Query and 𝐸𝑡𝑥𝑡as Key/Value, allow-
+ing the text instruction to act as a semantic filter that selectively
+amplifies task-relevant temporal cues:
+CrossAttn(𝐹𝑡𝑟𝑎𝑗, 𝐸𝑡𝑥𝑡) = softmax
+ (𝐹𝑡𝑟𝑎𝑗𝑊𝑄)(𝐸𝑡𝑥𝑡𝑊𝐾)⊤
+√𝑑𝑘
+
+(𝐸𝑡𝑥𝑡𝑊𝑉) ,
+(5)
+where𝑊𝑄,𝑊𝐾, and𝑊𝑉are learnable projection matrices. The final
+output of TempEnc E𝑡𝑒is:
+𝐹𝑡𝑒= 𝐹𝑡𝑟𝑎𝑗+ CrossAttn(𝐹𝑡𝑟𝑎𝑗, 𝐸𝑡𝑥𝑡) .
+(6)
+5.2
+Coarse-to-Fine Token Compressor
+High-resolution long-temporal remote sensing sequences yield a
+total of 𝑇× 𝑆visual tokens, which scale linearly with the number
+of frames, imposing a heavy computational burden on the LLM.
+Naive uniform compression (e.g., global average pooling) would
+indiscriminately discard fine-grained details crucial for temporal
+understanding. We observe a key physical prior in remote sensing,
+change sparsity: the land-cover transitions concentrate in a small
+fraction of the scene, while the majority remains static. This moti-
+vates C2FComp (E𝐶2𝐹), a selective compression module that retains
+full-resolution tokens for task-relevant dynamic regions while com-
+pressing the static background into compact coarse representations,
+preserving fine-grained detail for task-relevant dynamics while sub-
+stantially reducing the overall token budget. Concretely, C2FComp
+operates through three cascaded stages, i.e., Spatial Block Parti-
+tioning, Prompt-Aware Scoring, and Token Mixing.
+Spatial Block Partitioning. Given the fine-grained features
+𝐹𝑣𝑖𝑠∈R𝑇×𝑆×𝐷with spatial resolution 𝑆= 𝐻×𝑊, we group each
+set of 𝑏× 𝑏spatially adjacent feature vectors into a block, resulting
+in 𝑆𝑐= 𝐻
+𝑏× 𝑊
+𝑏blocks. Each block is represented by mean pooling
+over its constituent tokens:
+𝐹𝑡,𝑗
+𝑐𝑜𝑎𝑟𝑠𝑒= 1
+𝑏2
+∑︁
+(𝑖,𝑘)∈B𝑗
+𝐹𝑡,(𝑖,𝑘)
+𝑣𝑖𝑠
+,
+(7)
+where 𝐹𝑡,𝑗
+𝑐𝑜𝑎𝑟𝑠𝑒is the feature for 𝑗-th block B𝑗of the 𝑡-th frame. This
+produces a block-level coarse feature map 𝐹𝑐𝑜𝑎𝑟𝑠𝑒∈R𝑇×𝑆𝑐×𝐷.
+Prompt-Aware Scoring. A lightweight saliency module scores
+each block’s relevance to the text instruction embeddings. The
+coarse features are passed through a cross-attention layer (visual to-
+kens 𝐹𝑐𝑜𝑎𝑟𝑠𝑒as Query, 𝐸𝑡𝑥𝑡as Key/Value), followed by a LayerNorm-
+MLP scoring head that produces saliency logits 𝑙. These are then
+aggregated into a unified per-position signal via log-mean-exp pool-
+ing across the temporal axis:
+𝜎𝑗= log(1
+𝑇
+𝑇∑︁
+𝑡=1
+exp(𝑙𝑡,𝑗)) ,
+(8)
+yielding the selection signal 𝜎∈R𝑆𝑐.
+Token Mixing. Given the saliency signal 𝜎, we select the top-𝐾
+blocks with the highest scores, where 𝐾is a hyperparameter that
+controls the overall compression rate. The selection is implemented
+via Gumbel-Softmax relaxation [11] with straight-through estima-
+tion for differentiable training, and reduces to deterministic hard
+top-𝐾at inference. The resulting binary mask m ∈{0, 1}𝑆𝑐is shared
+across all 𝑇frames to ensure spatially consistent compression. For
+
+Conference’17, July 2017, Washington, DC, USA
+Trovato et al.
+Table 2: Zero-shot evaluation on DVL-Bench [42] and CD-
+VQA [44]. All values are reported in percentage (%).
+Method
+DVL-Bench
+CDVQA
+BCA-Single
+BCA-Multi
+CSE-Single
+TEOChat[10]
+35.1
+8.7
+17.0
+50.0
+EarthDial[29]
+62.2
+20.3
+30.9
+52.1
+DVLChat[42]
+64.9
+21.3
+31.3
+43.7
+GeoChrono
+72.9
+42.1
+35.7
+59.2
+the 𝑗-th block of the 𝑡-th frame, the mixed representation is:
+𝐹𝑡,𝑗
+𝑚𝑖𝑥𝑒𝑑=
+(
+𝐹𝑡,𝑗
+𝑓𝑖𝑛𝑒∈R𝑏2×𝐷,
+if m𝑗= 1
+𝐹𝑡,𝑗
+𝑐𝑜𝑎𝑟𝑠𝑒∈R1×𝐷,
+if m𝑗= 0
+(9)
+where 𝐹𝑡,𝑗
+𝑓𝑖𝑛𝑒denotes the 𝑏2 fine-grained tokens within the 𝑗-th
+block. Concatenating all blocks yields 𝐹𝑚𝑖𝑥𝑒𝑑∈R𝑇×𝑁𝑚𝑖𝑥𝑒𝑑×𝐷with
+𝑁𝑚𝑖𝑥𝑒𝑑= 𝐾·𝑏2+(𝑆𝑐−𝐾) ≪𝑆, which is then forwarded to TempEnc
+for temporal trajectory modeling.
+6
+Experiments
+We first describe implementation settings (Section 6.1), then com-
+pare GeoChrono against existing MLLMs and evaluate its gener-
+alizability on external benchmarks (Section 6.2), followed by an
+efficiency analysis of C2FComp (Section 6.3) and ablation stud-
+ies (Section 6.4). Detailed training configurations, qualitative results,
+and case studies are provided in the supplementary material.
+6.1
+Implementation Settings
+GeoChrono is built upon Qwen3-VL-4B-Instruct [2]. During train-
+ing, the Vision Encoder and Vision-Language Projector are frozen;
+TempEnc and C2FComp are randomly initialized and fully fine-
+tuned, while the LLM backbone is tuned via LoRA [8]. Both Tem-
+pEnc and C2FComp adopt a single-layer attention architecture. The
+model is trained for one epoch on ChronoInstruct using 4 NVIDIA
+H100 80GB GPUs. Full hyperparameter details are provided in the
+supplementary material.
+6.2
+Evaluation of GeoChrono
+As shown in Table 1, GeoChrono achieves 78.34% overall accuracy,
+surpassing leading commercial MLLMs by over 20% and all open-
+source and RS domain models by an even wider margin. GeoChrono
+leads across all four dimensions, with the most pronounced gain in
+Long-Term Memory (68.10%), substantially narrowing the gap with
+human experts (91.73%). This improvement stems from TempEnc’s
+hybrid temporal trajectory attention: the causal stream preserves
+chronological progression along each spatial trajectory for faithful
+recall of historical states, while the bidirectional stream captures
+global temporal contrasts that disambiguate similar land-cover
+phases across distant time steps. Consistent advantages in Tempo-
+ral Recognition (83.03%) and Spatio-Temporal Reasoning (72.92%)
+further validate the effectiveness of per-location trajectory decou-
+pling with text-guided semantic focusing.
+Table 3: Impact of different coarse-to-fine selection ratios on
+efficiency and performance.
+Selection
+FLOPS
+Visual Token
+OA
+Performance
+Ratio
+Length
+Ratio
+w/o C2FComp
+100.00%
+100.00%
+78.34
+100.00%
+768 × 768
+-48.75%
+-43.75%
+73.95
+94.40%
+1/2
+-39.22%
+-37.50%
+74.58
+95.20%
+1/4
+-56.53%
+-56.25%
+74.11
+94.60%
+1/16
+-68.49%
+-70.31%
+72.60
+92.67%
+1/64
+-71.34%
+-73.83%
+71.56
+91.35%
+Table 4: Ablation study. DFT denotes direct fine-tuning. TAH,
+TAB, and TAC denote hybrid, bidirectional-only, and causal-
+only temporal attention, respectively. SAG and SFC denote
+spatial context aggregation and semantic focusing, respec-
+tively. LCP, TR, LTM, and STR denote land cover percep-
+tion, temporal recognition, long-term memory, and spatio-
+temporal reasoning, respectively.
+Method
+LCP
+TR
+LTM
+STR
+OA
+DFT
+82.03
+79.08
+59.23
+65.82
+72.52
+DFT + TAH
+85.49
+81.49
+62.77
+70.20
+75.54
+DFT + TAH + SAG
+85.34
+81.62
+63.00
+71.59
+75.83
+DFT + TAB + SAG + SFC
+86.02
+82.55
+64.77
+73.80
+77.12
+DFT + TAC + SAG + SFC
+86.39
+82.50
+65.62
+72.60
+77.19
+DFT + TAH + SAG + SFC (Full)
+88.65
+83.03
+68.10
+72.92
+78.34
+We further evaluate generalizability on two external bench-
+marks (Table 2). On DVL-Bench [42], GeoChrono achieves 72.9%,
+42.1%, and 35.7% on the three sub-tasks under a zero-shot setting,
+consistently surpassing DVLChat (64.9%, 21.3%, 31.3%) which was
+trained on DVL-Instruct. On CDVQA [44], GeoChrono attains 59.2%
+zero-shot accuracy, outperforming all RS domain baselines. These
+results confirm that GeoChrono’s temporal modeling capabilities
+generalize effectively to unseen tasks and distributions.
+6.3
+Effectiveness of C2FComp
+Table 3 studies C2FComp under varying selection ratios, with the
+full model as the upper bound and 768×768 uniform resizing as a
+naive baseline. C2FComp demonstrates strong robustness across
+all compression levels, consistently retaining over 91% of the full
+model’s performance even at the most aggressive 1/64 ratio, which
+reduces the visual tokens by 73.83%. The 1/4 ratio further pro-
+vides over 56% token reduction while preserving 94.60% perfor-
+mance, surpassing the 768×768 resizing baseline in both compres-
+sion rate (56.25% vs. 43.75%) and performance retention (94.60% vs.
+94.40%), confirming that instruction-guided selective compression
+is more effective than uniform downsampling.
+6.4
+Ablation Studies
+Table 4 progressively ablates GeoChrono’s key designs. Introduc-
+ing hybrid temporal attention over the DFT baseline yields 3.02%
+
+GeoChrono: Benchmarking and Rethinking Long-Term Temporal Understanding in Remote Sensing
+Conference’17, July 2017, Washington, DC, USA
+OA gain, confirming the necessity of explicit per-location temporal
+modeling, while spatial context aggregation provides a further mod-
+est improvement. Among the three attention variants (Bidirectional-
+only, Causal-only, and Hybrid) equipped with text-guided seman-
+tic focusing, bidirectional-only excels in Spatio-Temporal Reason-
+ing (73.80%) via its global temporal view, while causal-only leads
+in Long-Term Memory (65.62%) by preserving chronological or-
+der; their hybrid combination in GeoChrono surpasses both with
+overall accuracy of 78.34%, demonstrating that the two streams
+capture complementary temporal patterns. The consistent 2.51%
+gain over the variant without semantic focusing further validates
+its effectiveness in filtering task-irrelevant temporal information.
+7
+Conclusion
+This work rethinks long-term temporal understanding in remote
+sensing by proposing ChronoBench, a benchmark that decomposes
+this challenge into four progressive cognitive levels. Evaluations
+on ChronoBench identify Long-Term Memory as the most critical
+bottleneck of current MLLMs. We further construct ChronoInstruct,
+a 104K-sample instruction-tuning dataset spanning all competency
+levels, and propose GeoChrono, which exploits the physical priors
+unique to remote sensing through a Temporal Trajectory Encoder
+for per-location evolution modeling and a Coarse-to-Fine Token
+Compressor for selective visual token compression. GeoChrono
+achieves an overall accuracy of 78.34% on ChronoBench, surpassing
+the leading commercial MLLMs by more than 20%, and C2FComp
+reduces visual tokens by more than 56% while retaining 94.6% of
+full-model performance. We hope this work inspires the community
+to further explore this challenging direction.
+Acknowledgments
+This work has been funded by the National Natural Science Foun-
+dation of China under Grant 62301063.
+References
+[1] Jean-Baptiste Alayrac, Jeff Donahue, Pauline Luc, Antoine Miech, Iain Barr, Yana
+Hasson, Karel Lenc, Arthur Mensch, Katherine Millican, Malcolm Reynolds, et al.
+2022. Flamingo: a visual language model for few-shot learning. Advances in
+neural information processing systems 35 (2022), 23716–23736.
+[2] Shuai Bai, Yuxuan Cai, Ruizhe Chen, Keqin Chen, Xionghui Chen, Zesen Cheng,
+Lianghao Deng, Wei Ding, Chang Gao, Chunjiang Ge, et al. 2025. Qwen3-vl
+technical report. arXiv preprint arXiv:2511.21631 (2025).
+[3] ByteDance Seed. 2026. Seed 1.6. https://seed.bytedance.com/en/seed1_6. Ac-
+cessed: 2026-03-22.
+[4] Keshigeyan Chandrasegaran, Agrim Gupta, Lea M Hadzic, Taran Kota, Jimming
+He, Cristóbal Eyzaguirre, Zane Durante, Manling Li, Jiajun Wu, and Li Fei-Fei.
+2024. Hourvideo: 1-hour video-language understanding. Advances in Neural
+Information Processing Systems 37 (2024), 53168–53197.
+[5] Tri Dao. 2024. FlashAttention-2: Faster Attention with Better Parallelism and
+Work Partitioning. In International Conference on Learning Representations (ICLR).
+[6] Pei Deng, Wenqian Zhou, and Hanlin Wu. 2025. Changechat: An interactive
+model for remote sensing change analysis via multimodal instruction tuning. In
+ICASSP 2025-2025 IEEE International Conference on Acoustics, Speech and Signal
+Processing (ICASSP). IEEE, 1–5.
+[7] Chaoyou Fu, Yuhan Dai, Yongdong Luo, Lei Li, Shuhuai Ren, Renrui Zhang, Zihan
+Wang, Chenyu Zhou, Yunhang Shen, Mengdan Zhang, et al. 2025. Video-mme:
+The first-ever comprehensive evaluation benchmark of multi-modal llms in video
+analysis. In Proceedings of the IEEE/CVF conference on computer vision and pattern
+recognition. 24108–24118.
+[8] Edward J Hu, Yelong Shen, Phillip Wallis, Zeyuan Allen-Zhu, Yuanzhi Li, Shean
+Wang, Liang Wang, Weizhu Chen, et al. 2022. Lora: Low-rank adaptation of large
+language models. Iclr 1, 2 (2022), 3.
+[9] Yuan Hu, Jianlong Yuan, Congcong Wen, Xiaonan Lu, Yu Liu, and Xiang Li. 2025.
+Rsgpt: A remote sensing vision language model and benchmark. ISPRS Journal
+of Photogrammetry and Remote Sensing 224 (2025), 272–286.
+[10] Jeremy Andrew Irvin, Emily Ruoyu Liu, Joyce Chuyi Chen, Ines Dormoy, Jiny-
+oung Kim, Samar Khanna, Zhuo Zheng, and Stefano Ermon. 2024. Teochat:
+A large vision-language assistant for temporal earth observation data. arXiv
+preprint arXiv:2410.06234 (2024).
+[11] Eric Jang, Shixiang Gu, and Ben Poole. 2016. Categorical reparameterization
+with gumbel-softmax. arXiv preprint arXiv:1611.01144 (2016).
+[12] Kartik Kuckreja, Muhammad Sohail Danish, Muzammal Naseer, Abhijit Das,
+Salman Khan, and Fahad Shahbaz Khan. 2024. Geochat: Grounded large vision-
+language model for remote sensing. In Proceedings of the IEEE/CVF conference on
+computer vision and pattern recognition. 27831–27840.
+[13] Junnan Li, Dongxu Li, Silvio Savarese, and Steven Hoi. 2023. Blip-2: Bootstrapping
+language-image pre-training with frozen image encoders and large language
+models. In International conference on machine learning. PMLR, 19730–19742.
+[14] Yujie Li, Wenjia Xu, Yuanben Zhang, Zhiwei Wei, and Mugen Peng. 2025. BTC-
+Chat: Advancing Remote Sensing Bi-temporal Change Captioning with Multi-
+modal Large Language Model. arXiv preprint arXiv:2509.05895 (2025).
+[15] Chenyang Liu, Keyan Chen, Bowen Chen, Haotian Zhang, Zhengxia Zou, and
+Zhenwei Shi. 2024. Rscama: Remote sensing image change captioning with state
+space model. IEEE Geoscience and Remote Sensing Letters 21 (2024), 1–5.
+[16] Chenyang Liu, Rui Zhao, Hao Chen, Zhengxia Zou, and Zhenwei Shi. 2022.
+Remote sensing image change captioning with dual-branch transformers: A new
+method and a large scale dataset. IEEE Transactions on Geoscience and Remote
+Sensing 60 (2022), 1–20.
+[17] Haotian Liu, Chunyuan Li, Yuheng Li, and Yong Jae Lee. 2024. Improved baselines
+with visual instruction tuning. In Proceedings of the IEEE/CVF conference on
+computer vision and pattern recognition. 26296–26306.
+[18] Haotian Liu, Chunyuan Li, Qingyang Wu, and Yong Jae Lee. 2023. Visual in-
+struction tuning. Advances in neural information processing systems 36 (2023),
+34892–34916.
+[19] Sylvain Lobry, Diego Marcos, Jesse Murray, and Devis Tuia. 2020. RSVQA: Visual
+question answering for remote sensing data. IEEE Transactions on Geoscience and
+Remote Sensing 58, 12 (2020), 8555–8566.
+[20] Junwei Luo, Zhen Pang, Yongjun Zhang, Tingzhu Wang, Linlin Wang, Bo Dang,
+Jiangwei Lao, Jian Wang, Jingdong Chen, Yihua Tan, et al. 2024. Skysensegpt:
+A fine-grained instruction tuning dataset and model for remote sensing vision-
+language understanding. arXiv preprint arXiv:2406.10100 (2024).
+[21] Dilxat Muhtar, Zhenshi Li, Feng Gu, Xueliang Zhang, and Pengfeng Xiao. 2024.
+Lhrs-bot: Empowering remote sensing with vgi-enhanced large multimodal
+language model. In European Conference on Computer Vision. Springer, 440–457.
+[22] OpenAI. 2025. Introducing GPT-5.4. https://openai.com/index/introducing-gpt-
+5-4/. Accessed: 2026-03-22.
+[23] Ruizhe Ou, Yuan Hu, Fan Zhang, Jiaxin Chen, and Yu Liu. 2025. GeoPix: A
+multimodal large language model for pixel-level image understanding in remote
+sensing. IEEE Geoscience and Remote Sensing Magazine (2025).
+[24] Chao Pang, Xingxing Weng, Jiang Wu, Jiayu Li, Yi Liu, Jiaxing Sun, Weijia Li,
+Shuai Wang, Litong Feng, Gui-Song Xia, et al. 2025. Vhm: Versatile and honest
+vision language model for remote sensing image analysis. In Proceedings of the
+AAAI Conference on Artificial Intelligence, Vol. 39. 6381–6388.
+[25] Charlotte Pelletier, Geoffrey I Webb, and François Petitjean. 2019. Temporal
+convolutional neural network for the classification of satellite image time series.
+Remote Sensing 11, 5 (2019), 523.
+[26] Akashah Shabbir, Mohammed Zumri, Mohammed Bennamoun, Fahad S Khan,
+and Salman Khan. 2025. Geopixel: Pixel grounding large multimodal model in
+remote sensing. arXiv preprint arXiv:2501.13925 (2025).
+[27] Yan Shu, Zheng Liu, Peitian Zhang, Minghao Qin, Junjie Zhou, Zhengyang Liang,
+Tiejun Huang, and Bo Zhao. 2025. Video-xl: Extra-long vision language model
+for hour-scale video understanding. In Proceedings of the Computer Vision and
+Pattern Recognition Conference. 26160–26169.
+[28] Enxin Song, Wenhao Chai, Guanhong Wang, Yucheng Zhang, Haoyang Zhou,
+Feiyang Wu, Haozhe Chi, Xun Guo, Tian Ye, Yanting Zhang, et al. 2024. Moviechat:
+From dense token to sparse memory for long video understanding. In Proceedings
+of the IEEE/CVF Conference on Computer Vision and Pattern Recognition. 18221–
+18232.
+[29] Sagar Soni, Akshay Dudhane, Hiyam Debary, Mustansar Fiaz, Muhammad Akhtar
+Munir, Muhammad Sohail Danish, Paolo Fraccaro, Campbell D Watson, Levente J
+Klein, Fahad Shahbaz Khan, et al. 2025. Earthdial: Turning multi-sensory earth
+observations to interactive dialogues. In Proceedings of the Computer Vision and
+Pattern Recognition Conference. 14303–14313.
+[30] Jianlin Su, Murtadha Ahmed, Yu Lu, Shengfeng Pan, Wen Bo, and Yunfeng
+Liu. 2024. Roformer: Enhanced transformer with rotary position embedding.
+Neurocomputing 568 (2024), 127063.
+[31] Gemini Team, Rohan Anil, Sebastian Borgeaud, Jean-Baptiste Alayrac, Jiahui
+Yu, Radu Soricut, Johan Schalkwyk, Andrew M Dai, Anja Hauth, Katie Millican,
+et al. 2023. Gemini: a family of highly capable multimodal models. arXiv preprint
+arXiv:2312.11805 (2023).
+
+Conference’17, July 2017, Washington, DC, USA
+Trovato et al.
+[32] Aakash Thapa, Teerayut Horanont, Bipul Neupane, and Jagannath Aryal. 2023.
+Deep learning for remote sensing image scene classification: A review and meta-
+analysis. Remote Sensing 15, 19 (2023), 4804.
+[33] Barbara Tversky. 2008. Spatial Cognition: Embodied and Situated. Cambridge
+University Press, 201–216.
+[34] Fengxiang Wang, Mingshuo Chen, Yueying Li, Di Wang, Haotian Wang, Zonghao
+Guo, Zefan Wang, Boqi Shan, Long Lan, Yulin Wang, et al. 2025. GeoLLaVA-8K:
+scaling remote-sensing multimodal large language models to 8k resolution. arXiv
+preprint arXiv:2505.21375 (2025).
+[35] Fengxiang Wang, Hongzhen Wang, Zonghao Guo, Di Wang, Yulin Wang, Ming-
+shuo Chen, Qiang Ma, Long Lan, Wenjing Yang, Jing Zhang, et al. 2025. Xlrs-
+bench: Could your multimodal llms understand extremely large ultra-high-
+resolution remote sensing imagery?. In Proceedings of the Computer Vision and
+Pattern Recognition Conference. 14325–14336.
+[36] Junjue Wang, Weihao Xuan, Heli Qi, Zhihao Liu, Kunyi Liu, Yuhan Wu, Hon-
+gruixuan Chen, Jian Song, Junshi Xia, Zhuo Zheng, et al. 2025. Disasterm3:
+A remote sensing vision-language dataset for disaster damage assessment and
+response. arXiv preprint arXiv:2505.21089 (2025).
+[37] Junjue Wang, Yanfei Zhong, Zihang Chen, Zhuo Zheng, Ailong Ma, and Liangpei
+Zhang. 2026. EarthVL: A Progressive Earth Vision-Language Understanding and
+Generation Framework. arXiv preprint arXiv:2601.02783 (2026).
+[38] Weiyun Wang, Zhangwei Gao, Lixin Gu, Hengjun Pu, Long Cui, Xingguang Wei,
+Zhaoyang Liu, Linglin Jing, Shenglong Ye, Jie Shao, et al. 2025. Internvl3. 5: Ad-
+vancing open-source multimodal models in versatility, reasoning, and efficiency.
+arXiv preprint arXiv:2508.18265 (2025).
+[39] Weihan Wang, Zehai He, Wenyi Hong, Yean Cheng, Xiaohan Zhang, Ji Qi, Ming
+Ding, Xiaotao Gu, Shiyu Huang, Bin Xu, et al. 2025. Lvbench: An extreme long
+video understanding benchmark. In Proceedings of the IEEE/CVF International
+Conference on Computer Vision. 22958–22967.
+[40] Yuetian Weng, Mingfei Han, Haoyu He, Xiaojun Chang, and Bohan Zhuang.
+2024. Longvlm: Efficient long video understanding via large language models. In
+European Conference on Computer Vision. Springer, 453–470.
+[41] Jiayang Wu, Wensheng Gan, Zefeng Chen, Shicheng Wan, and Philip S Yu.
+2023. Multimodal large language models: A survey. In 2023 IEEE International
+Conference on Big Data (BigData). IEEE, 2247–2256.
+[42] Weihao Xuan, Junjue Wang, Heli Qi, Zihang Chen, Zhuo Zheng, Yanfei Zhong,
+Junshi Xia, and Naoto Yokoya. 2025. Dynamicvl: Benchmarking multimodal large
+language models for dynamic city understanding. arXiv preprint arXiv:2505.21076
+(2025).
+[43] Shukang Yin, Chaoyou Fu, Sirui Zhao, Ke Li, Xing Sun, Tong Xu, and Enhong
+Chen. 2024. A survey on multimodal large language models. National Science
+Review 11, 12 (2024), nwae403.
+[44] Zhenghang Yuan, Lichao Mou, Zhitong Xiong, and Xiao Xiang Zhu. 2022. Change
+detection meets visual question answering. IEEE Transactions on Geoscience and
+Remote Sensing 60 (2022), 1–13.
+[45] Yang Zhan, Zhitong Xiong, and Yuan Yuan. 2023. Rsvg: Exploring data and models
+for visual grounding on remote sensing data. IEEE transactions on geoscience and
+remote sensing 61 (2023), 1–13.
+[46] Ke Zhang, Peijie Li, and Jianqiang Wang. 2024. A review of deep learning-
+based remote sensing image caption: Methods, models, comparisons and future
+directions. Remote Sensing 16, 21 (2024), 4113.
+[47] Wei Zhang, Miaoxin Cai, Tong Zhang, Yin Zhuang, and Xuerui Mao. 2024. Earth-
+GPT: A universal multimodal large language model for multisensor image com-
+prehension in remote sensing domain. IEEE Transactions on Geoscience and
+Remote Sensing 62 (2024), 1–20.
+[48] Siyuan Zhao, Qiang Wang, Xiaolin Zhao, Yong Kang, Chiben Zhang, and Ying Luo.
+2026. Frequency-Adaptive Disentanglement and Topological Graph Alignment
+for Cross-Modal Optical-SAR Ship Re-Identification. IEEE Journal of Selected
+Topics in Applied Earth Observations and Remote Sensing (2026).
+[49] Yue Zhou, Jue Chen, Zilun Zhang, Penghui Huang, Ran Ding, Zhentao Zou,
+PengFei Gao, Yuchen Wei, Ke Li, Xue Yang, et al. 2026. DVGBench: Implicit-to-
+explicit visual grounding benchmark in UAV imagery with large vision–language
+models. ISPRS Journal of Photogrammetry and Remote Sensing 232 (2026), 831–847.
+[50] Heqing Zou, Tianze Luo, Guiyang Xie, Victor Xiao Jie Zhang, Fengmao Lv, Guang-
+cong Wang, Junyang Chen, Zhuochen Wang, Hansheng Zhang, and Huaijian
+Zhang. 2025. Hlv-1k: A large-scale hour-long video benchmark for time-specific
+long video understanding. In 2025 IEEE International Conference on Multimedia
+and Expo (ICME). IEEE, 1–6.
+
+GeoChrono: Benchmarking and Rethinking Long-Term Temporal Understanding in Remote Sensing
+Conference’17, July 2017, Washington, DC, USA
+Appendix
+Table of Contents
+A
+Data Construction Details
+11
+A.1
+Rule-Based Metadata Extraction
+11
+A.2
+Prompt Templates for All Sub-Tasks
+14
+A.3
+Natural-Language Response Generation for ChronoInstruct
+19
+B
+Statistical Analysis of ChronoBench and ChronoInstruct
+20
+B.1
+Per-Task QA Distribution
+20
+B.2
+Temporal Sequence Length
+22
+B.3
+Answer Format Composition
+23
+C
+Experiment Setups
+23
+C.1
+Evaluation Settings
+23
+C.2
+Training Settings
+25
+D
+Experimental Results
+26
+D.1
+Benchmark Result Analysis
+26
+D.2
+Computational Efficiency Analysis
+29
+D.3
+Qualitative Results
+29
+D.4
+Failure Case Study
+32
+E
+Limitations and Future Directions
+32
+F
+Contribution to the Community
+32
+A
+Data Construction Details
+The construction of ChronoBench and ChronoInstruct relies on deterministic rule-based programs that enable reproducible, large-scale
+data generation. The pipeline operates in two stages: for each geographic tile, we first execute rule-based programs to systematically
+analyze the human-annotated change semantic masks, extracting structured land-cover transition evidence forming the metadata; the
+extracted information is then populated into pre-designed prompt templates tailored to each of the 12 sub-tasks to produce the final QA pairs.
+Figure 5 provides a concrete end-to-end illustration of this pipeline using the LCC task as an example. In the following, we first formalize
+the rule-based metadata extraction process, covering the mask encoding scheme, notation, and extraction algorithms (Section A.1); then
+present the prompt templates for all 12 sub-tasks (Section A.2); and finally describe the natural-language response generation process for
+ChronoInstruct (Section A.3).
+A.1
+Rule-Based Metadata Extraction
+A.1.1
+Change Semantic Mask Encoding. All benchmark samples are derived from semantic change masks that record pixel-level land-cover
+transitions between consecutive timestamps and the total transition between the first and last timestamp. As illustrated in Figure 6, each
+valid pixel in a change mask stores a two-digit integer value 𝑣, where the tens digit encodes the source (i.e., pre-change) land-cover class and
+the units digit encodes the destination (i.e., post-change) class:
+𝑐𝑠= ⌊𝑣/10⌋,
+𝑐𝑑= 𝑣mod 10,
+(10)
+where 𝑐𝑠and 𝑐𝑑denote the source and destination class indices, respectively. The five predefined land-cover classes and their corresponding
+indices are listed in Table 5. For instance, a pixel value of 14 encodes the transition vegetation →buildings, while 42 encodes buildings →non-
+vegetated surface. Background pixels (i.e., no change) are set to zero. During construction, only valid transition pixels are retained, satisfying:
+i) 𝑣is a two-digit code, ii) 𝑐𝑠≠𝑐𝑑, and iii) 𝑐𝑠,𝑐𝑑∈{1, 2, 3, 4, 5}.
+A.1.2
+Notation and Definitions. For brevity, we adopt the following task abbreviations throughout this section: Object Perception (OP),
+Bi-Temporal Class-Level Change Recognition (BCC) Bi-Temporal Class-Level Area Change Recognition (BCAC), Long-Temporal Class-
+Level Change Recognition (LCC), Bi-Temporal Object-Level Change Recognition (BOC), Object Appear Memory (OAM), Object Change
+Memory (OCM), Object History Memory (OHM), Class-Level Change Magnitude Estimation (CCME), Region Development Comparison (RDC),
+Object Construction Ordering (OCO), and Cross-Sequence Object Construction Ordering (CSOCO).
+The key notation used in the pseudocode is defined below:
+• D: the set of all geographic tiles.
+• M𝑑: the set of all change masks associated with tile 𝑑.
+• 𝑀total: the total mask, i.e., the mask spanning the longest temporal interval, representing the cumulative land-cover change from the
+first to the last timestamp.
+• Minter = {𝑀(1), 𝑀(2), . . .}: the intermediate masks, each covering a consecutive timestamp pair [𝑡(𝑖)
+0 ,𝑡(𝑖)
+1 ], sorted in chronological
+order. These capture fine-grained, interval-specific transitions.
+
+Conference’17, July 2017, Washington, DC, USA
+Trovato et al.
+Figure 5: Illustration of the data construction pipeline, using Long-Temporal Class-Level Change Recognition (LCC) as an
+example.
+Table 5: Land-cover class index mapping used in the change semantic masks.
+Index
+Land-Cover Class
+1
+Vegetation
+2
+Non-vegetated Surface
+3
+Water
+4
+Buildings
+5
+Playground
+• 𝑣𝑝: the pixel value at spatial position 𝑝in a change mask.
+• 𝑐𝑠(𝑣), 𝑐𝑑(𝑣): the source and destination class indices decoded from value 𝑣via Eq. (10).
+• CC(·): connected component extraction on a binary mask, returning a set of spatially contiguous regions.
+• Area(𝑅): the pixel area of a connected region 𝑅.
+• FR(𝑅) = Area(𝑅) / Area(BBox(𝑅)): the bounding-box fill ratio of region 𝑅.
+• 𝜃𝑎(𝑐): the class-dependent minimum area threshold for retaining a candidate region, set larger for spatially extensive classes (vegetation,
+non-vegetated surface) and smaller for compact classes (water, buildings, playground).
+• 𝜃𝑓: the minimum bounding-box fill-ratio threshold for region filtering.
+• 𝜃𝑡(𝑐𝑠,𝑐𝑑): the class-pair-dependent minimum pixel count for retaining a class-level transition.
+
+GeoChrono: Benchmarking and Rethinking Long-Term Temporal Understanding in Remote Sensing
+Conference’17, July 2017, Washington, DC, USA
+Figure 6: Illustration of the change semantic mask encoding. Each valid pixel stores a two-digit value encoding the source-to-
+destination land-cover transition. Background pixels (no change) are set to zero.
+A.1.3
+QA Metadata Extraction Algorithms. The 12 sub-tasks share a common preprocessing stage (Algorithm 1) and are grouped into two
+families based on their core extraction operation: i) four class-level tasks (BCC, BCAC, LCC, CCME) that analyze transition pixel counts
+without requiring spatial connectivity, formalized in Algorithm 2; and ii) eight object-level tasks (OP, BOC, OAM, OCM, OHM, OCO, RDC,
+CSOCO) that rely on connected-component extraction to identify discrete spatial regions, formalized in Algorithm 3. An important design
+dimension is the temporal source: tasks assessing long-term cumulative change (LCC, OAM, OHM, OCO, RDC) operate on 𝑀total, while tasks
+targeting interval-specific transitions (BCC, BCAC, CCME, OP, BOC, OCM) operate on Minter.
+Two tasks require additional post-processing beyond Algorithm 3. Region Development Comparison (RDC) performs two sepa-
+rate region extractions on 𝑀total: one isolating building/playground destination clusters and another isolating vegetation/non-vegetated
+surface/water clusters. It then composes four-region combinations from the candidate pool, subject to three filtering criteria: i) spatial
+non-containment, ensuring no selected region is enclosed by another; ii) balanced area ratios, requiring max(Area)/min(Area) ≤4 so that
+no region dominates the comparison by sheer size, and a coefficient of variation (CV = 𝜎/𝜇, the standard deviation of the four region areas
+divided by their mean) ≤0.7 to further ensure that the four regions are of comparable scale; and iii) fill-ratio discrimination constraints to
+guarantee a clear answer. The building-side cluster with the highest fill ratio is assigned as the most developed region. Cross-Sequence
+Object Construction Ordering (CSOCO) reuses the outputs of OCO: it pools all retained building and playground objects across tiles into
+a global set, then pairs objects from different tiles whose construction intervals do not overlap. For each pair, the object with the earlier
+construction time is designated as the ground truth.
+Algorithm 1 Shared Preprocessing
+Require: Tile dataset D
+Ensure: Preprocessed masks {(𝑀total, Minter, T)} for each tile
+1: for each tile 𝑑∈D do
+2:
+Collect all change masks M𝑑= {𝑀1, . . . , 𝑀𝐾}
+3:
+for each 𝑀𝑘∈M𝑑do
+4:
+Parse temporal interval [𝑡(𝑘)
+0
+,𝑡(𝑘)
+1
+] from file name
+5:
+end for
+6:
+𝑀total ←argmax𝑀𝑘
+ 𝑡(𝑘)
+1
+−𝑡(𝑘)
+0
+
+7:
+Minter ←M𝑑\ {𝑀total}, sorted by 𝑡0
+8:
+T ←sorted unique timestamps from all intervals
+9: end for
+
+Conference’17, July 2017, Washington, DC, USA
+Trovato et al.
+Algorithm 2 Class-Level Task Construction
+Require: Preprocessed tile, task type 𝜏∈{BCC, BCAC, LCC, CCME}
+Ensure: Class-level QA metadata R
+Phase 1: Transition Pixel Counting
+1: if 𝜏= LCC then
+2:
+ˆ
+M ←{all Minter merged}
+⊲aggregate over full sequence
+3: else
+4:
+ˆ
+M ←Minter
+⊲per-interval processing
+5: end if
+6: for each mask 𝑀∈
+ˆ
+M do
+7:
+for each valid pixel 𝑝in 𝑀with 𝑐𝑠≠𝑐𝑑do
+8:
+Γ[𝑀][ 𝑐𝑠(𝑣𝑝) →𝑐𝑑(𝑣𝑝) ] += 1
+9:
+end for
+10: end for
+Phase 2: Task-Specific Extraction
+⊲applied per 𝑀from Phase 1
+11: if 𝜏∈{BCC, LCC} then
+12:
+for each (𝑐𝑠→𝑐𝑑) with Γ[𝑀][𝑐𝑠→𝑐𝑑] < 𝜃𝑡(𝑐𝑠,𝑐𝑑) do
+13:
+Mark both 𝑐𝑠and 𝑐𝑑as invalid
+14:
+end for
+15:
+Remove all transitions involving any invalid class
+16:
+for each valid source class 𝑐𝑠do
+17:
+R.add 𝑐𝑠, {𝑐𝑑| 𝑐𝑠→𝑐𝑑valid}, [𝑡𝑀
+0 ,𝑡𝑀
+1 ]
+18:
+end for
+19: else if 𝜏= BCAC then
+20:
+for each class 𝑐, each mask 𝑀do
+21:
+Δ𝑐←Í
+𝑘Γ[𝑀][𝑘→𝑐] −Í
+𝑘Γ[𝑀][𝑐→𝑘]
+⊲net area change
+22:
+if |Δ𝑐| > 𝜃𝑠(𝑐) then
+23:
+R.add(𝑐, 𝑀, Δ𝑐>0 ? “expanded” : “reduced”)
+24:
+end if
+25:
+end for
+26: else if 𝜏= CCME then
+27:
+for each class 𝑐do
+28:
+𝑆𝑐(𝑀) ←Í
+𝑐𝑑Γ[𝑀][𝑐→𝑐𝑑] for each 𝑀
+⊲change volume
+29:
+Retain masks where 𝑆𝑐(𝑀) > 𝜃𝑚(𝑐); require ≥𝑛min retained
+30:
+R.add 𝑐, argmax𝑀𝑆𝑐(𝑀)
+⊲peak interval
+31:
+end for
+32: end if
+A.2
+Prompt Templates for All Sub-Tasks
+After the rule-based programs extract the structured metadata records R described above, each record is converted into a QA pair by sampling
+one template from a predefined set of stylistically diverse prompts and populating all placeholders with concrete values from the metadata.
+To ensure linguistic variety and mitigate memorization of surface patterns, we design 5 templates for each grounding variant of each
+sub-task. The order of answer options is fully randomized across all questions to prevent positional bias. For tasks with both box-grounded
+and coordinate-grounded variants, the coordinate-grounded templates prepend a spatial reference preamble that specifies the coordinate
+reference system and image corner coordinates before the task-specific question.
+The following placeholder notation is used across all templates:
+• {time_0}, {time_1}: observation timestamps.
+• {land_cover}, {land_cover_1}, {land_cover_2}: land-cover class names.
+• <{HBB_Box}>, <{HBB_Box_𝑁}>: horizontal bounding boxes for spatial grounding.
+• {crs_system}, {crs_system_𝑁}: coordinate reference system identifiers.
+• {coo_𝑁}, {coo𝑁_𝑀}: geographic coordinates for point-based spatial grounding.
+The complete set of prompt templates for all 12 sub-tasks is presented below, organized by the four cognitive levels.
+a. Land Cover Perception:
+
+GeoChrono: Benchmarking and Rethinking Long-Term Temporal Understanding in Remote Sensing
+Conference’17, July 2017, Washington, DC, USA
+Algorithm 3 Object-Level Task Construction
+Require: Preprocessed tile, task type 𝜏∈{OP, BOC, OAM, OCM, OHM, OCO}
+Ensure: Object-level QA metadata R
+Phase 1: Target Mask Selection
+1: if 𝜏∈{OP, BOC, OCM} then
+2:
+ˆ
+M ←Minter
+⊲interval-specific transitions
+3: else
+4:
+ˆ
+M ←{𝑀total}
+⊲cumulative end-state
+5: end if
+Phase 2: Region Extraction
+6: for each mask 𝑀∈
+ˆ
+M, each target class 𝑐do
+7:
+Define binary mask 𝐵per 𝜏:
+8:
+OP: 𝐵←{𝑝| 𝑐𝑑(𝑣𝑝) =𝑐}
+⊲by destination
+9:
+BOC, OCM: 𝐵←{𝑝| 𝑐𝑠(𝑣𝑝) =𝑐}
+⊲by source
+10:
+OAM, OHM: 𝐵←{𝑝| 𝑣𝑝=10𝑐𝑠+𝑐𝑑}
+⊲exact transition
+11:
+OCO: 𝐵←{𝑝| 𝑐𝑑(𝑣𝑝) ∈{4, 5}}
+⊲buildings/playground
+12:
+{𝑅𝑖} ←CC(𝐵); discard 𝑅𝑖if Area(𝑅𝑖) < 𝜃𝑎(𝑐) or FR(𝑅𝑖) < 𝜃𝑓
+13:
+if 𝜏= BOC then
+14:
+Collect all distinct 𝑐𝑑values within each retained 𝑅𝑖
+15:
+end if
+16: end for
+Phase 3: Temporal Localization
+⊲memory & ordering tasks
+17: for each retained region 𝑅do
+18:
+if 𝜏∈{OAM, OCO} then
+19:
+Scan Minter backward; find earliest interval with dst-coverage ≥𝜃cov
+20:
+Record [𝑡(𝑗)
+0 ,𝑡(𝑗)
+1 ] as temporal anchor
+21:
+else if 𝜏= OCM then
+22:
+Verify ≥2 preceding intervals with no change in 𝑅
+23:
+Record current interval as change timestamp
+24:
+else if 𝜏= OHM then
+25:
+Scan Minter chronologically over 𝑅’s pixels
+26:
+At each interval, identify dominant transition code
+27:
+Discard if non-dominant area > 0.1× dominant area or |chain| < 2
+28:
+end if
+29: end for
+Phase 4: Grounding
+30: for each retained region 𝑅do
+31:
+Box: compute horizontal bounding box of 𝑅
+32:
+Point: find interior pixel via distance transform; project to geo-coordinate
+33: end for
+Object Perception (OP)
+Box-Grounded:
+(1) Classify the land cover type of the <{HBB_Box}>-grounded region in {time_0}.
+(2) In {time_0}, what is the land cover type of the region grounded by <{HBB_Box}>?
+(3) Identify the land-cover type of the region grounded by <{HBB_Box}> in {time_0}.
+(4) What land-cover class does the <{HBB_Box}>-grounded region belong to at {time_0}?
+(5) Provide the land-cover classification for the area defined by <{HBB_Box}> at {time_0}.
+Coordinate-Grounded:
+(1) The coordinate reference system is {crs_system}, the coordinate of the upper left corner of the image is {coo_1}, the lower right is {coo_2}. Classify
+the land cover type of the {coo_3}-grounded region in {time_0}.
+(2) The coordinate reference system is {crs_system}. The upper-left corner of the image is located at {coo_1}, and the lower-right corner at {coo_2}. In
+{time_0}, what is the land cover type of the region grounded by coordinate {coo_3}?
+(3) The image is defined under the {crs_system} coordinate reference system, with {coo_1} as the upper-left coordinate and {coo_2} as the lower-right.
+Identify the land-cover type of the region grounded by the coordinate {coo_3} in {time_0}.
+
+Conference’17, July 2017, Washington, DC, USA
+Trovato et al.
+(4) The coordinate reference system is {crs_system}, the coordinate of the upper left corner of the image is {coo_1}, the lower right is {coo_2}. Now
+Answer: What land-cover class does the {coo_3}-grounded region belong to at {time_0}?
+(5) Given that the image uses the {crs_system} coordinate reference system, where {coo_1} marks the upper-left corner and {coo_2} the lower-right.
+Provide the land-cover classification for the area defined by the coordinate {coo_3} at {time_0}.
+b. Temporal Recognition:
+Bi-Temporal Class-Level Change Recognition (BCC)
+(1) What changes has the {land_cover} undergone between {time_0} and {time_1}?
+(2) How has the {land_cover} changed comparing {time_0} and {time_1}?
+(3) What changes can be observed in the {land_cover} between {time_0} and {time_1}?
+(4) Comparing {time_0} vs. {time_1}, what changes can be identified in the {land_cover}?
+(5) What is the two-point delta in the {land_cover} from {time_0} to {time_1} (consider only these two timestamps)?
+Bi-Temporal Class-Level Area Change Recognition (BCAC)
+(1) How has the area of {land_cover} changed between {time_0} and {time_1}? Choose from expanded or reduced.
+(2) Classify the change in {land_cover} area between {time_0} and {time_1}, pick expanded or reduced only.
+(3) Determine how the area of {land_cover} changed comparing {time_0} and {time_1}, your answer must be either expanded or reduced.
+(4) How did the area of {land_cover} change comparing {time_0} vs. {time_1}? Select one: expanded or reduced.
+(5) Between {time_0} and {time_1}, did the area of {land_cover} expand or reduce? Just pick one.
+Long-Temporal Class-Level Change Recognition (LCC)
+(1) What changes has the {land_cover} undergone in the period of {time_0} to {time_1}?
+(2) Across the entire time span from {time_0} to {time_1}, what changes did the {land_cover} undergo?
+(3) During the interval spanning {time_0} to {time_1}, what changes did the {land_cover} experience?
+(4) Over the timeframe from {time_0} through {time_1}, what changes are observed in the {land_cover}?
+(5) Within the period {time_0}–{time_1}, what changes has the {land_cover} exhibited?
+Bi-Temporal Object-Level Change Recognition (BOC)
+Box-Grounded:
+(1) What changes have occurred to the land cover within the region <{HBB_BOX}> (originally {land_cover}) comparing {time_0} and {time_1}? Note
+that different parts of this region may have changed to different land cover types. Select ALL applicable transitions.
+(2) Comparing {time_0} and {time_1}, what land cover transitions occurred within the region <{HBB_BOX}> (originally {land_cover})? Different areas
+within this region may have undergone different changes. Select ALL that apply.
+(3) Examine the region <{HBB_BOX}> (originally {land_cover}) between {time_0} and {time_1}. What types of land cover changes occurred within
+this region? Multiple transitions may have happened in different parts of the region. Select ALL applicable changes.
+(4) For the region <{HBB_BOX}> (originally {land_cover}), compare {time_0} and {time_1}: what land cover transitions took place? The region may
+contain multiple types of changes in different areas. Select ALL that apply.
+(5) Between {time_0} and {time_1}, what land cover changes occurred within the region <{HBB_BOX}> (originally {land_cover})? Since this region
+may cover areas with different changes, select ALL applicable transitions.
+Coordinate-Grounded:
+(1) The coordinate reference system is {crs_system}, the coordinate of the upper left corner of the image is {coo_1}, the lower right is {coo_2}.
+Now answer: What land cover changes have occurred at the location {coo_3} (originally {land_cover}) comparing {time_0} and {time_1}? The
+surrounding area may have undergone different types of transitions. Select ALL that apply.
+(2) The coordinate reference system is {crs_system}. The upper-left corner of the image is located at {coo_1}, and the lower-right corner is at {coo_2}.
+Now answer: Comparing {time_0} and {time_1}, what land cover transitions occurred at coordinate {coo_3} (originally {land_cover})? Multiple
+types of changes may have happened in this area. Select ALL applicable transitions.
+(3) Using the coordinate reference system {crs_system}, the image spans from {coo_1} at the upper left to {coo_2} at the lower right. Please answer:
+What types of land cover changes occurred at {coo_3} (originally {land_cover}) between {time_0} and {time_1}? Different parts of this area may
+have changed to different land cover types. Select ALL that apply.
+(4) The image is defined under the coordinate reference system {crs_system}, with {coo_1} marking the upper-left corner and {coo_2} marking the
+lower-right corner. Now respond: For the location {coo_3} (originally {land_cover}), what land cover transitions took place comparing {time_0}
+and {time_1}? The area may contain multiple types of changes. Select ALL that apply.
+(5) Under the coordinate reference system {crs_system}, the image’s upper-left coordinate is {coo_1} and its lower-right coordinate is {coo_2}. Now
+answer the following: Between {time_0} and {time_1}, what land cover changes occurred at {coo_3} (originally {land_cover})? Since this area may
+cover regions with different changes, select ALL applicable transitions.
+c. Long-Term Memory:
+
+GeoChrono: Benchmarking and Rethinking Long-Term Temporal Understanding in Remote Sensing
+Conference’17, July 2017, Washington, DC, USA
+Object Appear Memory (OAM)
+Box-Grounded:
+(1) During which timeframe did the current continuous presence of {land_cover} in {time_0} grounded by <{HBB_Box}> begin?
+(2) In which time window did the current continuous presence of the {land_cover} in {time_0} grounded by <{HBB_Box}> begin?
+(3) Within the temporal observations, at what interval did the <{HBB_Box}>-grounded {land_cover} in {time_0} begin its current continuous presence?
+(4) Identify the interval during which the <{HBB_Box}>-grounded {land_cover} in {time_0} began its current continuous presence.
+(5) At what time period did the <{HBB_Box}>-grounded {land_cover} observed in {time_0} start to maintain its current continuous presence?
+Coordinate-Grounded:
+(1) The coordinate reference system is {crs_system}, the coordinate of the upper left corner of the image is {coo_1}, the lower right is {coo_2}. During
+which timeframe did the current continuous presence of {land_cover} in {time_0} grounded by the coordinate {coo_3} begin?
+(2) The coordinate reference system is {crs_system}. The upper-left corner of the image is located at {coo_1}, and the lower-right corner is at {coo_2}.
+Now answer: In which time window did the current continuous presence of the {land_cover} in {time_0} at coordinate {coo_3} begin?
+(3) Using the coordinate reference system {crs_system}, the image spans from {coo_1} at the upper left to {coo_2} at the lower right. Within the
+temporal observations, at what interval did the coordinate {coo_3}-grounded {land_cover} in {time_0} begin its current continuous presence?
+(4) The image is defined under the coordinate reference system {crs_system}, with {coo_1} marking the upper-left corner and {coo_2} marking the
+lower-right corner. Now respond: Identify the interval during which the coordinate {coo_3}-grounded {land_cover} in {time_0} began its current
+continuous presence.
+(5) Given that the image uses the {crs_system} coordinate reference system, where {coo_1} marks the upper-left corner and {coo_2} the lower-right.
+At what time period did the {coo_3}-grounded {land_cover} observed in {time_0} start to maintain its current continuous presence?
+Object Change Memory (OCM)
+Box-Grounded:
+(1) At which exact timestamp does the object {land_cover} in {time_0} referred to by <{HBB_Box}> undergo a change to other land cover type?
+(2) Identify the interval during which the {land_cover} in {time_0} grounded by <{HBB_Box}> changed to other land cover.
+(3) What time range captures the change in land cover type of the object {land_cover} in {time_0} grounded by <{HBB_Box}>?
+(4) During what time interval does the object marked as {land_cover} in {time_0} and grounded by <{HBB_Box}> undergo a transition to another
+land-cover class?
+(5) Specify the timeframe in which the object {land_cover} from {time_0}, localized by <{HBB_Box}>, shifts to a different land-cover type.
+Coordinate-Grounded:
+(1) The coordinate reference system is {crs_system}, the coordinate of the upper left corner of the image is {coo_1}, the lower right is {coo_2}. At
+which exact timestamp does the object {land_cover} in {time_0} referred to by the coordinate {coo_3} undergo a change to other land cover type?
+(2) Using the coordinate reference system {crs_system}, the image spans from {coo_1} at the upper left to {coo_2} at the lower right. Identify the
+interval during which the {land_cover} in {time_0} grounded by the coordinate {coo_3} changed to other land cover.
+(3) The coordinate reference system is {crs_system}. The upper-left corner of the image is located at {coo_1}, and the lower-right corner is at {coo_2}.
+Now answer: What time range captures the change in land cover type of the object {land_cover} in {time_0} grounded by the coordinate {coo_3}?
+(4) The image is defined under the coordinate reference system {crs_system}, with {coo_1} marking the upper-left corner and {coo_2} marking the
+lower-right corner. Now respond: During what time interval does the object marked as {land_cover} in {time_0} and grounded by the coordinate
+{coo_3} undergo a transition to another land-cover class?
+(5) Given that the image uses the {crs_system} coordinate reference system, where {coo_1} marks the upper-left corner and {coo_2} the lower-right.
+Now specify the timeframe in which the object {land_cover} from {time_0}, localized by the coordinate {coo_3}, shifts to a different land-cover
+type.
+Object History Memory (OHM)
+Box-Grounded:
+(1) In chronological order, what distinct phases of land cover did the <{HBB_Box}>-grounded {land_cover} in {time_0} go through?
+(2) In chronological order, list the distinct land cover phases that the {land_cover} area in {time_0} indicated by <{HBB_Box}> has undergone.
+(3) Provide the chronological sequence of distinct land cover phases for the {land_cover} in {time_0} referred to by <{HBB_Box}>.
+(4) What is the chronological sequence of distinct land cover phases for the object {land_cover} in {time_0} identified by <{HBB_Box}>?
+(5) List, in chronological order, the distinct land-cover stages experienced by the <{HBB_Box}>-grounded {land_cover} observed in {time_0}.
+Coordinate-Grounded:
+(1) The coordinate reference system is {crs_system}, the coordinate of the upper left corner of the image is {coo_1}, the lower right is {coo_2}. Now
+answer: In chronological order, what distinct phases of land cover did the {land_cover} grounded by the coordinate {coo_3} in {time_0} go through?
+(2) The coordinate reference system is {crs_system}. The upper-left corner of the image is located at {coo_1}, and the lower-right corner at {coo_2}. In
+chronological order, what distinct land-cover phases did the {land_cover} grounded at coordinate {coo_3} in {time_0} undergo?
+(3) The image is defined under the {crs_system} coordinate reference system, with {coo_1} as the upper-left coordinate and {coo_2} as the lower-right.
+Provide the chronological sequence of distinct land cover phases for the {land_cover} in {time_0} referred to by the coordinate {coo_3}.
+
+Conference’17, July 2017, Washington, DC, USA
+Trovato et al.
+(4) Given that the image uses the {crs_system} coordinate reference system, where {coo_1} marks the upper-left corner and {coo_2} the lower-right.
+What is the chronological sequence of distinct land cover phases for the object {land_cover} in {time_0} identified by the coordinate {coo_3}?
+(5) Given that the image uses the {crs_system} coordinate reference system, where {coo_1} marks the upper-left corner and {coo_2} the lower-right.
+List the distinct land-cover stages experienced by the {coo_3}-grounded {land_cover} observed in {time_0} in chronological order.
+d. Spatio-Temporal Reasoning:
+Class-Level Change Magnitude Estimation (CCME)
+(1) During which timeframe did the most substantial transformations in {land_cover} occur?
+(2) In which interval did the {land_cover} undergo the sharpest change?
+(3) Identify the time interval during which the {land_cover} exhibited the greatest degree of change.
+(4) What is the timeframe in which the {land_cover} showed the most marked shift?
+(5) Specify the interval over which the {land_cover} experienced the most substantial changes.
+Region Development Comparison (RDC)
+(1) Comparing Region1 <{HBB_Box_1}>, Region2 <{HBB_Box_2}>, Region3 <{HBB_Box_3}> and Region4 <{HBB_Box_4}>, which is developed more
+from {time_0} to {time_1}?
+(2) Among Region1 <{HBB_Box_1}>, Region2 <{HBB_Box_2}>, Region3 <{HBB_Box_3}> and Region4 <{HBB_Box_4}>, which is the most developed
+from {time_0} to {time_1}?
+(3) Between Region1 <{HBB_Box_1}>, Region2 <{HBB_Box_2}>, Region3 <{HBB_Box_3}>, and Region4 <{HBB_Box_4}>, which one shows greater
+development from {time_0} to {time_1}?
+(4) Considering Region1 <{HBB_Box_1}>, Region2 <{HBB_Box_2}>, Region3 <{HBB_Box_3}>, and Region4 <{HBB_Box_4}>, identify which region is
+the most developed between {time_0} and {time_1}.
+(5) From {time_0} to {time_1}, which of the regions: Region1 <{HBB_Box_1}>, Region2 <{HBB_Box_2}>, Region3 <{HBB_Box_3}>, or Region4
+<{HBB_Box_4}>, demonstrates the most substantial development?
+Object Construction Ordering (OCO)
+Box-Grounded:
+(1) Comparing the {land_cover_1} grounded by <{HBB_Box_1}> and the {land_cover_2} grounded by <{HBB_Box_2}> in {time_0}, which is built
+earlier?
+(2) Comparing the {land_cover_1} grounded by <{HBB_Box_1}> with the {land_cover_2} grounded by <{HBB_Box_2}> in {time_0}, identify which
+was built earlier.
+(3) Which was built earlier: the {land_cover_1} at <{HBB_Box_1}> or the {land_cover_2} at <{HBB_Box_2}> in {time_0}?
+(4) Of the {land_cover_1} grounded by <{HBB_Box_1}> and the {land_cover_2} grounded by <{HBB_Box_2}> in {time_0}, determine which appeared
+first in time.
+(5) Between the {land_cover_1} located at <{HBB_Box_1}> and the {land_cover_2} located at <{HBB_Box_2}> in {time_0}, which one was constructed
+first?
+Coordinate-Grounded:
+(1) The coordinate reference system is {crs_system}, the coordinate of the upper left corner of the image is {coo_1}, the lower right is {coo_2}. Now
+answer: Comparing the {land_cover_1} grounded by the coordinate {coo_3} and the {land_cover_2} grounded by {coo_4}, which is built earlier?
+(2) The coordinate reference system is {crs_system}, with {coo_1} as the upper-left corner and {coo_2} as the lower-right corner. Now answer: Between
+the {land_cover_1} located at {coo_3} and the {land_cover_2} located at {coo_4} in {time_0}, which one was built earlier?
+(3) Given the coordinate reference system {crs_system}, with {coo_1} defining the upper-left boundary and {coo_2} the lower-right, identify which
+feature was built earlier: the {land_cover_1} grounded at {coo_3} or the {land_cover_2} grounded at {coo_4} in {time_0}.
+(4) The coordinate reference system is {crs_system}, the coordinate of the upper left corner of the image is {coo_1}, the lower right is {coo_2}.
+Comparing the {land_cover_1} grounded by {coo_3} with the {land_cover_2} grounded by {coo_4} in {time_0}, identify which was built earlier.
+(5) Given that the image uses the {crs_system} coordinate reference system, where {coo_1} marks the upper-left corner and {coo_2} the lower-right.
+Between the {land_cover_1} located at {coo_3} and the {land_cover_2} located at {coo_4} in {time_0}, which one was constructed first?
+Cross-Sequence Object Construction Ordering (CSOCO)
+Box-Grounded:
+(1) Comparing the {land_cover_1} grounded by <{HBB_Box_1}> in Region#1 in {time_0} and the {land_cover_2} grounded by <{HBB_Box_2}> in
+Region#2 in {time_1}, which is built earlier?
+(2) Between the {land_cover_1} grounded by <{HBB_Box_1}> in Region#1 in {time_0} and the {land_cover_2} grounded by <{HBB_Box_2}> in
+Region#2 in {time_1}, which one was built earlier?
+(3) Comparing the {land_cover_1} located at <{HBB_Box_1}> in Region#1 in {time_0} with the {land_cover_2} located at <{HBB_Box_2}> in Region#2
+in {time_1}, identify which was constructed first.
+
+GeoChrono: Benchmarking and Rethinking Long-Term Temporal Understanding in Remote Sensing
+Conference’17, July 2017, Washington, DC, USA
+(4) Comparing the {land_cover_1} located at <{HBB_Box_1}> in Region#1 in {time_0} with the {land_cover_2} located at <{HBB_Box_2}> in Region#2
+in {time_1}, determine which appeared first in time.
+(5) Of the {land_cover_1} grounded by <{HBB_Box_1}> in Region#1 in {time_0} and the {land_cover_2} grounded by <{HBB_Box_2}> in Region#2 in
+{time_1}, which one was constructed first?
+Coordinate-Grounded:
+(1) The coordinate reference system, upper left and lower right corner coordinate of Region#1 and Region#2 are respectively: Region#1: {crs_system_1},
+{coo1_1}, {coo2_1}; Region#2: {crs_system_2}, {coo1_2}, {coo2_2}. Now answer: Comparing the {land_cover_1} grounded by coordinate {coo_3} in
+Region#1 in {time_0} and the {land_cover_2} grounded by {coo_4} in Region#2 in {time_1}, which is built earlier?
+(2) Region#1 uses {crs_system_1} with coordinates spanning from {coo1_1} (upper left) to {coo2_1} (lower right). Region#2 uses {crs_system_2}
+with coordinates from {coo1_2} to {coo2_2}. Now answer: Between the {land_cover_1} grounded by {coo_3} in Region#1 in {time_0} and the
+{land_cover_2} grounded by {coo_4} in Region#2 in {time_1}, which one was built earlier?
+(3) The coordinate reference system, upper left and lower right corner coordinate of Region#1 and Region#2 are respectively: Region#1: {crs_system_1},
+{coo1_1}, {coo2_1}; Region#2: {crs_system_2}, {coo1_2}, {coo2_2}. Answer: Comparing the {land_cover_1} located at {coo_3} in Region#1 in {time_0}
+with the {land_cover_2} located at {coo_4} in Region#2 in {time_1}, identify which was constructed first.
+(4) Region#1 uses {crs_system_1} with coordinates spanning from {coo1_1} (upper left) to {coo2_1} (lower right). Region#2 uses {crs_system_2} with
+coordinates from {coo1_2} to {coo2_2}. Comparing the {land_cover_1} located at {coo_3} in Region#1 in {time_0} with the {land_cover_2} located at
+{coo_4} in Region#2 in {time_1}, determine which appeared first in time.
+(5) The coordinate reference system, upper left and lower right corner coordinate of Region#1 and Region#2 are respectively: Region#1: {crs_system_1},
+{coo1_1}, {coo2_1}; Region#2: {crs_system_2}, {coo1_2}, {coo2_2}. Of the {land_cover_1} grounded by the coordinate {coo_3} in Region#1 in {time_0}
+and the {land_cover_2} grounded by the coordinate {coo_4} in Region#2 in {time_1}, which one was constructed first?
+A.3
+Natural-Language Response Generation for ChronoInstruct
+The pipeline described above produces structured QA pairs in multiple-choice format, which serve both the ChronoBench evaluation and
+the ChronoInstruct instruction-tuning dataset. To enrich the model’s output repertoire during instruction tuning, ChronoInstruct provides
+each QA pair in three complementary answer formats: i) multiple-choice, which retains the original option-letter answer; ii) short-text, which
+replaces the option letter(s) with the corresponding semantic content (e.g., “B.” →“vegetation”), providing a concise factual answer without
+candidate options; and iii) natural-language, a fluent, self-contained English response that rephrases the answer into complete sentences.
+Among these, the multiple-choice and short-text formats are directly derived from the rule-based extraction outputs without additional
+processing, whereas the natural-language format requires an additional generation stage. This subsection describes the construction of
+natural-language responses.
+We employ Gemini-3-Flash [31] to transform each multiple-choice QA pair into a fluent, self-contained English response. At inference
+time, the model receives only the textual components of the QA pair without any visual input. A carefully designed system prompt governs
+the generation process by enforcing six key constraints: i) strict factual fidelity to the ground-truth answer without inventing additional
+details; ii) omission of all spatial references such as bounding-box coordinates, geographic coordinates, and coordinate reference systems;
+iii) expressive variety in vocabulary and sentence structure to avoid formulaic patterns; iv) task-specific handling strategies tailored to
+different answer types, including ordered sequences, unordered multi-selections, binary judgments, and comparisons; v) brevity within 1–3
+sentences; and vi) clean output without any preamble or meta-commentary. The complete system prompt is presented below.
+System Prompt for Natural-Language Response Generation
+You are an expert in remote sensing temporal image analysis.
+Land cover categories:
+(1) vegetation — areas covered by plants, grass, trees, or crops
+(2) buildings — man-made structures such as houses, factories, or commercial buildings
+(3) non-vegetated surface — bare soil, roads, parking lots, or other exposed ground
+(4) water — rivers, lakes, ponds, or other water bodies
+(5) playground — sports fields, recreational areas, or athletic facilities
+Your task is to convert a multiple-choice letter answer into a fluent, natural English response, as if you were directly answering a remote sensing analysis
+question without any options presented.
+Rules:
+(1) Factual Fidelity: Convey exactly the same factual content as the letter answer. You MUST NOT invent, infer, or add any detail that is not present
+in the given answer and options. Do not speculate about causes, consequences, or spatial extent.
+(2) Omit Spatial References: The question may mention bounding box coordinates (e.g., ⟨112, 409, 205, 437⟩), geographic coordinates (e.g., (661778.5,
+5188361.5)), coordinate reference systems (e.g., EPSG:26914), or corner coordinates. Do NOT repeat any of these in your answer. Refer to objects
+using only their semantic labels (e.g., “the building”, “this location”, “Region1”) without restating numeric coordinates or bounding boxes.
+(3) Expressive Variety: Use diverse sentence structures, vocabulary, and phrasing across samples. Vary openings, connectors, and word choices. Avoid
+formulaic or repetitive patterns. For example:
+
+Conference’17, July 2017, Washington, DC, USA
+Trovato et al.
+• Instead of always “The land cover is X”, also use “This area is covered by X”, “X occupies this location”, “The surface here consists of X”, etc.
+• Instead of always “changed from X to Y”, also use “shifted from X to Y”, “was converted from X into Y”, “underwent a transition from X to Y”, etc.
+(4) Task-Specific Handling:
+• Ordered Sequence (History Memory): The letter order represents a chronological sequence of land cover phases. Your answer MUST preserve this
+exact temporal ordering. Vary the phrasing, e.g., “transitioned from X to Y and subsequently to Z”, “progressed through phases: first X, then Y,
+finally Z”, “began as X, later became Y, and ultimately turned into Z”.
+• Unordered Multiple Selections: List all detected items naturally. Vary how you enumerate them.
+• Single Selection: Give a direct, concise response.
+• Binary (Expanded/Reduced): Use varied vocabulary (e.g., “increased/grew/broadened/expanded” or “diminished/contracted/shrunk/declined”).
+• Comparison: State the comparison result directly using the object’s label only.
+• Time Period: Weave the time period naturally into the sentence.
+(5) Brevity: 1–3 sentences maximum. No filler, no hedging, no caveats.
+(6) Output: Only the natural language answer itself. No preamble like “The answer is”, no quotes, no explanation.
+Table 6 presents representative examples from ChronoInstruct across all 12 sub-tasks, illustrating the three answer formats: the original
+multiple-choice letter answer, the short-text answer that replaces option letters with their semantic content, and the natural-language
+response generated by the pipeline described above. The three formats differ not only in their answers but also in their user-prompt
+construction. For the multiple-choice format, the question is followed by a “Choose from: A. ⟨option⟩, B. ⟨option⟩, . . .” enumeration of
+candidate options. For the short-text format, the candidate options are removed and replaced by a randomly sampled brevity suffix such as
+“Answer concisely.” or “List all applicable answers briefly.”, depending on whether the task expects a single answer or multiple answers. For
+the natural-language format, the user prompt contains only the bare question without any options or suffix.
+B
+Statistical Analysis of ChronoBench and ChronoInstruct
+In this section, we present a more detailed statistical breakdown along three complementary dimensions: i) sub-task QA distribution,
+ii) temporal sequence length, and iii) answer format composition. Together, these analyses offer a finer-grained view of the dataset
+characteristics that underpin the benchmark’s evaluation coverage and the instruction-tuning dataset’s training diversity.
+B.1
+Per-Task QA Distribution
+Figures 7 and 8 present the hierarchical distribution of QA pairs across the four cognitive levels and their constituent sub-tasks for
+ChronoBench and ChronoInstruct, respectively.
+Figure 7: Hierarchical distribution of QA pairs across the four cognitive levels and 12 sub-tasks in ChronoBench (17,689 pairs).
+The inner ring shows level-wise proportions; the outer ring shows the per-task breakdown, with spatially grounded tasks
+further split into HBB-box and geo-coordinate variants.
+In ChronoBench, Temporal Recognition dominates with 54.2% of all QA pairs. Within this level, Bi-Temporal Class-Level Area Change
+Recognition (BCAC) alone accounts for 22.1% (3,914 pairs), as every valid class–interval combination yields a binary expanded/reduced
+question. Bi-Temporal Object-Level Change Recognition (BOC) contributes another 12.4% across its two grounding variants (1,103 pairs each).
+
+GeoChrono: Benchmarking and Rethinking Long-Term Temporal Understanding in Remote Sensing
+Conference’17, July 2017, Washington, DC, USA
+Table 6: Representative ChronoInstruct examples across all 12 sub-tasks, showing the question alongside three answer formats:
+multiple-choice option letter(s), short-text answer, and natural-language response. Spatial coordinates are abbreviated with
+“[· · · ]” for compactness.
+Task
+Question
+Option
+Short-Text Answer
+Natural-Language Response
+Land Cover Perception
+OP
+In 2013, what is the land cover type of the region
+grounded by ⟨580, 256, 769, 611⟩?
+D.
+vegetation
+In 2013, the region was covered by vegeta-
+tion.
+Temporal Recognition
+BCC
+What is the two-point delta in the non-vegetated
+surface from 2021 to 2023 (consider only these two
+timestamps)?
+D.
+non-vegetated surface to veg-
+etation
+From 2021 to 2023, the non-vegetated sur-
+face transitioned to vegetation.
+BCAC
+How did the area of vegetation change comparing
+2005 vs. 2023? Select one: expanded or reduced.
+B.
+Reduced
+The area covered by vegetation diminished
+between 2005 and 2023.
+BOC
+Comparing 2018 and 2022, what land cover transi-
+tions occurred within the region ⟨526, 133, 554, 151⟩
+(originally building)? [· · · ] Select ALL that apply.
+A.
+buildings to non-vegetated
+surface
+From 2018 to 2022, the land cover in this
+area transitioned from buildings to non-
+vegetated surface.
+LCC
+What changes has the non-vegetated surface under-
+gone in the period of 2010 to 2022?
+C.
+non-vegetated surface to veg-
+etation
+From 2010 to 2022, the non-vegetated sur-
+face experienced transitions into vegeta-
+tion.
+Long-Term Memory
+OAM
+Identify the interval during which the ⟨0, 123, 181,
+326⟩-grounded vegetation in 2021 began its current
+continuous presence.
+C.
+2011–2013
+The vegetation present at this location in
+2021 has been continuously there since the
+period 2011–2013.
+OCM
+Identify the interval during which the vegetation
+in 2008 grounded by ⟨196, 791, 344, 908⟩changed
+to other land cover.
+B.
+2015–2017
+The vegetation at this location transitioned
+to a different land cover type during the
+period 2015–2017.
+OHM
+Provide the chronological sequence of distinct land
+cover phases for the building in 2023 referred to by
+⟨210, 155, 277, 172⟩.
+D, A.
+vegetation →buildings
+This location was originally covered by veg-
+etation and later developed into a building.
+Spatio-Temporal Reasoning
+CCME
+In which interval did the vegetation undergo the
+sharpest change?
+B.
+2012–2014
+The vegetation experienced the sharpest
+change during the interval 2012–2014.
+RDC
+Among Region1 ⟨58, 19, 130, 293⟩, Region2 ⟨63, 465,
+148, 647⟩, Region3 ⟨589, 130, 640, 321⟩and Region4
+⟨700, 516, 862, 672⟩, which is the most developed
+from 2010 to 2021?
+C.
+Region3
+Region3 showed the highest level of devel-
+opment between 2010 and 2021.
+OCO
+Comparing the building#1 grounded by ⟨859, 200,
+995, 278⟩and the building#2 grounded by ⟨0, 478,
+96, 612⟩in 2023, which is built earlier?
+B.
+building#2
+Building#2 was constructed earlier than
+building#1.
+CSOCO
+Comparing the building#1 at ⟨838, 79, 913, 163⟩in
+Region#1 in 2021 with the building#2 at ⟨33, 943,
+131, 999⟩in Region#2 in 2023, identify which was
+constructed first.
+A.
+building#1
+Building#1 in Region#1 was constructed be-
+fore building#2 in Region#2.
+Long-Term Memory tasks constitute 26.0%, with Object Appear Memory (OAM) being the most prevalent (12.4%). Spatio-Temporal Reasoning,
+the most cognitively demanding level, accounts for 12.3%, where the cross-sequence tasks (CSOCO) are deliberately kept compact (2.4%) to
+reflect the inherently smaller pool of valid cross-tile comparison pairs. Land Cover Perception (OP) occupies the remaining 7.5%, evenly split
+between the two grounding modalities.
+ChronoInstruct comprises 104,949 QA pairs derived from the DVL-Suite [42] training split (1,534 image sequences). Temporal Recognition
+accounts for 60.5% of the dataset, with BCAC (24,873 pairs, 23.7%) and BOC (24,342 pairs across both grounding variants, 23.2%) as the two
+largest sub-tasks. Long-Term Memory contributes 23.1%, led by OCM (10,794 pairs, 10.2%) and OAM (10,062 pairs, 9.6%). Spatio-Temporal
+
+Conference’17, July 2017, Washington, DC, USA
+Trovato et al.
+Figure 8: Hierarchical distribution of QA pairs across the four cognitive levels and 12 sub-tasks in ChronoInstruct (104,949
+pairs). Layout and color coding follow Figure 7.
+Reasoning constitutes 9.2%, where CCME (3,690 pairs, 3.5%) is the dominant sub-task, while the cross-sequence tasks (CSOCO) account for
+1.4% due to the inherently smaller pool of valid cross-tile comparison pairs. Land Cover Perception (OP) makes up the remaining 6.6%.
+For most spatially grounded sub-tasks (OP, BOC, OAM, OCM, OHM, OCO), the HBB-box and geo-coordinate variants are generated in
+equal numbers, ensuring balanced coverage of both grounding modalities. The exception is CSOCO, where the two variants may differ
+slightly (e.g., 204 vs. 206 in ChronoBench, 687 vs. 690 in ChronoInstruct), because the cross-sequence pairing procedure randomly samples
+candidate sequences, leading to minor stochastic variation between the two grounding modes.
+B.2
+Temporal Sequence Length
+Figure 9 shows the distribution of the number of temporal frames per QA pair for both datasets.
+Figure 9: Distribution of the number of temporal frames per QA pair in (A) ChronoBench and (B) ChronoInstruct. Annotations
+above each bar indicate the QA pair count; summary statistics (min, median, mean, max) are shown in the upper-right inset.
+In ChronoBench (Figure 9A), the frame count ranges from 4 to 19, with a median of 7 and a mean of 7.26. The distribution is strongly
+concentrated at 6 and 7 frames (6,210 and 5,969 pairs, respectively), which together account for approximately 68.9% of all QA pairs. This
+concentration reflects the typical number of available NAIP acquisition epochs across most U.S. regions in the DynamicVL dataset. Beyond 8
+frames, the counts taper off into a long tail extending to 19 frames, capturing geographic tiles with denser temporal coverage. The maximum
+frame count of 19 arises from cross-sequence sub-tasks (e.g., CSOCO), where two independent image sequences are concatenated into a
+single visual input, thereby extending the temporal span compared to single-sequence tasks.
+
+GeoChrono: Benchmarking and Rethinking Long-Term Temporal Understanding in Remote Sensing
+Conference’17, July 2017, Washington, DC, USA
+ChronoInstruct (Figure 9B) spans the same 4–19 range, with 104,949 pairs, a median of 7, and a mean of 7.00. The 6- and 7-frame bins
+jointly cover 74.7% of the dataset (39,388 and 39,011 pairs, respectively). The extended tail (11–19 frames) is sparsely populated, confirming
+that ultra-long sequences remain rare but are nevertheless represented in both datasets to exercise the model’s capacity for extended temporal
+reasoning.
+B.3
+Answer Format Composition
+Figure 10 dissects the answer format characteristics of both datasets.
+Figure 10: Answer format composition of (A) ChronoBench and (B) ChronoInstruct. The donut charts classify all QA pairs
+by the logical structure of their ground-truth answers: single (exactly one correct option), multiple (two or more correct
+options), and ordered-sequence (OS, a chronologically ordered chain). For ChronoInstruct, each QA pair appears in three
+response formats (multiple-choice, short-text, and natural-language), and the counts are aggregated across all three formats.
+Stacked bars further break down the number of correct options for the multiple category (left) and the chain length for the OS
+category (right).
+In ChronoBench (Figure 10A), single-choice questions represent the majority (62.9%), covering tasks with a unique correct answer such as
+OP, BCAC, CCME, RDC, and OCO/CSOCO. Multiple-choice questions account for 32.1%, arising from tasks where multiple transitions may
+co-occur (e.g., BCC, LCC, BOC). Among these, questions with a single correct option are the most common (3,594), while questions requiring
+the model to identify two, three, or four simultaneous transitions number 1,812, 266, and 9, respectively. The ordered-selection (OS) format is
+reserved exclusively for Object History Memory (OHM), contributing 5.0% of all questions. The majority of OS questions involve sequences
+of three land-cover phases (406 pairs), with two-phase (66), four-phase (218), and five-or-more-phase sequences (190) also present, reflecting
+the varying complexity of evolution histories across different geographic regions.
+For ChronoInstruct (Figure 10B), it is important to note that every QA pair is provided in three complementary response formats (i.e.,
+multiple-choice, short-text, and free-form natural-language) so that the model is exposed to diverse answer styles during training. The
+statistics in Figure 10B classify all 104,949 samples by the logical answer structure (i.e., the number of ground-truth options involved),
+aggregating across the three response formats. Under this view, 59.3% of the samples correspond to a single correct option, 37.0% involve
+multiple correct options, and 3.7% are ordered sequences. Within the multi-option category, single-correct-option instances dominate (88,029),
+while those with two or more correct options total 28,296. For ordered-selection samples, three-phase and four-phase chains are the most
+frequent (4,104 and 3,294, respectively), providing rich supervision for training the model to produce chronologically faithful outputs across
+all response formats.
+C
+Experiment Setups
+This section provides the detailed experimental protocol, covering the benchmark evaluation pipeline (Section C.1) and the GeoChrono
+training configuration (Section C.2).
+C.1
+Evaluation Settings
+As described in the main text, we evaluate three categories of models on ChronoBench: commercial MLLMs (Gemini-3-Flash [31], Seed-
+1.6-Vision [3], GPT-5.4 [22]), open-source general MLLMs (InternVL-3.5 series [38], Qwen3-VL series [2]), and remote sensing domain
+models (TEOChat [10], EarthDial [29], DVLChat [42]). Since the official model weights of DVLChat are not publicly available, we repro-
+duce this baseline by fine-tuning Qwen3-VL-4B-Instruct on the open-source DVL-Instruct training dataset released by the DynamicVL
+team [42]. Open-source models are deployed locally with Flash-Attention-2 [5] and bfloat16 precision; greedy decoding is adopted with
+max_new_tokens = 128. Note that all Qwen3-VL variants used in this study refer to their Instruct versions. Commercial models are accessed
+through their respective APIs, with the vision detail level set to the highest available setting and the reasoning effort set to high. All models
+share a unified prompt organization; the only difference in visual input is that locally deployed models receive images at their original
+
+Conference’17, July 2017, Washington, DC, USA
+Trovato et al.
+resolution, whereas API-accessed models receive images preprocessed to meet the API’s maximum-resolution constraint. In the following,
+we detail the prompt design and evaluation metrics.
+C.1.1
+System Prompt Design. Each of the 12 benchmark sub-tasks is assigned a deterministic, task-specific system prompt. Despite per-task
+wording differences, all system prompts are assembled from five standardized components:
+(1) Expert role declaration. The prompt assigns the model an expert role in remote sensing image analysis, with emphasis that varies by
+tasks. These tasks include land-cover classification for perception, temporal change detection for recognition, and temporal reasoning for
+memory and spatio-temporal tasks.
+(2) Input-format specification. The prompt explicitly states the expected multimodal input layout. For single-sequence tasks, this takes
+the form:
+YYYY: [image]
+YYYY: [image]
+. . .
+For cross-sequence tasks (CSOCO), the prompt specifies two region-specific sub-sequences:
+Region#1:
+YYYY: [image]
+. . .
+Region#2:
+YYYY: [image]
+. . .
+(3) Grounding specification. Object-centric tasks include one of two grounding descriptions: (a) HBB-based grounding, where objects are
+localized by horizontal bounding boxes in normalized image coordinates [0, 999]; or (b) coordinate-based grounding, where objects are
+localized by geographic coordinates under a stated coordinate reference system. Class-level tasks omit this component.
+(4) Land-cover taxonomy. All prompts explicitly enumerate the five land-cover categories (vegetation, buildings, non-vegetated surface,
+water, playground) to ensure a consistent vocabulary between the system instruction and the model’s output.
+(5) Task instruction and response constraint. The final component describes the reasoning objective and constrains the output format
+to one of three serialization modes:
+• Single-choice: respond with exactly one option letter followed by a period, e.g., A.
+• Multi-choice: respond with all valid option letters separated by commas, followed by a period, e.g., A, C.
+• Ordered-sequence: respond with the sequence of phase letters in exact chronological order, merging consecutive identical phases while
+preserving non-consecutive recurrences, e.g., A, B, A, D.
+An illustrative system prompt for a single-sequence, HBB-grounded memory task (Object Appear Memory) is shown below to demonstrate
+how these five components are composed in practice.
+Illustrative System Prompt — Object Appear Memory (HBB-Grounded)
+You are an expert in remote sensing image analysis, specializing in temporal land cover analysis.
+You will receive a temporal sequence of remote sensing images. Each image is preceded by its year label in the format:
+YYYY: [image]
+Images are arranged in chronological order from earliest to latest.
+Objects are located using Horizontal Bounding Boxes (HBB Box) in the format ⟨x_min, y_min, x_max, y_max⟩, where:
+• x_min: left boundary coordinate
+• y_min: top boundary coordinate
+• x_max: right boundary coordinate
+• y_max: bottom boundary coordinate
+Note: All coordinate values are normalized to the range [0, 999], where (0, 0) represents the top-left corner and (999, 999) represents the bottom-right
+corner of the image.
+Land cover is classified into five categories:
+(1) vegetation — areas covered by plants, grass, trees, or crops
+(2) buildings — man-made structures such as houses, factories, or commercial buildings
+(3) non-vegetated surface — bare soil, roads, parking lots, or other exposed ground
+(4) water — rivers, lakes, ponds, or other water bodies
+(5) playground — sports fields, recreational areas, or athletic facilities
+Your task: Given a land cover object identified by its type and HBB Box at a specific time point, determine WHEN the current continuous presence of
+this land cover type began by tracing backward through the temporal sequence. Starting from the given time point, look backward until you find the
+transition from a different land cover type to the current one — that transition marks when this land cover type most recently emerged at the specified
+location.
+
+GeoChrono: Benchmarking and Rethinking Long-Term Temporal Understanding in Remote Sensing
+Conference’17, July 2017, Washington, DC, USA
+This is a single-choice question. Select the time interval that best represents when the current continuous presence of this land cover type began at the
+given location.
+IMPORTANT: Respond with ONLY the option letter followed by a period (e.g., “A.” or “B.”). Do not provide explanations or reasoning.
+C.1.2
+User Prompt Organization. The user prompt is dynamically constructed and consists of two layers: an interleaved time–image context
+followed by a textual QA suffix.
+For single-sequence tasks, the user prompt is organized as:
+YYYY1: [IMAGE]
+YYYY2: [IMAGE]
+. . .
+YYYYT: [IMAGE]
+⟨Question text⟩
+Choose from: ⟨options_str⟩
+where images are ordered chronologically from the earliest to the latest observation. For cross-sequence tasks, the prompt prepends region
+labels and preserves each region’s own chronological order without merging the two sequences into a single global timeline:
+Region#1:
+YYYY1: [IMAGE]
+. . .
+YYYYm: [IMAGE]
+Region#2:
+YYYY1: [IMAGE]
+. . .
+YYYYn: [IMAGE]
+⟨Question text⟩
+Choose from: ⟨options_str⟩
+C.1.3
+Output Parsing and Evaluation Metrics.
+Answer extraction. The benchmark does not directly compare raw model generations. Instead, we apply a multi-stage regex-based parser
+to extract option letters from the model output. The parser first attempts to match structured patterns such as comma-separated letter
+lists (e.g., A, C.), then falls back to keyword-anchored patterns (e.g., “The answer is B”, “option A”), and finally attempts to extract
+isolated standalone letters for very short outputs. All matched letters are converted to uppercase. For single-choice and multi-choice
+tasks, the extracted letters form an unordered set 𝑃; for ordered-sequence tasks, the extraction preserves the original order to produce a
+list 𝑃= [𝑝1, . . . , 𝑝𝑚]. If no valid letter can be extracted, the parser returns an empty set (or empty list), and the sample is scored as incorrect.
+Accuracy computation. We define accuracy separately for the three answer formats. For single-choice and multi-choice tasks, a
+prediction is correct only under exact match, i.e., the parsed set equals the gold set (𝑃= 𝐺). For ordered-sequence tasks (used exclusively
+for Object History Memory), a prediction is correct only if the parsed list matches the gold list in both content and order (𝑃= 𝐺). The
+headline overall accuracy (OA) aggregates exact-match correctness across all three formats:
+OA =
+exact_matchsingle + exact_matchmulti + exact_matchos
+𝑁total
+.
+(11)
+Category-level accuracy (AVG) is computed analogously over the subset of samples belonging to each of the four cognitive levels.
+C.2
+Training Settings
+GeoChrono is built upon Qwen3-VL-4B-Instruct [2] and trained on ChronoInstruct for one epoch. The base model employs a patch size
+of 16 × 16; both training and inference use an input resolution of 1024 × 1024. The Vision Encoder produces per-frame visual features of
+length 4,096, which the Vision-Language Projector then produces via 2 × 2 spatial pooling to a per-frame feature length of 𝑆= 1,024 with an
+embedding dimension of 𝐷= 2,560.
+TempEnc configuration. TempEnc adopts a single-layer attention architecture with 𝐻= 16 heads. In the Hybrid Temporal Attention, the
+first 𝐻/2 = 8 heads operate with bidirectional self-attention to capture global temporal context, while the remaining 8 heads employ causal
+self-attention to model directional evolution. For the Semantic Focusing cross-attention, the text embeddings 𝐸txt serving as keys and values
+are derived from the concatenation of the system prompt and user prompt embeddings produced by the LLM’s embedding layer.
+C2FComp configuration. C2FComp partitions each frame’s spatial tokens into non-overlapping blocks of size 𝑏×𝑏= 2×2 during the Spatial
+Block Partitioning stage, yielding 𝑆𝑐= 𝑆/𝑏2 = 256 compressed blocks per frame. In the Prompt-Aware Scoring stage, the cross-attention
+module reuses the same text embeddings 𝐸txt as TempEnc.
+
+Conference’17, July 2017, Washington, DC, USA
+Trovato et al.
+Training strategy. During training, the Vision Encoder and Vision-Language Projector are kept frozen to preserve the pre-trained visual
+representations. The LLM backbone is fine-tuned via LoRA [8], while both TempEnc and C2FComp are randomly initialized and fully
+fine-tuned. The complete set of training hyperparameters is summarized in Table 7.
+Table 7: Training configuration of GeoChrono.
+Configuration
+Details
+Model Configuration
+Base Model
+Qwen3-VL-4B-Instruct
+Input Resolution
+1024 × 1024
+LoRA Rank
+32
+LoRA Alpha
+64
+LoRA Dropout
+0.0
+Training Configuration
+Hardware
+4 × NVIDIA H100 80GB
+Global Batch Size
+64
+Training Duration
+1 epoch
+Optimizer Configuration
+Optimizer
+AdamW
+LR (LLM / LoRA)
+1 × 10−4
+LR (TempEnc & C2FComp)
+5 × 10−4
+LR Scheduler
+Cosine
+Warm-up Ratio
+0.03
+Table 8: Quantitative evaluation results on ChronoBench. We compare human expert performance against commercial MLLMs,
+open-source general MLLMs, remote sensing domain models, and our GeoChrono. All values are reported in percentage (%).
+Method
+Land Cover Perception
+Temporal Recognition
+Long-Term Memory
+Spatio-Temporal Reasoning
+OA
+OP
+AVG
+BCAC BCC
+LCC
+BOC
+AVG
+OAM
+OCM
+OHM
+AVG
+CCME RDC
+OCO
+CSOCO
+AVG
+Coord
+Box
+Coord
+Box
+Coord
+Box
+Coord
+Box
+Coord
+Box
+Coord
+Box
+Coord
+Box
+Human
+98.52
+95.56
+97.04
+94.81
+82.96
+82.96
+98.52
+89.63
+89.78
+98.52
+97.04
+91.11
+87.41
+85.93
+90.37
+91.73
+78.52
+97.78
+99.26
+100.00
+99.26
+98.52
+95.56
+92.28
+Commercial models
+Gemini-3-Flash[31]
+65.06
+65.96
+65.51
+82.00
+50.53
+52.45
+55.85
+56.16
+61.38
+56.44
+58.44
+46.68
+47.75
+25.00
+21.36
+47.52
+37.79
+63.64
+68.05
+78.01
+54.36
+66.67
+59.89
+57.48
+GPT-5.4[22]
+47.07
+40.00
+43.53
+80.00
+50.76
+53.87
+66.13
+60.00
+67.57
+47.69
+41.52
+35.36
+46.09
+26.14
+20.00
+39.21
+30.73
+30.51
+53.83
+70.60
+52.43
+69.12
+50.42
+56.29
+Seed-1.6-Vision[3]
+50.98
+73.23
+62.11
+81.91
+46.27
+53.73
+47.08
+58.47
+63.87
+37.08
+47.05
+37.22
+41.85
+20.00
+18.41
+36.86
+31.22
+38.98
+56.52
+73.29
+55.83
+79.41
+53.74
+55.48
+Open-source models
+InternVL-3.5-4B[38]
+45.41
+58.65
+52.03
+54.83
+32.57
+27.95
+24.51
+24.20
+38.19
+22.03
+21.49
+6.09
+10.20
+1.36
+0.91
+13.33
+22.76
+33.33
+54.66
+49.28
+50.49
+52.45
+42.07
+33.25
+InternVL-3.5-8B[38]
+33.08
+45.56
+39.32
+56.29
+28.31
+28.49
+35.60
+39.35
+43.21
+25.11
+24.30
+13.91
+16.95
+1.60
+3.41
+16.93
+30.40
+39.55
+51.35
+53.21
+57.77
+47.55
+45.11
+36.32
+InternVL-3.5-14B[38]
+40.90
+55.94
+48.42
+64.15
+33.41
+30.66
+36.43
+30.08
+45.67
+22.39
+21.76
+15.76
+19.07
+0.45
+0.91
+16.45
+21.95
+28.25
+52.38
+53.83
+48.06
+49.51
+41.42
+37.76
+Qwen3-VL-4B[2]
+35.19
+41.35
+38.27
+66.94
+31.13
+36.77
+23.96
+16.73
+42.07
+22.76
+18.95
+18.94
+22.52
+2.95
+4.55
+17.54
+21.30
+23.16
+47.83
+47.83
+54.85
+53.92
+39.53
+35.10
+Qwen3-VL-8B[2]
+39.40
+41.96
+40.68
+69.21
+29.15
+43.15
+31.98
+29.26
+47.12
+29.74
+28.56
+17.48
+20.00
+2.95
+0.91
+20.52
+23.74
+28.81
+54.66
+53.00
+55.83
+47.06
+42.80
+39.19
+Qwen3-VL-32B[2]
+42.86
+44.66
+43.76
+75.42
+44.29
+47.90
+45.68
+46.16
+57.88
+29.92
+30.73
+25.03
+27.95
+3.86
+4.55
+24.06
+28.78
+32.77
+51.76
+59.83
+59.71
+62.25
+47.23
+46.73
+Remote sensing domain models
+TEOChat-7B[10]
+32.63
+36.99
+34.81
+48.85
+14.23
+4.21
+17.27
+24.25
+30.07
+24.75
+27.83
+4.11
+6.62
+1.59
+1.14
+14.64
+17.40
+27.68
+50.93
+53.21
+9.22
+22.06
+33.35
+26.82
+EarthDial-4B[29]
+36.99
+40.30
+38.65
+54.83
+18.04
+4.34
+17.72
+24.09
+33.08
+26.20
+26.20
+17.48
+17.75
+0.68
+1.36
+18.56
+15.61
+22.03
+48.44
+46.38
+41.75
+52.45
+36.25
+30.11
+DVLChat-4B[42]
+48.57
+46.92
+47.74
+85.90
+31.81
+37.18
+34.21
+30.46
+54.48
+29.56
+26.93
+24.37
+29.93
+2.50
+2.05
+22.91
+17.24
+25.42
+50.72
+51.76
+58.74
+55.39
+40.59
+44.07
+Ours
+GeoChrono
+83.91
+93.38
+88.65
+93.66
+65.91 76.66
+77.83
+80.27 83.03
+72.71
+87.04
+68.61
+75.10
+31.59
+32.73 68.10
+62.60
+61.58
+61.49
+92.55
+75.24
+92.16 72.92 78.34
+D
+Experimental Results
+D.1
+Benchmark Result Analysis
+D.1.1
+Impact of Spatial Grounding Modality. Seven of the twelve sub-tasks in ChronoBench (i.e., OP, BOC, OAM, OCM, OHM, OCO, and
+CSOCO) provide two spatial grounding variants: HBB Box, which localizes the target via a horizontal bounding box in normalized image
+coordinates [0, 999], and Geo Coordinate, which specifies the coordinate reference system, the image corner coordinates, and an interior
+point of the target object. HBB Box is the most prevalent grounding modality in existing MLLM benchmarks. Geo-coordinate grounding, by
+
+GeoChrono: Benchmarking and Rethinking Long-Term Temporal Understanding in Remote Sensing
+Conference’17, July 2017, Washington, DC, USA
+Figure 11: Row-normalized confusion matrices for the HBB-grounded Object Perception (OP) task. Each cell shows the count
+and percentage of samples with a given true class (row) predicted as the indicated class (column). Four representative models
+are compared: Gemini-3-Flash, Qwen3-VL-32B, DVLChat, and GeoChrono.
+contrast, requires the model to first infer the target point’s relative position within the image extent defined by the corner coordinates, and
+then extrapolate the target’s identity from the local semantic context around that point, posing a considerably greater challenge for spatial
+reasoning.
+Table 8 confirms this asymmetry across the board. For the vast majority of models and tasks, the HBB-Box variant yields higher accuracy
+than its coordinate-grounded counterpart. The gap is particularly pronounced on cognitively demanding tasks: for example, on OAM,
+Gemini-3-Flash scores 58.44% with HBB Box versus 56.44% with coordinates. In the few instances where coordinate-grounded accuracy
+exceeds that of HBB Box—such as certain models on OHM—the absolute performance is extremely low (e.g., below 5%), indicating that the
+model’s capacity for the underlying temporal reasoning task is itself near chance level, and the observed reversal is attributable to stochastic
+fluctuation rather than genuine coordinate-grounding advantage.
+Based on this observation, subsequent fine-grained analyses in this section focus exclusively on the HBB-Box-grounded subset of each
+task, thereby isolating the model’s temporal understanding ability from the confounding factor of spatial grounding difficulty.
+D.1.2
+Land-Cover Perception Confusion Analysis. Accurate land-cover perception underpins all higher-level temporal reasoning tasks in
+ChronoBench: a model that cannot reliably identify the current land-cover type at a given location will inevitably propagate errors into change
+detection, memory retrieval, and spatio-temporal reasoning. To examine this foundational capability in detail, we select one representative
+model from each of the three evaluated categories, i.e., Gemini-3-Flash (commercial models), Qwen3-VL-32B (open-source general MLLMs),
+and DVLChat (RS domain MLLMs), together with GeoChrono, and compute per-class confusion matrices on the HBB-grounded Object
+Perception (OP) task. The results are visualized in Figure 11.
+
+Conference’17, July 2017, Washington, DC, USA
+Trovato et al.
+A dominant source of confusion shared by Gemini-3-Flash, Qwen3-VL-32B, and DVLChat is the mutual misclassification between
+vegetation and non-vegetated surface. For instance, Qwen3-VL-32B misclassifies 25.6% of vegetation samples as non-vegetated surface and
+47.2% of non-vegetated surface samples as vegetation; DVLChat similarly confuses these two classes at rates of 25.0% and 26.9%, respectively.
+This confusion is largely attributable to the seasonal variability inherent in NAIP imagery: because acquisitions span different months
+across years, vegetation cover can undergo substantial phenological changes. These changes appear brown and dormant in winter or early
+spring, closely resembling bare soil or exposed ground. This systematic challenge serves as a natural stress test for a model’s seasonal
+robustness in land-cover classification. In contrast, GeoChrono achieves 92.9% accuracy on vegetation and 90.9% on non-vegetated surface,
+with cross-confusion rates below 6%, demonstrating strong resilience to seasonal appearance variation.
+A second notable error pattern involves buildings being misclassified as non-vegetated surface. In Qwen3-VL-32B, 42.7% of building
+samples are predicted as non-vegetated surface; DVLChat also exhibits a high confusion rate of 50.3% on this pair. While buildings exhibit
+distinctive optical features, such as regular geometry and shadow patterns, they often occupy small spatial extents within wide-area remote
+sensing images, making precise localization within the HBB-grounded region particularly challenging. GeoChrono reduces this confusion to
+3.1%, which we attribute to TempEnc’s spatial context aggregation mechanism that enriches each spatial token with local neighborhood
+information before temporal modeling, thereby strengthening fine-grained feature discrimination even for small-footprint objects.
+Overall, GeoChrono achieves diagonal-dominant confusion matrices across all five land-cover classes, with per-class accuracy exceeding
+81% for every category and reaching above 90% for four out of five classes. This robust perceptual foundation provides a reliable basis for the
+downstream temporal recognition, memory, and reasoning tasks evaluated in ChronoBench.
+D.1.3
+Object History Memory: Accuracy under various Ground-Truth Sequence Length. Object History Memory (OHM) requires the model to
+reconstruct the complete chronological chain of land-cover phases at a given location, making it the most demanding sub-task in Long-Term
+Memory tasks. As shown in Table 8, even the best-performing baseline, Gemini-3-Flash, achieves only 21.36% exact-match accuracy on
+HBB-grounded OHM, while open-source and RS domain models largely remain below 5%. To gain deeper insight into this failure mode, we
+stratify the HBB-grounded OHM samples by the length of their ground-truth evolution chain and compare the exact-match accuracy of four
+representative models in Figure 12.
+Figure 12: Exact-match accuracy on HBB-grounded Object History Memory (OHM) stratified by ground-truth evolution chain
+length. The number of samples at each length is indicated in parentheses. Four representative models are compared.
+The results reveal a clear inverse relationship between chain length and accuracy across all models. For the shortest chains (length = 2),
+identifying a single land-cover transition is relatively straightforward, and GeoChrono substantially outperforms all baselines. At length = 3,
+which constitutes the largest sample group (𝑛= 203), accuracy drops sharply for all baselines. Qwen3-VL-32B and DVLChat fall to near
+zero, while Gemini-3-Flash also declines considerably, yet GeoChrono retains a clear lead. Beyond length = 3, baseline models essentially
+collapse, with Qwen3-VL-32B and DVLChat unable to correctly reconstruct evolution chains and Gemini-3-Flash producing only sporadic
+correct predictions. GeoChrono, while also declining, remains the only model that achieves non-trivial accuracy at lengths 4 through 6,
+demonstrating its capacity to partially recover longer evolution histories. Note that samples with chain lengths of 7 and 8 are extremely
+scarce (𝑛= 7 and 𝑛= 1), making accuracy estimates at these lengths unreliable.
+This length-dependent degradation exposes a fundamental limitation: existing MLLMs lack the capacity to track cumulative state
+transitions across extended temporal sequences. The consistent advantage of GeoChrono across all chain lengths validates the design of
+TempEnc, whose per-location trajectory modeling explicitly constructs a dedicated temporal signal for each spatial position, enabling the
+
+GeoChrono: Benchmarking and Rethinking Long-Term Temporal Understanding in Remote Sensing
+Conference’17, July 2017, Washington, DC, USA
+Table 9: Computational efficiency profiling of GeoChrono’s architectural components. “DFT” denotes the baseline without
+TempEnc or C2FComp. Selection ratio refers to the fraction of spatial blocks retained at full resolution by C2FComp (𝐾/𝑆𝑐). Peak
+memory reports the maximum GPU allocation during inference. Relative changes are computed against the LoRA baseline.
+Configuration
+Selection
+Peak Mem.
+FLOPs
+Visual Tokens
+OA
+Ratio
+(GB)
+(TFLOPs)
+(per sample)
+(%)
+DFT (baseline)
+—
+12.04
+85.07
+7,168
+72.52
++ TempEnc
+—
+12.14 (+0.8%)
+85.65 (+0.7%)
+7,168 (+0.0%)
+78.34
++ TempEnc + C2FComp
+1/2
+11.04 (-8.3%)
+52.05 (-38.8%)
+4,480 (-37.5%)
+74.58
++ TempEnc + C2FComp
+1/4
+10.46 (-13.1%)
+37.22 (-56.2%)
+3,136 (-56.3%)
+74.11
++ TempEnc + C2FComp
+1/16
+10.30 (-14.5%)
+26.98 (-68.3%)
+2,128 (-70.3%)
+72.60
++ TempEnc + C2FComp
+1/64
+10.30 (-14.5%)
+24.53 (-71.2%)
+1,876 (-73.8%)
+71.56
+model to trace sequential land-cover transitions rather than relying on holistic frame-level comparisons. Nevertheless, the rapid decline in
+accuracy beyond length = 3 also indicates that long-chain history reconstruction remains an open challenge, warranting further research
+into more expressive temporal memory architectures.
+D.2
+Computational Efficiency Analysis
+To quantify the computational overhead introduced by each architectural component, we conduct controlled inference profiling on a single
+NVIDIA H100 80GB GPU. The profiling uses a simulated input of 𝑇= 7 images at 1024 × 1024 resolution with 32 output tokens, deployed
+with Flash-Attention-2 and bfloat16 precision. Each configuration is measured over 10 runs following 1 warm-up iteration. We take the
+direct fine-tuned model (without TempEnc or C2FComp) as the baseline and progressively add components. All results are summarized in
+Table 9.
+TempEnc introduces negligible overhead. Adding TempEnc to the DFT baseline increases peak GPU memory by only 0.8% (12.04→12.14 GB)
+and total FLOPs by 0.7% (85.07→85.65 TFLOPs), while the number of visual tokens remains unchanged at 7,168. Despite this marginal
+computational cost, TempEnc delivers a substantial performance improvement of 5.82% OA (72.52%→78.34%), confirming that TempEnc
+operates efficiently within the existing visual token budget without inflating the sequence forwarded to the LLM.
+C2FComp enables flexible efficiency–performance trade-offs. Once C2FComp is activated, all three efficiency metrics (i.e., peak memory,
+FLOPs, and visual token count) decrease monotonically as the selection ratio decreases. At a selection ratio of 1/4 (𝐾= 64), C2FComp reduces
+visual tokens by 56.3% (7,168→3,136) and total FLOPs by 56.2%, while retaining 94.6% of the full model’s performance (74.11% vs. 78.34% OA).
+Peak memory also drops by 13.1%. This operating point provides an effective balance between computational efficiency and performance.
+More aggressive compression at 1/16 and 1/64 further reduces FLOPs by 68.3% and 71.2%, respectively, while retaining performance above
+91%, at the cost of diminishing model performance with each additional compression. Notably, peak memory saturates beyond 1/16 (10.30 GB
+for both 1/16 and 1/64), as the remaining overhead is dominated by fixed costs (vision encoder, LLM weights) that are independent of the
+visual token count.
+D.3
+Qualitative Results
+Figures 13 and 14 present qualitative visualizations of GeoChrono alongside five representative baselines (i.e., Gemini-3-Flash, Qwen3-VL-32B,
+InternVL-3.5-14B, EarthDial, and DVLChat) across all 12 sub-tasks of ChronoBench.
+Land Cover Perception. In the OP example (Figure 13), the query targets a small region within the image. GeoChrono correctly identifies
+the land-cover type as non-vegetated surface, while Gemini-3-Flash misclassifies it as vegetation. The remaining four baselines all predict
+buildings, a class with visually salient features in remote sensing imagery. This suggests that when the target occupies a small spatial extent,
+existing models tend to default to conspicuous categories rather than accurately localizing and interpreting the queried region.
+Temporal Recognition. The BCC, LCC, and BOC examples in Figure 13 are all multi-choice tasks requiring the model to identify all
+applicable land-cover transitions. GeoChrono precisely selects the correct set of transitions in each case. In contrast, the baselines consistently
+over-predict by selecting additional incorrect options. This tendency indicates that these models do not sufficiently rely on visual evidence to
+ground their change detection; instead, they appear to be influenced by the multi-choice instruction in the system prompt, defaulting to an
+overly inclusive selection strategy. The BCAC example in Figure 14 presents a further challenge: between 2018 and 2021, non-vegetated surface
+simultaneously gains area from some classes and loses area to others, requiring fine-grained comparison of the net change direction. All
+
+Conference’17, July 2017, Washington, DC, USA
+Trovato et al.
+Figure 13: Qualitative results on Land Cover Perception (OP), Temporal Recognition (BCC, LCC, BOC), and Long-Term Mem-
+ory (OAM, OCM, OHM) sub-tasks. Correct predictions are marked with ✓. GeoChrono is the only model that correctly answers
+all seven tasks.
+
+GeoChrono: Benchmarking and Rethinking Long-Term Temporal Understanding in Remote Sensing
+Conference’17, July 2017, Washington, DC, USA
+Figure 14: Qualitative results on Temporal Recognition (BCAC) and Spatio-Temporal Reasoning (CCME, RDC, OCO, CSOCO)
+sub-tasks. Correct predictions are marked with ✓. Except for CSOCO, all tasks take only the Region#1 sequence as input; the
+“Region#1” prefix shown before each prompt is added for readability and does not appear in the actual input.
+
+Conference’17, July 2017, Washington, DC, USA
+Trovato et al.
+baselines incorrectly predict “Expanded”, whereas the ground truth is “Reduced”. Only GeoChrono yields the correct answer, demonstrating
+its ability to discriminate subtle area-balance shifts in bi-temporal change recognition.
+Long-Term Memory. The OAM and OCM examples in Figure 13 expose a systematic temporal anchoring bias in existing models. In the
+OAM case, the queried object is a non-vegetated surface observed in 2022 whose current continuous presence began during the 2010–2012
+interval (ground truth: D). However, most baselines select options temporally proximate to the reference year 2022, such as 2018–2020 (A) or
+2020–2022 (B), rather than tracing backward to the actual emergence point. A similar pattern appears in the OCM case, where baselines
+gravitate toward options near the reference year 2010 or simply select the most recent available interval. This positional bias favors temporally
+adjacent or boundary options, indicating that these models lack genuine temporal event retrieval capability and instead rely on heuristic
+shortcuts. GeoChrono correctly identifies the target interval in both cases, demonstrating its ability to trace land-cover state transitions
+across the full temporal span. In the OHM example, which requires reconstructing a four-phase evolution chain (D→C→D→A), GeoChrono
+is the only model that produces the exact chronological sequence.
+Spatio-Temporal Reasoning. The CCME example in Figure 14 demands comparison of change magnitudes across all consecutive intervals
+to identify the period of most substantial transformation. All baselines select plausible but incorrect distractor intervals, whereas GeoChrono
+correctly identifies the answer. This demonstrates its ability to perform comparative temporal reasoning over the full sequence. In the
+RDC, OCO, and CSOCO examples, GeoChrono consistently produces correct predictions, further validating its robust cross-region and
+cross-sequence spatio-temporal reasoning capabilities.
+D.4
+Failure Case Study
+Although GeoChrono substantially outperforms all other models on the Object History Memory (OHM) task, a notable gap to human-level
+performance persists. We therefore conduct a targeted failure analysis on this task to identify systematic error patterns.
+As shown in the accuracy–length analysis (Section D.1.3), model performance degrades substantially when the ground-truth evolution
+chain reaches length four or above. Figure 15 presents two representative failure cases that reveal a common error mode: phase omission,
+where the model predicts a proper subsequence of the ground-truth chain by skipping intermediate phases.
+In the first example, the target building undergoes a four-phase evolution: vegetation →non-vegetated surface →vegetation →buildings.
+GeoChrono outputs B, D, E, correctly capturing the initial and final phases but missing the transient reversion to vegetation between the two
+non-vegetated surface intervals. The second example involves a five-phase chain: vegetation →non-vegetated surface →vegetation →non-
+vegetated surface →buildings. Here, GeoChrono omits two intermediate phases, again failing to detect the periods during which the site
+temporarily returns to vegetation.
+Both failures share a common cause: the model struggles to recognize brief reversions to vegetation that occur amid an overall development
+trajectory. In the vegetation class, which encompasses both trees and shallow herbaceous cover, the visual appearance can closely resemble
+non-vegetated surface depending on season and vegetation maturity. This subtle inter-class ambiguity between vegetation and non-vegetated
+surface poses significant challenges for recognition. These observations suggest that improving the robustness of per-frame land-cover
+discrimination, particularly for visually ambiguous transitional states, remains a critical direction for advancing long-horizon temporal
+memory in remote sensing MLLMs.
+E
+Limitations and Future Directions
+While GeoChrono achieves state-of-the-art performance on ChronoBench and demonstrates strong temporal understanding capabilities
+in remote sensing, several limitations remain and point to promising future directions. i) Despite substantially outperforming all other
+leading MLLMs, GeoChrono still exhibits a notable gap relative to human experts (78.34% vs. 92.28% OA). ii) The current framework
+operates exclusively on RGB imagery, yet NAIP acquisitions natively provide four-band data (RGB + near-infrared). The near-infrared
+channel carries rich vegetation reflectance signatures that could significantly enhance land-cover discrimination, particularly for the visually
+ambiguous vegetation versus non-vegetated surface boundary identified in our confusion analysis (Section D.1.2). Incorporating multi-
+spectral information into the visual encoder represents a straightforward yet potentially impactful extension. iii) The rich pixel-level change
+semantic masks supplied by the DVL-Suite [42] constitute a valuable yet underexploited supervisory signal in the current pipeline. Recent
+work has demonstrated that incorporating segmentation masks can effectively strengthen MLLM performance on visual question answering
+tasks [37]. Leveraging such dense spatial annotations—either as auxiliary training supervision or as an additional input modality—to further
+enhance long-term remote sensing temporal understanding represents another promising avenue for future exploration.
+F
+Contribution to the Community
+We hope the artifacts produced in this work can serve as a useful resource for the remote sensing and multimodal learning communities.
+Below, we discuss several aspects of its potential contribution, while acknowledging that much remains to be explored.
+A structured evaluation lens for temporal understanding. Existing remote sensing benchmarks predominantly organize evaluation around
+application-specific scenarios (e.g., change detection, damage assessment), making it difficult to pinpoint which underlying cognitive ability
+a model lacks. ChronoBench addresses this by decomposing long-term temporal understanding into four progressive cognitive levels (i.e.,
+Land Cover Perception, Temporal Recognition, Long-Term Memory, and Spatio-Temporal Reasoning) and instantiating them as 12 concrete
+
+GeoChrono: Benchmarking and Rethinking Long-Term Temporal Understanding in Remote Sensing
+Conference’17, July 2017, Washington, DC, USA
+Figure 15: Two representative failure cases of GeoChrono on the OHM task. In both examples, the model omits intermediate
+land-cover phases in which the target location temporarily reverts to vegetation, thereby producing shorter evolution chains.
+Ground-truth sequences and model predictions are shown; incorrect predictions are marked with ×.
+subtasks, with 17,689 validated QA pairs. We believe this structured taxonomy can offer the community a more diagnostic perspective: rather
+than reporting a single aggregate score, researchers can identify specific competency gaps and direct modeling efforts accordingly. We hope
+this evaluation paradigm can extend beyond the current land-cover setting and inspire analogous competency-based benchmarks for other
+temporal understanding domains.
+Scalable and reproducible data construction. A recurring bottleneck in remote sensing research is the cost of high-quality temporal
+annotation. Our fully rule-based construction pipeline, which deterministically generates QA pairs from pre-existing human-annotated
+semantic change masks, demonstrates that large-scale temporal QA datasets can be created with minimal additional manual effort once
+reliable change annotations are available. The accompanying ChronoInstruct (104,949 samples spanning multiple answer formats) further
+illustrates how this pipeline can be extended to produce instruction-tuning data at scale. We will release the construction code alongside the
+
+Conference’17, July 2017, Washington, DC, USA
+Trovato et al.
+datasets, and we hope this transparent and reproducible workflow can lower the barrier for future dataset development in the temporal
+remote sensing domain.
+Insights into temporal modeling for remote sensing. Our extensive benchmarking of both commercial and open-source MLLMs reveals that
+Long-Term Memory is the most critical bottleneck in current models, which may help prioritize future research directions. The GeoChrono
+model, while still far from human-level performance on the most demanding tasks (e.g., OHM), provides preliminary validation that explicitly
+modeling per-location temporal trajectories, leveraging the geostationary prior unique to remote sensing, can yield meaningful improvements.
+The Coarse-to-Fine Token Compressor further suggests that the inherent spatial redundancy in wide-area remote sensing scenes can be
+exploited to substantially reduce computational cost without proportional performance degradation. We view these as initial steps rather
+than definitive solutions, and hope they can serve as useful baselines for the community to build upon.
+Open resources. To facilitate reproducibility and encourage follow-up research, we will publicly release ChronoBench, ChronoInstruct,
+the rule-based construction code, the evaluation toolkit, and the trained GeoChrono model weights. We hope these resources collectively
+support the community in advancing long-term temporal understanding in remote sensing and related Earth observation applications.

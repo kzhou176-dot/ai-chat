@@ -1,0 +1,1772 @@
+PoLoRA: A Preconditioned Orthogonalized LoRA Optimizer
+Nikhil Ghosh∗
+Tetiana Parshakova
+Robert M. Gower
+Center for Computational Mathematics, Flatiron Institute
+New York, NY
+Abstract
+Low-rank adaptation (LoRA) makes finetuning large language models cheaper by adding to each
+weight matrix a trainable low-rank update parameterized as the product of two matrices. These matrices
+are usually trained with Adam, which treats them as a single flat vector of parameters and ignores
+both the matrix and product structure of LoRA. Applying a matrix-aware optimizer such as Muon to
+each factor does not consistently improve over Adam, and neither do the product-aware Muon variants
+proposed in concurrent works. To realize consistent gains, we introduce PoLoRA, a Preconditioned
+Orthogonalized LoRA optimizer built from three ingredients: a product-aware spectral update direction,
+curvature preconditioning derived from controlling the per-sample loss change, and a magnitude rule
+that controls the sizes of both the factor and merged updates. We evaluate PoLoRA on instruction-tuning
+datasets for code and math across models from 1B to 8B parameters, and find that it reaches the final
+held-out loss achieved by tuned Adam in 1.2–1.7 times fewer steps, while adding at most 3% per-step
+overhead. Compared to Adam, PoLoRA is also less sensitive to the learning rate, and its optimal learning
+rate is stable across ranks.
+1
+Introduction
+Deployment of large-scale pretrained models increasingly depends on adapting a general model to many
+specialized tasks [7]. Finetuning a separate full copy for each task is expensive, because training must hold
+gradients and optimizer state for the whole model, and deploying each task means storing and serving
+multiple full-sized models. Low-rank adaptation (LoRA [22]) avoids both issues by freezing the base weight
+W0 ∈Rdout×din and adding a small low-rank update ∆W,
+W = W0 + ∆W,
+∆W = α
+r BA,
+B ∈Rdout×r,
+A ∈Rr×din,
+(1)
+to each layer, with α a scaling parameter and r the rank. With only the adapter (B, A) trained, finetuning
+can run on nearly the same hardware layouts as inference, and the shared base lets one server serve many
+adapters at once [11, 37, 46].
+The standard optimization recipe for LoRA applies Adam [31] to the two factors A and B, treating all
+the parameters as a single flat vector and ignoring any matrix structure. In language-model pretraining,
+matrix-aware optimizers such as Muon [26], Scion [43], and Shampoo [18] treat each weight as a matrix
+and outperform Adam [18, 38, 44, 48, 54]. Muon in particular and variants such as NorMuon [35] have set
+records for training small language models [25, 29] and have been adopted in recent large-scale training
+runs [14, 16].
+It is natural to ask whether similar gains can carry over to LoRA. We found, however, that applying
+Muon to each factor does not improve over Adam. Part of the problem is structural: the model sees the
+∗Corresponding author: nghosh@flatironinstitute.org
+1
+arXiv:2607.17620v1  [cs.LG]  20 Jul 2026
+
+product BA, while the optimizer acts on the factors A and B individually. Several concurrent works [10, 30,
+34] correct this with variants of a product-aware Muon step we refer to as Product Muon (Section 2.2). In our
+experiments, the official iMuon implementation [34], one of these variants, is also unable to consistently
+improve over Adam (Figure 1).
+0
+2000
+4000
+6000
+8000
+Training Step
+0.350
+0.375
+0.400
+0.425
+0.450
+0.475
+0.500
+0.525
+Eval Loss
+Adam
+iMuon
+LoRA-RITE
+Muon
+PoLoRA
+1.63× fewer steps
+1/3
+1
+3
+Learning rate (× best)
+0.36
+0.38
+0.40
+0.42
+0.44
+0.46
+Final Eval Loss
+Figure 1: PoLoRA outperforms baselines during training. Llama-3.2-1B finetuned on the math dataset at
+rank r = 256. Left: evaluation loss across training steps; PoLoRA outperforms Adam, iMuon [34], Muon, and
+LoRA-RITE [57] and reaches Adam’s final loss in 1.63× fewer steps. Right: final evaluation loss versus learning rate,
+in multiples of each optimizer’s best learning rate. Every optimum is bracketed, and PoLoRA attains the lowest loss.
+To obtain a consistent speedup over Adam, we introduce PoLoRA, a steepest descent method whose
+constraint is motivated by controlling the change in the per-sample loss, and whose solution is an or-
+thogonalized update preconditioned by a curvature estimate. We then develop a product-aware version
+of this update for LoRA, imposing the constraint on the merged update rather than on each factor sepa-
+rately. A separate magnitude rule sets the sizes of the factor updates, which the Product Muon step leaves
+uncontrolled, while retaining its bound on the spectral norm of the merged update.
+Across base models, datasets, and adapter ranks, PoLoRA consistently improves training efficiency over
+Adam (Tables 1 and 2), and it outperforms matrix-aware LoRA baselines on Llama-3.2-1B finetuned on
+math (Figure 1). It reaches the final held-out loss of tuned Adam in 1.2–1.7× fewer steps, while adding
+at most 3% per-step overhead. Removing the curvature preconditioning and the magnitude rule in turn
+reduces PoLoRA to Product Muon, and each component accounts for about half of the speedup gap. Finally,
+we observe that PoLoRA is easier to tune than Adam: its optimal learning rate is stable across ranks, and
+performance is less sensitive to the learning rate.
+Our open-source implementation is available at:
+https://github.com/nikhilgsh/polora
+The rest of the paper proceeds as follows. In Section 2 we motivate and derive PoLoRA. In Section 3 we
+evaluate PoLoRA, comparing it in terms of step and wall-clock speedups over Adam and other baselines. In
+Section 3.3 we separate the roles of curvature and magnitude control. Finally, in Section 4 we place PoLoRA
+in the context of prior and concurrent work on hyperparameter rescaling for LoRA, matrix-aware updates,
+product-invariant LoRA optimizers, and magnitude control for low-rank products.
+2
+
+2
+PoLoRA: Preconditioned Orthogonalized LoRA
+To derive the PoLoRA update, we first recall in Section 2.1 how Muon arises from constrained steepest
+descent [13]. Its update is computed by a linear minimization oracle (LMO) [43], which minimizes the
+linearized loss subject to a spectral-norm bound. In Section 2.2 we make this LMO product-aware, which
+yields Product Muon. In Section 2.3 we obtain the PoLoRA update direction by replacing the spectral-norm
+constraint with a bound on the change in the per-sample loss and making the resulting LMO product-aware
+for LoRA. The LMO provides the direction but not the size of the update, which we set by a separate
+rescaling that controls both the per-factor and merged-weight updates. All proofs are in Appendix B.
+Throughout, whenever a vector or matrix is divided by its norm, we set X/∥X∥:= 0 at X = 0.
+2.1
+Muon
+Muon is based on a spectral LMO [3, 8, 9]. For a weight W ∈Rdout×din with gradient G = ∇W L(W), this
+LMO minimizes the local linearization of the loss subject to a ball constraint,
+minimize
+∆W
+⟨G, ∆W⟩
+subject to
+∥∆W∥2 ≤η,
+(2)
+where ∥· ∥2 is the spectral norm
+∥W∥2 := max
+∥x∥2=1 ∥Wx∥2.
+Bounding the spectral norm is appealing because it controls the largest amount by which the update can
+change the layer’s output over all unit-norm inputs [56]. A solution to (2) is given by the matrix sign of the
+gradient [3]
+∆W = −η msign(G),
+where msign(G) = UV ⊤and G = UΣV ⊤is the reduced SVD (see Lemma 2).
+In practice, Muon replaces the gradient with its momentum, an exponential moving average (EMA) of
+past gradients, and uses a polynomial approximation to the polar factor [1, 58] (see Appendix E.2). Next we
+show how to adapt this LMO to be aware of the product structure in LoRA (1).
+2.2
+Product Muon
+Throughout, we set the LoRA scaling α = r [5, 45], so the merged weight is W = W0 + BA. Consider a
+LoRA step that updates the two factors A and B as follows
+A ←A + ∆A,
+B ←B + ∆B.
+Applying Muon naively would impose a spectral bound separately on ∆A and ∆B, but what matters to
+the layer is the effective update of the product BA, which is not controlled solely by ∆A and ∆B. Indeed,
+the update to the merged weight is, to first order,
+∆W = (B + ∆B)(A + ∆A) −BA ≈B∆A + ∆BA,
+(3)
+from which we see that the spectral norm bound should be applied to this linearized product update.
+Substituting (3) into the spectral LMO (2) gives the spectral constraint
+∥B∆A + ∆BA∥2 ≤η.
+3
+
+The constraint couples the two unknowns ∆A and ∆B, but we can decouple them with the upper bound
+using norm subadditivity:
+∥B∆A + ∆BA∥2 ≤∥B∆A∥2 + ∥∆BA∥2.
+Splitting the budget evenly between the two terms preserves the merged bound and gives the Product Muon
+LMO
+∆A ∈arg min
+∆A
+⟨GA, ∆A⟩
+subject to
+∥B∆A∥2 ≤η/2,
+∆B ∈arg min
+∆B
+⟨GB, ∆B⟩
+subject to
+∥∆BA∥2 ≤η/2,
+(4)
+where the factor gradients are
+GA := ∇AL(W0 + BA) = B⊤G,
+GB := ∇BL(W0 + BA) = GA⊤.
+(5)
+By Lemma 4, a solution to this LMO is
+∆A = −η
+2 (B⊤B)−1/2 msign
+ (B⊤B)−1/2GA
+
+,
+∆B = −η
+2 msign
+ GB(AA⊤)−1/2
+(AA⊤)−1/2.
+(6)
+As in Muon, these factor updates are computed using momentum estimates of the gradients.
+2.3
+Per-Sample Loss Control
+We now derive the base LMO that will be the starting point of PoLoRA. Let {x1, . . . , xn} be the input
+activations to the layer that W encodes, and let Gi = ∇ℓxi(W) be the gradient of the loss on activation xi.
+Abusing notation slightly, we write ℓxi for the loss on a single activation rather than a full input.
+The justification for using the spectral norm in Muon is that it is conservative, since the constraint
+∥∆W∥2 ≤η is equivalent to bounding the change in the layer’s output,
+∥∆Wx∥2 ≤η
+for all ∥x∥2 ≤1.
+What really matters in the end, however, is the final loss. Thus we adapt this conservative approach to
+instead ensure that no single activation results in a large change in the loss, that is, we want
+|ℓxi(W + ∆W) −ℓxi(W)| ≤τ,
+i = 1, . . . , n.
+(7)
+Since the loss is nonlinear and nonconvex, we replace it with a local linearization,
+ℓxi(W + ∆W) −ℓxi(W) ≈⟨Gi, ∆W⟩.
+Imposing the linearized per-sample bounds (7) in place of the spectral-norm constraint in (2) gives
+minimize
+∆W
+⟨G, ∆W⟩
+subject to
+|⟨Gi, ∆W⟩| ≤τ,
+i = 1, . . . , n.
+(8)
+This per-sample LMO is well-posed (Proposition 1), but its constraints are not directly usable, since we lack
+efficient access to the per-sample gradients Gi. We therefore define a centrally symmetric outergradient set
+G such that Gi ∈G, and then use the inequality
+max
+i=1,...,n |⟨Gi, ∆W⟩| ≤max
+eG∈G
+⟨eG, ∆W⟩,
+(9)
+to impose that the right-hand side of (9) is less than τ. To build G we collect some standard properties of
+the gradient matrices in the following lemma.
+4
+
+Lemma 1 (Properties of gradients). Let gi = vec(Gi) ∈Rdoutdin for i = 1, . . . , n. Let Σ := 1
+n
+Pn
+i=1 gig⊤
+i
+and let Σ† denote its Moore-Penrose pseudoinverse. The gradients satisfy the following properties:
+1. Leverage bound: ⟨Σ†gi, gi⟩≤n,
+2. Rank one: Gi = bix⊤
+i for some xi ∈Rdin and bi ∈Rdout.
+The above properties motivate the choice of the following outergradient set
+G(Σ) :=
+
+eG = bx⊤
+ b ∈Rdout, x ∈Rdin, ⟨Σ† vec( eG), vec( eG)⟩≤n
+
+.
+(10)
+Since Gi ∈G by Lemma 1, we can use this G in our upper bound (9). The last issue is that Σ is too large to
+store or use directly, so we replace it with a structured approximation.
+Kronecker approximation.
+Following [18, 40], we approximate Σ by a Kronecker product of symmetric
+positive definite matrices P ∈Rdout×dout and Q ∈Rdin×din,
+Σ ≈Q ⊗P.
+(11)
+We treat the preconditioners P and Q as given for now, deferring their update rule to Appendix D.
+Using the factorization above in the outergradient set (10) and replacing the per-sample constraints
+in (8) with the sufficient condition (9), we arrive at the following LMO
+minimize
+∆W
+⟨G, ∆W⟩
+subject to
+max
+eG∈G(Q⊗P)
+⟨eG, ∆W⟩≤τ.
+(12)
+By Lemma 3, the constraint in (12) satisfies the identity
+max
+eG∈G(Q⊗P)
+⟨eG, ∆W⟩= √n∥P 1/2∆WQ1/2∥2,
+so that (12) becomes
+minimize
+∆W
+⟨G, ∆W⟩
+subject to
+∥P 1/2∆WQ1/2∥2 ≤τ,
+(13)
+where we have absorbed the factor 1/√n into τ. Note that the value of τ does not matter, since we use the
+LMO only for the direction and rescale the update later. By Lemma 4, the solution to the LMO in (13) is
+∆W = −τP −1/2 msign(P −1/2GQ−1/2)Q−1/2.
+(14)
+Direction.
+So far we have described an update for the weight matrix W ∈Rdout×din. We now adapt it to
+LoRA (1), deriving the direction first and then setting the magnitude of the factor updates. Replacing ∆W
+in (13) with its linearized product update (3) gives the LMO
+minimize
+∆A,∆B
+⟨G, B∆A + ∆BA⟩
+subject to
+∥P 1/2(B∆A + ∆BA)Q1/2∥2 ≤τ.
+(15)
+Just as for Product Muon in Section 2.2, subadditivity of the spectral norm splits the coupled constraint
+in (15) into one bound per factor. With the factor gradients (5), the product LMO then decouples into two
+factorwise LMOs
+minimize
+∆A
+⟨GA, ∆A⟩
+subject to ∥P 1/2B∆AQ1/2∥2 ≤τ,
+minimize
+∆B
+⟨GB, ∆B⟩
+subject to ∥P 1/2∆BAQ1/2∥2 ≤τ.
+(16)
+5
+
+Define the r × r matrices
+CB = B⊤PB,
+CA = AQA⊤.
+(17)
+By definition of the spectral norm, and using the definitions in (17), the left-hand sides of the two constraints
+in (16) can be rewritten as
+∥P 1/2B∆AQ1/2∥2 = ∥C1/2
+B ∆AQ1/2∥2,
+∥P 1/2∆BAQ1/2∥2 = ∥P 1/2∆BC1/2
+A ∥2.
+(18)
+Since substituting (18) into (16) makes each factorwise LMO an instance of Lemma 4, the two minimizers
+are ∆A = −τDA and ∆B = −τDB, where
+DA = C−1/2
+B
+msign
+
+C−1/2
+B
+GA Q−1/2
+Q−1/2,
+DB = P −1/2 msign
+
+P −1/2 GB C−1/2
+A
+
+C−1/2
+A
+.
+(19)
+give the factor update directions.
+Magnitude.
+Having derived the direction, we now set the magnitude directly rather than through the
+budget τ, controlling the size of the factor updates in spectral norm. Treating A and B symmetrically, we
+use a single update size ρ for both factors, and set ∥∆A∥2 = ∥∆B∥2 = ρ. Furthermore, like Product Muon,
+we ensure that the linearized merged update (3) has spectral norm bounded by the learning rate η. By the
+triangle inequality and submultiplicativity,
+∥∆W∥2 ≈∥B∆A + ∆BA∥2 ≤∥B∥2∥∆A∥2 + ∥A∥2∥∆B∥2,
+(20)
+and so setting
+ρ =
+η
+∥A∥2 + ∥B∥2
+(21)
+ensures ∥∆W∥2 ≤η. As a result, using the directions DA and DB from (19) gives the updates
+∆A = −ρ
+DA
+∥DA∥2
+,
+∆B = −ρ
+DB
+∥DB∥2
+.
+(22)
+The update size ρ in (21) is not invariant to the rescaling (A, B) 7→(cA, c−1B), which changes ∥A∥2
+and ∥B∥2 while preserving BA. Among such rescalings ρ is largest when ∥A∥2 = ∥B∥2, and in our runs
+we observe that ∥B∥2/∥A∥2 settles near 1 (Appendix G).
+Optimizer step.
+PoLoRA, summarized in Algorithm 1, makes the update (22) practical with the following
+ingredients:
+• Averaging. Momentum with look-ahead replaces each factor gradient with an EMA estimate of its full-
+batch counterpart (line 1), and a second EMA accumulates the vectors p, q that form the preconditioners
+(lines 7 and 8; Appendix D).
+• Diagonal curvature. To reduce overhead, we take P and Q diagonal, as in Adafactor [49] (line 2), and
+fit them to second moments of the factor gradients by adapting the KL-Shampoo update [36] to the
+diagonal case (lines 7 and 8; Appendix D).
+• Normalization. The Kronecker product in (11) is invariant to the rescaling (P, Q) 7→(aP, a−1Q). To
+make the EMA updates for P and Q invariant to this rescaling as well, we normalize each factor so that
+its largest entry is one (line 2; Appendix D).
+• Fast numerical subroutines. We estimate the spectral norms in lines 5 and 6 by power iteration (Ap-
+pendix E.1). We use Gram Newton–Schulz iterations with PolarExpress coefficients [1] to compute the
+matrix sign and inverse square roots in lines 3 and 4 (Appendix E.2).
+6
+
+Algorithm 1 PoLoRA step for one LoRA pair (A, B)
+Hyperparameters: learning rate η, momentum decay β1, curvature decay β2, numerical-stability
+constant ε
+Initialize: MA, MB ←0;
+p, q ←ε1
+Update to Momentum Gradients
+1: MA ←β1MA + (1 −β1)GA,
+MB ←β1MB + (1 −β1)GB
+c
+MA ←β1MA + (1 −β1)GA,
+c
+MB ←β1MB + (1 −β1)GB
+▷buffer + look-ahead
+Computing the Direction
+2: P ←diag
+ p/∥p∥∞
+
+,
+Q ←diag
+ q/∥q∥∞
+
+CB ←B⊤P B,
+CA ←A Q A⊤
+3: DA ←C−1/2
+B
+msign
+ C−1/2
+B
+c
+MA Q−1/2
+Q−1/2
+▷preconditioned polar step (19)
+4: DB ←P −1/2 msign
+ P −1/2 c
+MB C−1/2
+A
+
+C−1/2
+A
+Balancing Magnitude
+5: ρ ←η/(∥A∥2 + ∥B∥2)
+▷spectral-norm control (21)
+6: A ←A −ρ DA/ max(∥DA∥2, ε),
+B ←B −ρ DB/ max(∥DB∥2, ε)
+Update to Preconditioners
+7: q ←β2 q + (1 −β2) diag
+ G⊤
+AC−1
+B GA
+
+/r
+▷coupled estimator (32)
+8: p ←β2 p + (1 −β2) diag
+ GB C−1
+A G⊤
+B
+
+/r
+3
+Experiments
+We now empirically evaluate PoLoRA, comparing it to several baselines in Section 3.2, investigating which
+design choices of PoLoRA are responsible for its efficacy in Section 3.3, and testing its behavior across ranks
+and on different data in Section 3.4.
+3.1
+Setup
+Comparison.
+For every model, dataset, and rank, we only vary the optimizer and learning rate. All
+methods use LoRA on every linear layer except the output layer, with the standard initialization B = 0 and
+random A [22]. For each optimizer, we sweep the learning rate under a constant schedule with no weight
+decay and select the run with the lowest held-out loss.
+The main comparisons finetune OLMo-2-1B [41], Llama-3.2-1B [17], Qwen2.5-1.5B [55], and Llama-3-8B
+on code (OpenCoder [23]) and math (OpenMathInstruct-2 [52]) datasets, using rank r = 256 unless stated
+otherwise. Additional experiments in Section 3.4 vary the rank as well as change the finetuning dataset to
+a low-resource language. Appendix A gives the full experimental configurations.
+Baselines.
+We compare PoLoRA (Section 2) to the following optimizers:
+• Adam [31] — our baseline, applied independently to the two factors A and B.
+• Muon [26] — the solution of the spectral LMO (2), applied independently to each factor.
+• iMuon [34] — a product-aware spectral LMO (26) applied to momentum in the product space.
+• LoRA-RITE [57] — an adaptive LoRA optimizer that preconditions factor gradients in a transformation-
+invariant basis.
+7
+
+Code
+Math
+base model
+step
+wall-clock
+step
+wall-clock
+OLMo-2-1B
+1.61×
+1.57×
+1.74×
+1.70×
+Llama-3.2-1B
+1.55×
+1.51×
+1.63×
+1.58×
+Qwen2.5-1.5B
+1.30×
+1.27×
+1.64×
+1.60×
+Llama-3-8B
+1.20×
+1.18×
+1.59×
+1.56×
+Table 1: PoLoRA speedup over Adam across models and datasets. Four base models at rank r = 256, finetuned
+on code and math datasets. The wall-clock column discounts the step speedup (Section 3.2) by the per-step overhead
+(Appendix A). PoLoRA improves over Adam in every setting, by a wider margin on math than on code.
+We use the authors’ official implementations for iMuon and LoRA-RITE and provide additional background
+on these methods in Appendix C.
+3.2
+Computational Efficiency
+We score each optimizer by its steps-to-Adam, the number of steps its tuned run needs to match the final
+loss of tuned Adam. The step speedup is then the ratio of Adam’s total step count to the steps-to-Adam.
+Across our experiments, PoLoRA reaches this loss in 1.2–1.7× fewer steps (Table 1). On Llama-3.2-1B
+finetuned on math, PoLoRA also outperforms Muon, iMuon, and LoRA-RITE, none of which improves over
+Adam (Figure 1). Additional learning curves can be found in Appendix H.
+Wall-clock.
+The optimizer FLOPs of each PoLoRA step are independent of the batch size, while the
+model forward and backward passes scale with it (Appendix F). Thus the relative per-step time shrinks
+as the batch grows. At our batch size (Appendix A) it adds at most 3% wall-clock overhead compared to
+Adam on all four base models (Table 1), and the step speedup carries to wall-clock almost unchanged.
+3.3
+Component Ablation
+The essential ingredients in PoLoRA can be decomposed into three components:
+• Product-awareness. The direction LMO (4) uses the structure of the merged product BA as opposed
+to treating A and B as independent matrices.
+• Curvature. Preconditioning the gradient by an adaptive curvature estimate makes the update account
+for how different directions change the loss (11).
+• Magnitude. The sizes of the factor steps and the merged update are both controlled (21).
+Removing the curvature preconditioning (P and Q set to identity) and the magnitude control (τ = η/2 in
+(16)) reduces PoLoRA to Product Muon (6). On Llama-3.2-1B finetuned on math (Figure 2), Product Muon
+has no speedup over Adam, and the curvature and magnitude components each account for about half the
+speedup gap between Product Muon and PoLoRA.
+3.4
+Rank and Distribution Shift
+To probe the effect of the LoRA rank and of the finetuning dataset on the performance of PoLoRA, we
+vary the rank while finetuning on math and vary the dataset from code to a low-resource language
+underrepresented in the pretraining mix.
+8
+
+0
+2000
+4000
+6000
+8000
+Training Step
+0.375
+0.400
+0.425
+0.450
+0.475
+0.500
+Eval Loss
+Adam
+w/o curvature or magnitude
+w/o curvature
+PoLoRA (ours)
+0.0
+0.5
+1.0
+1.5
+speedup over Adam
+w/o curvature
+or magnitude
+w/o curvature
+PoLoRA (ours)
+1.01×
+1.29×
+1.63×
+Adam
+Figure 2: Curvature and magnitude both improve PoLoRA. Component ablation of Llama-3.2-1B finetuned on
+math at rank r = 256. The left panel shows loss curves as the curvature and then the magnitude control are removed
+from PoLoRA in turn, down to Product Muon. The right panel shows the speedup over Adam for each variant.
+rank r
+step speedup
+wall-clock speedup
+32
+1.48×
+1.44×
+64
+1.54×
+1.50×
+128
+1.52×
+1.49×
+256
+1.63×
+1.58×
+Table 2: PoLoRA speedup over Adam across LoRA ranks. Llama-3.2-1B finetuned on the math dataset, with
+only the rank varied across rows. The wall-clock column discounts the step speedup (Section 3.2) by the per-step
+overhead (Appendix A).
+Rank.
+We sweep the rank r on Llama-3.2-1B finetuned on math. As the rank grows, the step speedup of
+PoLoRA over Adam grows too (Table 2; learning curves in Figure 6(c)). PoLoRA also exhibits learning-rate
+transfer: its optimal learning rate is stable across ranks, whereas Adam’s shifts (Figure 3). We also observe
+reduced sensitivity to the learning rate compared to Adam.
+Distribution shift.
+Coding data is well represented in the pretraining data of the Qwen2.5-1.5B model [55],
+while data for a low-resource language like Bengali is much less represented. From Figure 4 we observe
+that the speedup over Adam is larger on the Bengali dataset (Aya [51]) than on code. This is consistent with
+the advantage of PoLoRA growing as finetuning must move the model further from its pretraining data.
+4
+Related Work
+Here we review related work and contrast PoLoRA with the existing literature.
+Hyperparameter rescaling for LoRA.
+LoRA [22] enables parameter-efficient finetuning by freezing the
+pretrained weights and training only a low-rank update (1) through factors A and B, typically optimized
+with Adam [31]. Several recent methods refine this approach by rescaling hyperparameters such as the
+learning rates, adapter scale, or initialization variance to account for the low-rank structure. Motivated by
+large-width feature-learning arguments, LoRA+ [19] assigns B a larger learning rate than A, and follow-up
+9
+
+10−2
+10−1
+Learning Rate
+0.36
+0.38
+0.40
+0.42
+0.44
+0.46
+0.48
+Eval Loss
+PoLoRA
+10−4
+10−3
+Learning Rate
+Adam
+Rank
+r=32
+r=64
+r=128
+r=256
+Figure 3: PoLoRA exhibits learning-rate transfer. Final loss versus learning rate of Llama-3.2-1B finetuned on
+the math dataset at each rank r ∈{32, 64, 128, 256}. The optimal learning rate for PoLoRA stays at 10−2 across
+ranks, while Adam’s drifts.
+work [20, 33] extends this to other initializations. Rank-stabilized LoRA [27] replaces the α/r adapter
+scale with α/√r to avoid the rank-dependent shrinkage that makes high-rank adapters hard to train,
+and µA [12] studies how these hyperparameters should scale with rank to keep the optimal learning rate
+stable. In contrast, PoLoRA keeps these scalar hyperparameters fixed and instead changes the update itself,
+computing the factor update directions in a curvature-aware metric on the merged product BA rather than
+rescaling a coordinatewise Adam step.
+Matrix-aware updates.
+Recently, optimizers that operate at the matrix level, rather than treating
+parameters as a flattened vector, have attracted attention for their gains over Adam [38, 44, 54]. Muon [26]
+solves the spectral-norm LMO for a weight matrix, producing an update equal to the matrix sign of
+the momentum gradient [1] (Lemma 2). Shampoo [18], SOAP [53], and KL-Shampoo [36] estimate the
+gradient curvature as Kronecker-factored second moments. Mousse [59] uses such a second moment
+estimate to whiten the gradient before a matrix-sign step. PoLoRA likewise applies a matrix-sign step to a
+preconditioned gradient, with a metric derived from controlling the per-sample loss change across the batch
+(Section 2.3). We carry this update from the full weight matrix to the LoRA product and add magnitude
+control, which removes the need for learning-rate grafting [50, 59]. We adapt the KL-Shampoo estimator to
+LoRA, fitting the preconditioners from the factor gradients rather than the weight gradient (Appendix D).
+Product-invariant LoRA optimizers.
+The learned update BA is a product of two matrices, so it is
+determined only up to the change of basis (A, B) 7→(NA, BN−1) for invertible N. Since Adam is not
+invariant to this transformation, a line of work has proposed LoRA optimizers that are. LoRA-RITE removes
+the basis dependence with an adaptive preconditioner [57], while Riemannion optimizes BA directly on
+the fixed-rank matrix manifold [6]. iMuon, LoRA-Muon, and Compositional Muon derive invariant updates
+from spectral-norm LMOs [10, 30, 34]. As discussed in Appendix C, the momentum-free LMO updates of
+LoRA-RITE, LoRA-Muon, and Compositional Muon’s half-split rule all coincide with (4), as does iMuon’s
+intrinsic LMO. PoLoRA does not satisfy this invariance, but it outperforms iMuon in our experiments
+(Section 3.2), suggesting that invariance is not the limiting factor in this setting.
+10
+
+0
+2000
+4000
+6000
+8000
+Training Step
+0.60
+0.61
+0.62
+0.63
+Eval Loss
+Code
+Adam
+PoLoRA
+1.30× fewer steps
+0
+2000
+4000
+6000
+8000
+Training Step
+0.45
+0.50
+0.55
+0.60
+0.65
+0.70
+Bengali
+1.73× fewer steps
+Figure 4: The speedup over Adam is larger on the low-resource language. Evaluation loss over training steps
+on Qwen2.5-1.5B at rank r = 256, finetuned on the code dataset (left) and the Bengali dataset (right).
+Magnitude control for low-rank products.
+Product Muon (4) bounds ∥B∆A∥2 and ∥∆BA∥2 but
+not the factor steps ∥∆A∥2 and ∥∆B∥2. As a result, when A or B has small singular values, the updates
+∆A and ∆B can be large enough to destabilize training. Spectron [24] and QuacK [2] explicitly control
+the factor steps by scaling them with the factor norms. Spectron rescales both steps to spectral norm
+η/(∥A∥2 +∥B∥2 +1), and QuacK scales each factor’s learning rate by the inverse norm of the other. Similar
+to Spectron, PoLoRA rescales both factor steps to a common spectral norm ρ = η/(∥A∥2 + ∥B∥2). With
+the +1 in its denominator, Spectron’s bound also covers the quadratic term ∆B∆A, which PoLoRA drops
+(Remark 1 verifies that restoring it leaves the bound essentially unchanged).
+5
+Conclusion
+PoLoRA takes a different route to optimizing LoRA adapters: it asks what a step does to the merged product
+BA and to the per-sample losses, rather than treating the two LoRA factors as unrelated parameter matrices.
+This view leads to a practical optimizer that combines a product-aware spectral direction, lightweight
+curvature preconditioning, and explicit control of factor-step magnitudes. In our experiments this makes
+matrix-aware LoRA optimization consistently faster than Adam, and the optimal learning rate transfers
+across ranks.
+The method is still built on approximations. For efficiency the preconditioners are diagonal, and the
+metric they induce is a Kronecker-factored approximation of the per-sample second moment. The derivation
+also relies on a linearized loss change and a linearized product update, so the optimizer does not control
+higher-order effects or the dropped ∆B∆A term. Finally, our evaluation focuses on LoRA finetuning for
+language models and on held-out loss as the main measure of progress; broader downstream evaluations,
+longer training horizons, other adapter families, and different hardware or batch-size regimes remain open.
+These limitations point to several future directions. One is to design better outergradient approximations
+that remain cheap enough for adapter training. Another is to incorporate second-order information [15]
+while keeping the update tractable. More broadly, the per-sample loss-control perspective (8) and (12) may
+be useful beyond LoRA, for pretraining or for other compositions of maps.
+11
+
+References
+[1]
+N. Amsel et al. The Polar Express: Optimal Matrix Sign Methods and Their Application to the Muon
+Algorithm. 2025. arXiv: 2505.16932 [cs.LG].
+[2]
+B. Anson and L. Aitchison. Controlling changes to attention logits. 2025. arXiv: 2511.21377 [cs.LG].
+[3]
+J. Bernstein and L. Newhouse. “Modular Duality in Deep Learning”. In: Proceedings of the 42nd
+International Conference on Machine Learning. Vol. 267. Proceedings of Machine Learning Research.
+PMLR, 2025, pp. 3920–3930.
+[4]
+D. Bertsimas and J. N. Tsitsiklis. Introduction to Linear Optimization. Athena Scientific, 1997.
+[5]
+D. Biderman et al. “LoRA Learns Less and Forgets Less”. In: Transactions on Machine Learning Research
+(TMLR) (2024). arXiv: 2405.09673 [cs.LG].
+[6]
+V. Bogachev et al. LoRA meets Riemannion: Muon Optimizer for Parametrization-independent Low-Rank
+Adapters. 2025. arXiv: 2507.12142 [cs.LG].
+[7]
+R. Bommasani et al. On the Opportunities and Risks of Foundation Models. 2021. arXiv: 2108.07258
+[cs.LG].
+[8]
+D. Carlson, V. Cevher, and L. Carin. “Stochastic Spectral Descent for Restricted Boltzmann Machines”.
+In: Proceedings of the Eighteenth International Conference on Artificial Intelligence and Statistics. Ed. by
+G. Lebanon and S. V. N. Vishwanathan. Vol. 38. Proceedings of Machine Learning Research. San
+Diego, California, USA: PMLR, 2015, pp. 111–119.
+[9]
+D. E. Carlson et al. “Preconditioned Spectral Descent for Deep Learning”. In: Advances in Neural
+Information Processing Systems. Vol. 28. 2015, pp. 2971–2979.
+[10]
+F. L. Cesista et al. LoRA-Muon: Spectral Steepest Descent on the Low-Rank Manifold. 2026. arXiv:
+2606.12921 [cs.LG].
+[11]
+L. Chen et al. Punica: Multi-Tenant LoRA Serving. 2023. arXiv: 2310.18547 [cs.DC].
+[12]
+N. Chen, S. Villar, and S. Hayou. Learning Rate Scaling across LoRA Ranks and Transfer to Full
+Finetuning. 2026. arXiv: 2602.06204 [cs.LG].
+[13]
+M. Crawshaw et al. “An Exploration of Non-Euclidean Gradient Descent: Muon and its Many Variants”.
+In: International Conference on Machine Learning (ICML). 2026.
+[14]
+DeepSeek-AI. DeepSeek-V4: Towards Highly Efficient Million-Token Context Intelligence. 2026. arXiv:
+2606.19348 [cs.CL].
+[15]
+Z. Du and W. Su. The Newton-Muon Optimizer. 2026. arXiv: 2604.01472 [math.OC].
+[16]
+GLM-4.5 Team. GLM-4.5: Agentic, Reasoning, and Coding (ARC) Foundation Models. 2025. arXiv:
+2508.06471 [cs.CL].
+[17]
+A. Grattafiori et al. The Llama 3 Herd of Models. 2024. arXiv: 2407.21783 [cs.AI].
+[18]
+V. Gupta, T. Koren, and Y. Singer. “Shampoo: Preconditioned Stochastic Tensor Optimization”. In:
+Proceedings of the 35th International Conference on Machine Learning. Vol. 80. Proceedings of Machine
+Learning Research. PMLR, 2018, pp. 1842–1850. arXiv: 1802.09568 [cs.LG].
+[19]
+S. Hayou, N. Ghosh, and B. Yu. “LoRA+: Efficient Low Rank Adaptation of Large Models”. In:
+Proceedings of the 41st International Conference on Machine Learning. Vol. 235. Proceedings of Machine
+Learning Research. PMLR, 2024, pp. 17783–17806. arXiv: 2402.12354 [cs.LG].
+[20]
+S. Hayou, N. Ghosh, and B. Yu. “The Impact of Initialization on LoRA Finetuning Dynamics”. In: Ad-
+vances in Neural Information Processing Systems. Ed. by A. Globerson et al. Vol. 37. Curran Associates,
+Inc., 2024, pp. 117015–117040.
+12
+
+[21]
+S. Hayou, N. Ghosh, and B. Yu. PLoP: Precise LoRA Placement for Efficient Finetuning of Large Models.
+2025. arXiv: 2506.20629 [cs.LG].
+[22]
+E. J. Hu et al. “LoRA: Low-Rank Adaptation of Large Language Models”. In: International Conference
+on Learning Representations (ICLR). 2022. arXiv: 2106.09685 [cs.CL].
+[23]
+S. Huang, T. Cheng, et al. OpenCoder: The Open Cookbook for Top-Tier Code Large Language Models.
+2024. arXiv: 2411.04905 [cs.CL].
+[24]
+P. Janson, E. Oyallon, and E. Belilovsky. Stabilizing Native Low-Rank LLM Pretraining. 2026. arXiv:
+2602.12429 [cs.LG].
+[25]
+K. Jordan et al. modded-nanogpt: Speedrunning the NanoGPT Baseline. 2024.
+[26]
+K. Jordan et al. Muon: An optimizer for hidden layers in neural networks. https://kellerjordan.
+github.io/posts/muon/. 2024.
+[27]
+D. Kalajdzievski. A Rank Stabilization Scaling Factor for Fine-Tuning with LoRA. 2023. arXiv: 2312.
+03732 [cs.LG].
+[28]
+J. Kaplan et al. Scaling Laws for Neural Language Models. 2020. arXiv: 2001.08361 [cs.LG].
+[29]
+A. Karpathy. nanochat: The Best ChatGPT that $100 Can Buy. 2025.
+[30]
+B. Keigwin et al. Towards Compositional Steepest Descent. https://blog.tilderesearch.com/
+blog/compositional-muon. Tilde Research. 2026.
+[31]
+D. P. Kingma and J. Ba. “Adam: A Method for Stochastic Optimization”. In: International Conference
+on Learning Representations (ICLR). 2015. arXiv: 1412.6980 [cs.LG].
+[32]
+B. Kulis, M. A. Sustik, and I. S. Dhillon. “Low-Rank Kernel Learning with Bregman Matrix Diver-
+gences”. In: Journal of Machine Learning Research 10 (2009), pp. 341–376.
+[33]
+S. Li et al. “Beyond zero initialization: Investigating the impact of non-zero initialization on lora
+fine-tuning dynamics”. In: arXiv preprint arXiv:2505.23194 (2025).
+[34]
+Y. Li et al. Intrinsic Muon: Spectral Optimization on Riemannian Matrix Manifolds. 2026. arXiv: 2605.
+09238 [cs.LG].
+[35]
+Z. Li et al. NorMuon: Making Muon More Efficient and Scalable. 2025. arXiv: 2510.05491 [cs.LG].
+[36]
+W. Lin et al. “Understanding and Improving Shampoo and SOAP via Kullback–Leibler Minimiza-
+tion”. In: International Conference on Learning Representations (ICLR). 2026. arXiv: 2509.03378
+[stat.ML].
+[37]
+J. Liu et al. BitDelta: Your Fine-Tune May Only Be Worth One Bit. 2024. arXiv: 2402.10193 [cs.LG].
+[38]
+J. Liu et al. “Muon is scalable for llm training”. In: arXiv preprint arXiv:2502.16982 (2025).
+[39]
+J. R. Magnus and H. Neudecker. Matrix Differential Calculus with Applications in Statistics and
+Econometrics. third. John Wiley & Sons, 2019.
+[40]
+J. Martens and R. Grosse. Optimizing Neural Networks with Kronecker-factored Approximate Curvature.
+2015. arXiv: 1503.05671 [cs.LG].
+[41]
+OLMo Team. 2 OLMo 2 Furious. 2025. arXiv: 2501.00656 [cs.CL].
+[42]
+T. Parshakova et al. “Muon Does Not Converge on Convex Lipschitz Functions”. In: arXiv preprint
+arXiv:2605.08980 (2026).
+[43]
+T. Pethick et al. “Training Deep Learning Models with Norm-Constrained LMOs”. In: Proceedings of
+the 42nd International Conference on Machine Learning. Ed. by A. Singh et al. Vol. 267. Proceedings of
+Machine Learning Research. PMLR, 2025, pp. 49069–49104.
+13
+
+[44]
+S. Qiu et al. Hyperparameter Transfer Enables Consistent Gains of Matrix-Preconditioned Optimizers
+Across Scales. 2025. arXiv: 2512.05620 [cs.LG].
+[45]
+S. Raschka. Practical Tips for Finetuning LLMs Using LoRA (Low-Rank Adaptation). https : / /
+magazine.sebastianraschka.com/p/practical-tips-for-finetuning-llms. Ahead of
+AI. 2023.
+[46]
+J. Schulman and T. M. Lab. “LoRA Without Regret”. In: Thinking Machines Lab: Connectionism (2025).
+https://thinkingmachines.ai/blog/lora/.
+[47]
+J. Schulman et al. LoRA Without Regret. Thinking Machines Lab, Connectionism blog. 2025.
+[48]
+A. Semenov, M. Pagliardini, and M. Jaggi. Benchmarking Optimizers for Large Language Model
+Pretraining. 2025. arXiv: 2509.01440 [cs.LG].
+[49]
+N. Shazeer and M. Stern. Adafactor: Adaptive Learning Rates with Sublinear Memory Cost. 2018. arXiv:
+1804.04235 [cs.LG].
+[50]
+H.-J. M. Shi et al. “A Distributed Data-Parallel PyTorch Implementation of the Distributed Shampoo
+Optimizer for Training Neural Networks at-Scale”. In: arXiv preprint arXiv:2309.06497 (2023).
+[51]
+S. Singh, F. Vargus, D. Dsouza, et al. Aya Dataset: An Open-Access Collection for Multilingual Instruction
+Tuning. 2024. arXiv: 2402.06619 [cs.CL].
+[52]
+S. Toshniwal et al. OpenMathInstruct-2: Accelerating AI for Math with Massive Open-Source Instruction
+Data. 2024. arXiv: 2410.01560 [cs.CL].
+[53]
+N. Vyas et al. SOAP: Improving and Stabilizing Shampoo using Adam. 2024. arXiv: 2409.11321
+[cs.LG].
+[54]
+K. Wen et al. Fantastic Pretraining Optimizers and Where to Find Them. 2025. arXiv: 2509.02046
+[cs.LG].
+[55]
+A. Yang et al. Qwen2.5 Technical Report. 2024. arXiv: 2412.15115 [cs.CL].
+[56]
+G. Yang, J. B. Simon, and J. Bernstein. A Spectral Condition for Feature Learning. 2023. arXiv: 2310.
+17813 [cs.LG].
+[57]
+J.-N. Yen et al. “LoRA Done RITE: Robust Invariant Transformation Equilibration for LoRA Op-
+timization”. In: International Conference on Learning Representations. 2025. arXiv: 2410 . 20625
+[cs.LG].
+[58]
+J. Zhang et al. Gram Newton–Schulz: A Fast, Hardware-Aware Newton–Schulz Algorithm for Muon.
+https://tridao.me/blog/2026/gram-newton-schulz/. 2026.
+[59]
+Y. Zhang et al. Mousse: Rectifying the Geometry of Muon with Curvature-Aware Preconditioning. 2026.
+arXiv: 2603.09697 [cs.LG].
+14
+
+Appendix Contents
+A Experimental Details
+16
+B
+Proofs
+17
+C Momentum-Free Reductions to Product Muon
+19
+D Estimating the Preconditioners
+21
+E
+Implementation Details
+23
+E.1
+Spectral-Norm Estimation
+. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+23
+E.2
+Matrix Sign and Inverse Square Root via Gram Newton–Schulz
+. . . . . . . . . . . . . . .
+23
+F
+FLOP Overhead per Optimizer Step
+25
+G Factor Self-Balancing
+26
+H Additional Learning Curves
+27
+15
+
+A
+Experimental Details
+This section gives the full configuration behind Section 3.1. Within each setting (a model, a dataset, and a
+rank), the optimizer and its learning rate are the only things we vary; everything in Table 3 is held fixed.
+For each optimizer we sweep the learning rate and report the run with the lowest held-out loss.
+Models.
+Four pretrained base models, each adapted with LoRA: OLMo-2-1B [41], Llama-3.2-1B [17],
+Qwen2.5-1.5B [55], and Llama-3-8B [17].
+Datasets.
+Three instruction-tuning datasets: code (OpenCoder [23]), math (OpenMathInstruct-2 [52]),
+and Bengali (Aya [51]).
+Data preparation.
+• Each dataset is tokenized once per base model, using that model’s own tokenizer.
+• We hold out 1% of each dataset for evaluation, and use this split for both learning-rate selection and all
+reported losses.
+• Training sequences are packed into fixed 2048-token blocks, and evaluation sequences are padded to
+2048 tokens.
+• Loss is computed on response tokens only; prompt and padding tokens are masked.
+Fixed training configuration.
+Table 3 lists the settings held fixed across all runs. We adapt all linear
+layers except lm_head to isolate the efficacy of the optimizer. Prior work, however, suggests that adapting
+only a subset of modules recovers most of the performance [21, 47].
+setting
+value
+sequence length
+2048
+batch size
+16
+training steps
+9000
+LoRA rank r
+256 (varied in Section 3.4)
+LoRA α
+r
+LoRA dropout
+0
+LoRA B init
+zeros
+LoRA-adapted layers
+all linear except the output (lm_head)
+precision
+bf16
+max gradient norm
+1.0 (disabled for LoRA-RITE)
+LR schedule
+constant
+Table 3: Training configuration, held fixed across optimizers and settings except where noted.
+Optimizer settings.
+The learning-rate grid is spaced by factors of three, wide enough to bracket each
+optimizer’s optimal learning rate. All other optimizer hyperparameters are fixed. Table 4 lists them for the
+baseline methods, and PoLoRA uses:
+• momentum decay β1 = 0.9 and curvature decay β2 = 0.99,
+• 8 Gram Newton–Schulz iterations (Appendix E.2),
+• 8 power iterations per spectral-norm estimate (Appendix E.1),
+16
+
+• relative damping δ = 10−4 (Appendix E),
+• numerical-stability constant ε = 10−12 (Appendix E).
+Adam
+Muon
+iMuon
+LoRA-RITE
+β1
+0.9
+0.9
+0.95
+0.9
+β2
+0.999
+—
+—
+0.999
+ε
+10−8
+—
+—
+10−6
+Newton–Schulz iterations
+—
+8
+5
+—
+Table 4: Baseline hyperparameters. β1 is the momentum decay, β2 the second-moment decay, and ε the numerical-
+stability constant.
+Baseline implementations.
+We run iMuon and LoRA-RITE through the authors’ official implementa-
+tions, with the hyperparameters in Table 4. LoRA-RITE is invariant to reparameterizations of the LoRA
+factors [57, Def. 1]. A global gradient-norm clip would break this invariance, so we run LoRA-RITE without
+it.
+Hardware.
+Each run uses a single GPU. Wall-clock numbers (Section 3.2) are measured on an NVIDIA
+RTX PRO 6000 (Blackwell) with torch.compile enabled. Reproducing all our experiments takes about
+850 GPU-hours.
+B
+Proofs
+We first collect the gradient properties used to motivate the outergradient set (10).
+Lemma 1 (Properties of gradients). Let gi = vec(Gi) ∈Rdoutdin for i = 1, . . . , n. Let Σ := 1
+n
+Pn
+i=1 gig⊤
+i
+and let Σ† denote its Moore-Penrose pseudoinverse. The gradients satisfy the following properties:
+1. Leverage bound: ⟨Σ†gi, gi⟩≤n,
+2. Rank one: Gi = bix⊤
+i for some xi ∈Rdin and bi ∈Rdout.
+Proof of Lemma 1. For the Leverage bound, let gi = vec(Gi) and M = [g1, . . . , gn], so gi = Mei for
+every i = 1, . . . , n. Then
+⟨Σ†gi, gi⟩= ng⊤
+i (MM⊤)†gi = ne⊤
+i M⊤(MM⊤)†Mei ≤n,
+since M⊤(MM⊤)†M is the orthogonal projector onto the range of M⊤.
+The Rank one property is the chain rule: W encodes a linear layer xi 7→Wxi, so
+∇ℓxi(Wxi) = d
+dz ℓxi(z)
+
+z=Wxi
+x⊤
+i = bix⊤
+i ,
+where bi =
+d
+dzℓxi(z)
+
+z=Wxi is the output-side gradient.
+We verify that the per-sample LMO (8) is well-posed.
+Proposition 1 (Well-posedness of the per-sample LMO). Let τ ≥0, let G1, . . . , Gn be the per-sample
+gradients in (8), and let G = 1
+n
+Pn
+i=1 Gi. Then the per-sample LMO (8) attains a finite minimum.
+17
+
+Proof. The feasible set is a nonempty polyhedron, since it contains ∆W = 0. For every feasible ∆W,
+|⟨G, ∆W⟩| ≤1
+n
+n
+X
+i=1
+|⟨Gi, ∆W⟩| ≤τ,
+so the objective ⟨G, ∆W⟩is bounded below by −τ. A linear function bounded below on a nonempty
+polyhedron attains its minimum [4], which gives the claim. The minimizer need not be unique, since the
+objective is constant along span{G1, . . . , Gn}⊥.
+Next we solve the spectral-norm LMO whose solution is the Muon update direction (Section 2.1).
+Lemma 2 (Spectral norm LMO). Let G ∈Rm×n and η > 0, and write ∥G∥nuc = P
+i σi(G) for the nuclear
+norm, the sum of the singular values. Then
+min
+∥X∥2≤η⟨G, X⟩= −η∥G∥nuc,
+and X⋆= −η msign(G) is the unique minimizer of least Frobenius norm.
+Proof of Lemma 2. We lower-bound the objective by norm duality and exhibit a feasible point that attains
+it. By duality of the spectral and nuclear norms, every feasible X satisfies
+⟨G, X⟩≥−∥G∥nuc∥X∥2 ≥−η∥G∥nuc.
+Let G = UΣV ⊤be a reduced singular value decomposition, so Σ = diag(σi(G)). The choice
+X = −ηUV ⊤= −η msign(G)
+is feasible and satisfies
+⟨G, X⟩= −η Tr(Σ) = −η∥G∥nuc,
+so it attains the lower bound and is therefore optimal. The minimum-norm statement follows from Lemma
+C.2 [42].
+Using those properties, we evaluate the outergradient support function under a Kronecker-factored
+metric, turning the per-sample loss constraint (Section 2.3) into a preconditioned spectral norm.
+Lemma 3 (Outergradient set under a Kronecker factorization). Let P ∈Rdout×dout and Q ∈Rdin×din be
+symmetric positive definite, and let Σ = Q ⊗P. Recall the outergradient set (10),
+G(Σ) =
+
+bx⊤ b ∈Rdout, x ∈Rdin, ⟨Σ† vec(bx⊤), vec(bx⊤)⟩≤n
+	
+.
+Then for every ∆W ∈Rdout×din,
+max
+eG∈G(Σ)
+⟨eG, ∆W⟩= √n∥P 1/2∆WQ1/2∥2.
+Proof of Lemma 3. We evaluate the support function by a change of variables that turns the constraint
+into a product of Euclidean balls. Since P and Q are positive definite, Σ† = Σ−1 = Q−1 ⊗P −1. For
+bx⊤∈G(Σ), column-major vectorization gives vec(bx⊤) = x ⊗b, so
+⟨Σ† vec(bx⊤), vec(bx⊤)⟩= (x ⊗b)⊤(Q−1 ⊗P −1)(x ⊗b) = (x⊤Q−1x)(b⊤P −1b).
+Writing b = P 1/2u and x = Q1/2v, the constraint becomes ∥u∥2
+2∥v∥2
+2 ≤n and the objective becomes
+⟨bx⊤, ∆W⟩= b⊤∆Wx = u⊤P 1/2∆WQ1/2v.
+Maximizing over the balls gives the spectral norm,
+max
+eG∈G(Σ)
+⟨eG, ∆W⟩=
+max
+∥u∥2∥v∥2≤√n u⊤P 1/2∆WQ1/2v = √n ∥P 1/2∆WQ1/2∥2.
+18
+
+We then solve that preconditioned spectral-norm LMO, which sets the PoLoRA direction.
+Lemma 4 (Preconditioned spectral-norm LMO). Let L and R be symmetric positive definite. For a matrix
+M and τ > 0,
+X⋆= −τL−1 msign
+ L−1MR−1
+R−1
+(23)
+is a solution of
+minimize
+∥LXR∥2≤τ
+⟨M, X⟩.
+Moreover, X⋆is the unique minimizer of ∥LXR∥F over the solution set.
+Proof of Lemma 4. We change variables to reduce the preconditioned LMO to the plain spectral-norm LMO
+of Lemma 2. Set Y = LXR, so X = L−1Y R−1; the constraint becomes ∥Y ∥2 ≤τ and the objective
+becomes
+⟨M, X⟩= ⟨L−1MR−1, Y ⟩.
+By Lemma 2 with budget τ, the unique least Frobenius-norm minimizer is
+Y = −τ msign(L−1MR−1).
+Substituting X = L−1Y R−1 gives the stated solution.
+Remark 1 (Second-order term in the merged update). The magnitude rule bounds the linearized merged
+update; here we check that restoring the second-order term dropped in that linearization leaves the bound
+essentially unchanged. Writing s = ∥A∥2 +∥B∥2, the rule (21) sets ρ = η/s to bound the linearized update
+B∆A + ∆BA of (3). The actual update also contains the quadratic term ∆B∆A dropped there,
+∆W = B∆A + ∆BA + ∆B∆A.
+With ∥∆A∥2 = ∥∆B∥2 = ρ, the triangle inequality and submultiplicativity give
+∥∆W∥2 ≤ρs + ρ2 = η
+
+1 + η
+s2
+
+,
+so the actual update exceeds the target η by at most the relative amount η/s2. At the standard initialization
+B = 0 with A having independent entries of variance Θ(1/din), we have s = ∥A∥2 = Θ(1), so the
+overshoot is O(η) and shrinks as the factors grow.
+C
+Momentum-Free Reductions to Product Muon
+In this appendix we show that the LMO updates of LoRA-RITE [57], LoRA-Muon [10], and Compositional
+Muon’s half-split rule [30] all reduce to Product Muon (4) once their moment accumulation is removed,
+as does the intrinsic spectral LMO that Corollary 4.1 of [34] states for iMuon. The officially implemented
+iMuon optimizer, however, differs (see (27)).
+Setup.
+As in Section 2, let G = ∇W L(W)
+
+W=W0+BA be the gradient with respect to the weight matrix,
+GA = B⊤G and GB = GA⊤be the factor gradients, and SA = AA⊤and SB = B⊤B be the r × r factor
+Gram matrices. The two factorwise LMOs in Product Muon (4) with budget τ are
+∆A ∈arg min
+∆A
+⟨GA, ∆A⟩
+subject to
+∥B∆A∥2 ≤τ
+∆B ∈arg min
+∆B
+⟨GB, ∆B⟩
+subject to
+∥∆BA∥2 ≤τ.
+(24)
+We will use the fact that for any matrix M with full column rank and reduced SVD M = UΣV ⊤, the
+matrix sign equals
+M(M⊤M)−1/2 = UV ⊤= msign(M).
+(25)
+19
+
+LoRA-RITE.
+Algorithm 1 of LoRA-RITE [57] adds three pieces of memory to a base step. These are an
+EMA first moment with parameter β1, an accumulated second moment transported across the changing
+factor basis, and an “escaped-mass” floor added to that second moment. Dropping all three, we get the
+authors’ momentum-free update (their Eq. (14)). In our notation, with bGB := GBS−1/2
+A
+, it becomes
+∆B = −η bGB( bG⊤
+B bGB)−1/2S−1/2
+A
+.
+With no accumulation, by (25) the middle factor is the matrix sign, so
+∆B = −η msign( bGB)S−1/2
+A
+= −η msign
+ GBS−1/2
+A
+
+S−1/2
+A
+,
+which is the B-update solving the Product Muon LMO (24) with budget τ = η. Analogous arguments hold
+for the A-update.
+iMuon, momentum-free.
+iMuon relies on a choice of ambient matrix H ∈Rdout×din. The intrinsic
+spectral LMO of Corollary 4.1 maps this ambient matrix to the factor updates as follows
+∆B(H) = msign
+ HA⊤S−1/2
+A
+
+S−1/2
+A
+,
+∆A(H) = S−1/2
+B
+msign
+ S−1/2
+B
+B⊤H
+
+.
+(26)
+For the base Algorithm 1 in [34], the ambient matrix is the raw gradient G, so (26) again gives the Product
+Muon update directions of (6). Our experiments benchmark the official iMuon implementation from
+Appendix K of [34], which differs from this momentum-free decoupled update, as we show next.
+iMuon, with momentum.
+The official implementation (their Appendix K) does not pass the raw gradient
+to the intrinsic LMO (26). It maintains momentum buffers mA and mB with parameter β, forms the look-
+aheads eGA = GA + βmA and eGB = GB + βmB, and uses as input the combined ambient matrix
+c
+M = eGBA + B eGA.
+Turning momentum off (β = 0) removes the buffers but not the recombination:
+c
+M = GBA + BGA = G A⊤A + BB⊤G ̸= G.
+Plugging this c
+M into (26) and using GAA⊤= B⊤GB gives
+c
+MA⊤= GBSA + (BB⊤)GB
+=⇒
+∆B(c
+M) = msign
+ GBS1/2
+A
++ (BB⊤)GBS−1/2
+A
+
+S−1/2
+A
+,
+(27)
+which differs from the Product Muon update (6). The argument for ∆A is symmetric. Thus Product Muon
+is the momentum-free limit of the iMuon theory (Corollary 4.1), but not of the implemented optimizer.
+LoRA-Muon.
+The momentum-free LMOs of the concurrent LoRA-Muon paper [10] (its Eqs. (7) and (8))
+are precisely the decoupled factorwise LMOs (4). LoRA-Muon further shows that the resulting update is
+equivalent to the simplified QR-coordinate form of LoRA-RITE.
+Compositional Muon.
+Compositional Muon [30] derives product-aware spectral updates for the at-
+tention products WQW ⊤
+K and WOWV . For the QK product, its half-split rule imposes the two constraints
+∥∆WQW ⊤
+K∥2 ≤ϵ/2 and ∥WQ∆W ⊤
+K∥2 ≤ϵ/2 separately, and the resulting LMOs are solved by
+∆WQ = −ϵ
+2 msign
+ GQC−1
+K
+
+C−1
+K ,
+CK = (W ⊤
+KWK)1/2,
+where GQ is the gradient with respect to WQ, and symmetrically for WK. Setting WQ = B and WK = A⊤
+gives CK = (AA⊤)1/2 and GQ = GB, and the pair of updates becomes the Product Muon step (6) with
+η = ϵ.
+20
+
+D
+Estimating the Preconditioners
+In Section 2.3 we treated the preconditioners P and Q as given when writing the update (14). Here we
+describe how we compute them using online updates from the factor gradients and a normalization that
+makes these updates invariant to the rescaling (P, Q) 7→(aP, a−1Q), arriving at the p, q updates (32) of
+Algorithm 1.
+Notation.
+Consider a given linear layer. Let t denote the current optimizer step. Whenever it is clear from
+context, we suppress the subscript t. For each step s ≤t, let As, Bs be the LoRA factors and Gs ∈Rdout×din
+the gradient of the batch loss with respect to the weight matrix Ws = W0 + BsAs. Write
+GA,s = B⊤
+s Gs ∈Rr×din,
+GB,s = GsA⊤
+s ∈Rdout×r
+for the factor gradients (5). We use two standard properties of the Kronecker product [39]: the mixed-
+product rule (U ⊗V )(W ⊗Z) = UW ⊗V Z, and vec(X⊤) = K vec(X), where the commutation matrix
+K is a permutation matrix satisfying K(U ⊗V )K⊤= V ⊗U for square U and V .
+EMA averaging.
+For any sequence xs, write the EMA of the sequence up to step t as
+EMAβ
+s≤t[xs] := (1 −β)
+X
+s≤t
+βt−sxs,
+with decay factor β. Just as we replace the factor gradients GA and GB in the objective of Section 2.3 with
+averaged versions c
+MA and c
+MB (line 1 of Algorithm 1), we replace the sample-gradient second-moment
+matrix Σ (Lemma 1) with the EMA of the outer products of the vectorized full gradients,
+Σt := EMAβ2
+s≤t[vec(Gs) vec(Gs)⊤],
+with β2 the curvature decay of Algorithm 1.
+Factor-gradient moments.
+As in Section 2.3, to make the update tractable we approximate Σt ≈
+Qt ⊗Pt (11) with diagonal matrices Pt and Qt. Backpropagation gives efficient access only to the factor
+gradients, so we work with their averaged second moments,
+ΣA,t := EMAβ2
+s≤t
+
+vec(GA,s) vec(GA,s)⊤
+,
+ΣB,t := EMAβ2
+s≤t
+
+vec(G⊤
+B,s) vec(G⊤
+B,s)⊤
+.
+(28)
+Suppose the Kronecker approximation is exact, that is Σt = Q ⊗P.
+Using that GA,s = B⊤
+s Gs and G⊤
+B,s = AsG⊤
+s , it follows by vectorizing that
+vec(GA,s) = (I ⊗B⊤
+s ) vec(Gs),
+vec(G⊤
+B,s) = (I ⊗As) vec(G⊤
+s ) = (I ⊗As) K vec(Gs).
+We now make an approximation by replacing As and Bs with their current values At and Bt in the above,
+that is we will use
+vec(GA,s) ≈(I ⊗B⊤
+t ) vec(Gs),
+vec(G⊤
+B,s) ≈(I ⊗At) K vec(Gs).
+With this approximation, and using the above in (28) gives
+ΣA,t = (I ⊗B⊤
+t )(Q ⊗P)(I ⊗Bt) = Q ⊗CBt(P),
+ΣB,t = (I ⊗At) K(Q ⊗P)K⊤(I ⊗A⊤
+t ) = (I ⊗At)(P ⊗Q)(I ⊗A⊤
+t ) = P ⊗CAt(Q),
+(29)
+where CBt(P) := B⊤
+t PBt and CAt(Q) := AtQA⊤
+t .
+21
+
+Fitting the preconditioners.
+Fitting the observed moments to the predictions of the Kronecker model
+in (29) requires a measure of discrepancy. Following KL-Shampoo [36], we use the log-determinant
+divergence [32], which up to terms not involving S is
+D(Σ, S) = Tr(ΣS−1) + log det S.
+We fit each preconditioner with the other held fixed:
+ˆq(P) := arg min
+q>0
+D
+ ΣA,t, diag(q) ⊗CBt(P)
+
+,
+ˆp(Q) := arg min
+p>0
+D
+ ΣB,t, diag(p) ⊗CAt(Q)
+
+. (30)
+A self-consistent pair (p∗, q∗) satisfies q∗= ˆq(diag(p∗)) and p∗= ˆp(diag(q∗)). With P fixed, the first
+objective in (30) separates over the coordinates of q. Minimizing each coordinate yields a closed-form
+solution for ˆq(P), and likewise for ˆp(Q):
+ˆq(P) = 1
+r diag
+
+EMAβ2
+s≤t
+
+G⊤
+A,sCBt(P)−1GA,s
+
+,
+ˆp(Q) = 1
+r diag
+
+EMAβ2
+s≤t
+
+GB,sCAt(Q)−1G⊤
+B,s
+
+.
+(31)
+Each minimizer depends on the other preconditioner through CBt(P) or CAt(Q).
+Online update.
+Re-evaluating the minimizers in (31) at each step would require storing every past factor
+gradient, since CBt(P) and CAt(Q) change as P and Q are updated. PoLoRA instead evaluates each factor
+gradient once, at its own step, and accumulates the results in the vectors pt and qt:
+ˆqt(Pt) = 1
+r diag
+ G⊤
+A,tCBt(Pt)−1GA,t
+
+,
+ˆpt(Qt) = 1
+r diag
+ GB,tCAt(Qt)−1G⊤
+B,t
+
+,
+qt+1 = β2qt + (1 −β2)ˆqt(Pt),
+pt+1 = β2pt + (1 −β2)ˆpt(Qt),
+Qt+1 = diag
+ qt+1/∥qt+1∥∞
+
+,
+Pt+1 = diag
+ pt+1/∥pt+1∥∞
+
+.
+(32)
+Up to the exponentially decayed initialization βt+1
+2
+q0, unrolling the qt+1 update in (32) gives the minimizer
+ˆq(P) of (31) with the step-s matrix CBs(Ps) in place of a fixed CBt(P), and likewise for pt+1. In Algorithm 1,
+the preconditioner updates (lines 7 and 8) reuse the matrices CBt and CAt already computed for the direction
+step (line 2), so each step inverts CBt and CAt once rather than twice.
+Normalization.
+The pair (P, Q) enters the approximation of Σt only through the product Q ⊗P, and
+(a−1Q) ⊗(aP) = Q ⊗P
+for every a > 0,
+so we want the optimizer to behave identically at (P, Q) and (aP, a−1Q). The update direction is the same
+at both, but
+ˆqt(aPt) = a−1ˆqt(Pt),
+ˆpt(a−1Qt) = a ˆpt(Qt),
+so we normalize qt+1, pt+1 in (32) to make the p, q updates invariant as well.
+22
+
+E
+Implementation Details
+This section details how Algorithm 1 initializes its state and implements its numerical subroutines.
+Initialization.
+The EMA vectors start at p = q = ε1, which the normalization in line 2 maps to the
+identity metric at the first step. Since B = 0 at initialization, GA, c
+MA, and CB all vanish, so DA = 0
+and A stays fixed (line 6) until B first becomes nonzero. The B factor updates from the first step, with
+CA = AQA⊤= AA⊤, so its first update coincides in direction with the Product Muon step (6).
+Relative damping.
+Each inverse in Algorithm 1 is damped so that directions of nearly zero curvature do
+not blow up. For a positive semidefinite matrix C (CA or CB in (17)) we damp relative to the top eigenvalue,
+bC = C + max
+ δλmax(C), ε
+
+I,
+which caps the condition number of bC at (1 + δ)/δ ≈1/δ. We apply the same relative damping to the
+diagonal preconditioners P and Q. Since the normalization in line 2 sets their largest entry to one, the
+damped matrices are simply P + δI and Q + δI.
+E.1
+Spectral-Norm Estimation
+Algorithm 1 requires repeated estimates of spectral norms. We estimate each ∥M∥2 by warm-started power
+iteration on the smaller of the two Gram matrices MM⊤and M⊤M (Algorithm 2), caching the leading
+vector across optimizer steps so it starts near the top singular vector. A cold or stale start can underestimate
+∥M∥2, and since the optimizer divides by this estimate, that would risk destabilizing training. We therefore
+return the larger of the power-iteration value and the maximum row norm of M, which does not depend
+on the cached start vector. We use Kpow = 8 iterations.
+Algorithm 2 Guarded spectral-norm estimate of ∥M∥2
+Input: M ∈Rm×n, m ≤n (else M⊤); cached v ∈Rm; iterations Kpow
+1: l ←maxi ∥Mi,:∥2
+2: if v is invalid then
+▷absent, zero, or nonfinite
+3:
+v ←M1
+4: end if
+5: for k = 1, . . . , Kpow do
+▷iterate the smaller Gram MM⊤
+6:
+w ←M⊤v;
+v ←Mw/∥Mw∥2
+7: end for
+8: return max
+
+∥M⊤v∥2, l
+	
+E.2
+Matrix Sign and Inverse Square Root via Gram Newton–Schulz
+Beyond the spectral norm, Algorithm 1 needs the matrix sign msign(·) and the inverse square root of the
+r × r curvature matrix. Both reduce to an inverse square root of a small positive semidefinite matrix: the
+sign is msign(X) = (XX⊤)−1/2X (for a full row rank matrix X; for a tall X, apply to X⊤and transpose
+the result), and the curvature term is C−1/2 directly. We compute that inverse square root by the Gram
+Newton–Schulz iteration [58] (Algorithm 3), which uses only r × r matrix multiplications and needs no
+eigendecomposition or SVD.
+23
+
+Quintic Newton–Schulz.
+Each iteration applies an odd degree-five polynomial
+pt(s) = ats + bts3 + cts5.
+(33)
+The coefficients (at, bt, ct) are the PolarExpress coefficients [1]. They are fit so that the composition of the
+K maps pt drives every singular value in [10−3, 1] toward 1. We compute them once and reuse them for
+every optimizer step.
+Gram iteration.
+Rather than iterating on the rectangular matrix, we iterate on its r ×r Gram matrix [58].
+Let Rt = YtY ⊤
+t
+∈Rr×r be the Gram matrix of the rectangular iterate Yt. For t = 1, . . . , K the rectangular
+update and its Gram matrix evolve together in closed form,
+Mt = atI + btRt−1 + ctR2
+t−1,
+Yt = MtYt−1,
+Rt = YtY ⊤
+t
+= MtRt−1Mt,
+so the whole iteration runs on Rt alone. Because Mt is a polynomial in Rt−1, it shares the singular vectors
+of Yt−1 and moves only its singular values; since the coefficients (33) drive the normalized singular values
+to 1, we have YK ≈msign(Y0). The Gram update thus implements the same quintic Newton–Schulz map
+on the singular values, at the cost of only r × r matrix multiplications.
+Shared accumulator.
+The method also maintains an accumulator Zt collecting the product of the maps
+Mt: starting from Z0 = I, each step sets Zt = MtZt−1, so by induction
+Yt = ZtY0,
+Rt = ZtR0Z⊤
+t .
+Since R0 ≻0, msign(Y0) has orthonormal rows, so RK = YKY ⊤
+K ≈I. Each Mt is a polynomial in Rt−1
+and hence in R0, so ZK is symmetric and commutes with R0; then RK = Z2
+KR0 ≈I gives ZK ≈R−1/2
+0
+.
+Algorithm 3 initializes R0 = S/γ, so the returned accumulator Z = ZK satisfies
+Z ≈(S/γ)−1/2 = √γ S−1/2.
+This gives both quantities Algorithm 1 needs:
+• Matrix sign. Call Algorithm 3 with S = XX⊤and γ = ∥X∥2
+F , giving
+msign(X) = (XX⊤)−1/2X ≈ZX/√γ.
+• Inverse square root. Call Algorithm 3 with the damped curvature S = bC (Appendix E) and γ = Tr( bC),
+giving
+bC−1/2 ≈Z/√γ.
+Stability and precision.
+We run the Gram Newton–Schulz iteration in fp32, which is inexpensive
+because every matrix is only r × r. We use K = 8 iterations.
+24
+
+Algorithm 3 Gram Newton–Schulz iteration
+Input: positive definite S ∈Rr×r; γ ≥λmax(S); coefficients {(at, bt, ct)}K
+t=1
+1: R ←S/γ;
+Z ←I
+▷normalize so λmax(R) ≤1
+2: for t = 1, . . . , K do
+3:
+M ←atI + btR + ctR2
+4:
+Z ←MZ;
+R ←MRM
+5: end for
+6: return Z ≈(S/γ)−1/2
+F
+FLOP Overhead per Optimizer Step
+To measure the theoretical overhead of each optimizer step, we count leading-order matrix-multiplication
+FLOPs, with one multiply-add counted as two FLOPs. The count below is for one adapted linear layer with
+frozen base weight W and rank-r LoRA factors A, B,
+W ∈Rdout×din,
+B ∈Rdout×r,
+A ∈Rr×din,
+with r ≪din, dout. Throughout, K denotes the number of Newton–Schulz iterations, and ntok denotes the
+number of tokens processed per optimization step.
+Forward and backward.
+For a linear layer Y = XW ⊤, the forward pass costs 2dindoutntok FLOPs. In
+full finetuning, given the backward gradient GY = ∇Y L, the backward pass computes both the input and
+the weight gradient,
+∇XL = GY W,
+∇W L = G⊤
+Y X,
+and costs twice the forward. LoRA freezes the base weight W and does not form ∇W L, so its backward
+through W is a single forward-equivalent matmul:
+Cbase
+fwd = Cbase
+bwd = 2dindoutntok.
+(34)
+The frozen base weights thus contribute 4Nntok FLOPs per step, where N is the total number of frozen
+adapted-layer parameters, versus the usual 6Nntok for full finetuning [28]. The LoRA factors add r(din +
+dout) trainable parameters per layer and FLOPs of order ntokr(din + dout), which we omit from the count,
+making the overhead fraction below an overestimate.
+Optimizer.
+The PoLoRA update (Algorithm 1) runs once per step and does not depend on ntok. We count
+the operations that scale with din or dout: forming
+CB = B⊤PB,
+CA = AQA⊤,
+the preconditioned sign inputs, the small-side Gram matrices for the two matrix signs, applying the accu-
+mulated Gram maps to recover the signs, post-preconditioning the signs, and computing the preconditioner
+updates
+diag(G⊤
+AC−1
+B GA),
+diag(GBC−1
+A G⊤
+B).
+With diagonal P, Q, these operations contribute 12r2(din + dout) leading FLOPs.
+The Newton–Schulz iterations themselves run in the small r×r Gram space. One Gram Newton–Schulz
+iteration costs 8r3 FLOPs in the notation of Appendix E.2: 2r3 to form R2, 2r3 for Z ←MZ, and 4r3 for
+R ←MRM. Each layer uses four calls of K iterations each (two matrix signs, two curvature inverse
+25
+
+square roots), so the total small-matrix work is 32Kr3. Ignoring lower-order elementwise operations,
+diagonal scalings, and spectral-norm power iterations, the leading optimizer cost is
+Copt = 12r2(din + dout) + 32Kr3.
+(35)
+Overhead fraction.
+Dividing (35) by (34) gives the per-layer optimizer FLOP overhead
+Copt
+Cbase
+fwd + Cbase
+bwd
+= 12r2(din + dout) + 32Kr3
+4dindoutntok
+= 3r2
+ntok
+ 1
+din
++
+1
+dout
+
++
+8Kr3
+dindoutntok
+.
+(36)
+For fixed model dimensions, rank, and Newton–Schulz iteration count, the optimizer FLOP fraction decays
+as 1/ntok. The first term is governed by the smaller of the two layer dimensions. The ratio of the second
+term to the first is 8Kr/(3(din + dout)), so the Newton–Schulz term matters most on the square attention
+matrices and least on the wide feed-forward matrices. The whole-model overhead averages these fractions
+with weights proportional to layer size, so it is set mainly by the large feed-forward matrices, which have
+the smallest fraction.
+Benefits of Gram Newton–Schulz.
+The 32Kr3 cost of the Gram Newton–Schulz iteration is the only
+term that depends on K. The iteration is used to compute the matrix sign and the curvature inverse square
+roots on the small r × r Gram matrix rather than on the tall d × r factor (Appendix E.2), saving a factor
+of about d/(2r) per iteration. Iterating on the factor instead would make the optimizer step roughly 2×
+costlier, increasing its share of the wall-clock time.
+G
+Factor Self-Balancing
+The update size ρ = η/(∥A∥2 + ∥B∥2) (21) depends on the factorization of the merged product BA. A
+rescaling (A, B) 7→(cA, c−1B) with c > 0 preserves BA, and hence the layer’s output, while changing
+the denominator to
+c∥A∥2 + c−1∥B∥2 ≥2
+p
+∥A∥2∥B∥2.
+Equality holds when the two rescaled norms are equal, so an imbalanced factorization of the same product
+takes smaller steps. LoRA-Muon raises this concern for Spectron-style update sizes [10], but in our runs the
+factors stay near balance. Starting from B = 0, the ratio ∥B∥2/∥A∥2 climbs and settles near 1 across ranks
+(Figure 5).
+0
+2000
+4000
+6000
+8000
+Training Step
+0.5
+0.6
+0.7
+0.8
+0.9
+1.0
+‖B‖2 /‖A‖2
+Rank
+r=32
+r=64
+r=128
+r=256
+Figure 5: Factor norm self-balancing in PoLoRA. Spectral-norm ratio ∥B∥2/∥A∥2 over training steps for Llama-
+3.2-1B finetuned on the math dataset at each rank. The ratio settles near 1.
+26
+
+H
+Additional Learning Curves
+Table 1 shows the step and wall-clock speedups over Adam across model families on code and math. Figure 6
+complements this with the evaluation loss over training steps: rows (a) and (b) span the model families on
+code and math, and row (c) the rank sweep. Each panel shows Adam and PoLoRA at their optimal learning
+rates.
+0
+2500
+5000
+7500
+0.75
+0.80
+0.85
+Eval Loss
+OLMo-2-1B
+1.61× fewer steps
+0
+2500
+5000
+7500
+0.68
+0.70
+0.72
+0.74
+0.76
+Llama-3.2-1B
+1.55× fewer steps
+0
+2500
+5000
+7500
+0.56
+0.58
+0.60
+Llama-3-8B
+1.20× fewer steps
+(a) Model families — code (r=256)
+0
+2500
+5000
+7500
+0.375
+0.400
+0.425
+0.450
+0.475
+0.500
+Eval Loss
+OLMo-2-1B
+1.74× fewer steps
+0
+2500
+5000
+7500
+0.29
+0.30
+0.31
+0.32
+Qwen2.5-1.5B
+1.64× fewer steps
+0
+2500
+5000
+7500
+0.28
+0.30
+0.32
+0.34
+0.36
+Llama-3-8B
+1.59× fewer steps
+(b) Model families — math (r=256)
+0
+2500
+5000
+7500
+Training Step
+0.40
+0.45
+0.50
+Eval Loss
+r=32
+1.48× fewer steps
+0
+2500
+5000
+7500
+Training Step
+0.40
+0.45
+0.50
+r=64
+1.54× fewer steps
+0
+2500
+5000
+7500
+Training Step
+0.40
+0.45
+0.50
+r=128
+1.52× fewer steps
+(c) Rank ladder — Llama-3.2-1B, math
+Adam
+PoLoRA
+Figure 6: PoLoRA speedup over Adam across settings. Evaluation loss over training steps, Adam vs PoLoRA
+at each setting’s best learning rate. (a) model families finetuned on code and (b) on math, at rank r = 256; (c) the
+rank sweep on Llama-3.2-1B (math). The dashed span marks the steps PoLoRA saves in reaching Adam’s final loss.
+Settings already drawn as curves in the main text (Figures 1, 2 and 4) are not repeated.
+27

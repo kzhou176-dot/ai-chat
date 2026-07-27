@@ -1,0 +1,20 @@
+{
+  "arxiv_id": "2607.11690",
+  "title": "Requirement-Driven Design of Whole-Body Social Tactile Sensing via Virtual Human-Robot Interaction",
+  "authors": [
+    "Dakarai Crowder",
+    "Ruohan Zhang",
+    "Alexis E. Block",
+    "Wenzhen Yuan"
+  ],
+  "abstract": "Tactile sensing for social-physical human-robot interaction (spHRI) is designed in a hardware-driven manner, where predefined sensor configurations constrain coverage, spatial resolution, and the range of recognizable gestures. We propose a requirement-driven framework that derives sensing requirements, specifically spatial resolution and placement, directly from interaction data. Using a VR-based platform with haptic feedback, we collected high-resolution whole-body contact distributions across multiple social scenarios, from which we identified nine recurring social touch gestures. Eight gestures were selected for controlled data collection with 18 participants, yielding an open-source dataset of 5,520 trials. Analysis of contact distributions and simulated tactile encodings provides quantitative baselines for skin coverage and sensor density on a humanoid robot platform. While demonstrated on a single robot platform, the methodology is designed to be transferable to other robot morphologies, potentially enabling morphology-specific sensing requirements to be derived prior to hardware fabrication.",
+  "published": "2026-07-13T15:23:45Z",
+  "categories": [
+    "cs.RO",
+    "cs.HC"
+  ],
+  "keyword": "virtual_human",
+  "fetched_at": "2026-07-21T04:01:08Z",
+  "abs_url": "https://arxiv.org/abs/2607.11690",
+  "pdf_url": "https://arxiv.org/pdf/2607.11690"
+}

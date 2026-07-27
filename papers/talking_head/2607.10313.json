@@ -1,0 +1,23 @@
+{
+  "arxiv_id": "2607.10313",
+  "title": "Learn2Chat: Rethinking Dyadic Talking Heads via Interaction-Modulated Monologic Priors",
+  "authors": [
+    "Zikai Huang",
+    "Siyue Chen",
+    "Xuemiao Xu",
+    "Haoxin Yang",
+    "Cheng Xu",
+    "Yihong Lin",
+    "Shengfeng He"
+  ],
+  "abstract": "Dyadic conversational motion generation is essential for realistic interactive digital humans. Existing approaches typically model conversational behaviors within unified dyadic generators. However, such holistic formulations tend to couple self-speech-driven motion with partner-responsive social feedback, leaving the interaction-specific component implicit and underutilizing the speech-motion correspondence already learned by pretrained monologic motion models. We propose Learn2Chat, a unified framework that models dyadic motion as interaction modulation over pretrained monologic motion priors. This design separates intrinsic speech-driven motion from social interaction effects and enables more structured interaction modeling. Specifically, we introduce a Monologic-Anchored Motion Factorization scheme that leverages the semantic motion manifold learned from monologic data to disentangle audio-driven motion dynamics from interaction-induced modulation, yielding clean interaction representations from dyadic sequences. On top of this representation space, a Cross-Attentive Interaction Latent Prediction module maps paired speech signals to interaction latents through cross-branch attention and interaction alignment. During inference, the predicted interaction latents modulate canonical monologic motion to generate coherent and synchronized dyadic behaviors in a data-efficient manner. Extensive experiments on the DualTalk benchmark demonstrate that Learn2Chat achieves state-of-the-art performance across both quantitative metrics and perceptual evaluations. Moreover, the framework is model-agnostic and seamlessly integrates with diverse pretrained monologic motion backbones, highlighting the effectiveness of prior reuse and interaction adaptation for scalable conversational motion generation. More visual results are available on the project page.",
+  "published": "2026-07-11T13:38:20Z",
+  "categories": [
+    "cs.GR",
+    "cs.SD"
+  ],
+  "keyword": "talking_head",
+  "fetched_at": "2026-07-21T04:00:31Z",
+  "abs_url": "https://arxiv.org/abs/2607.10313",
+  "pdf_url": "https://arxiv.org/pdf/2607.10313"
+}

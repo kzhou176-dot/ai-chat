@@ -1,0 +1,11 @@
+{
+  "arxiv_id": "2605.05257",
+  "title": "Career-Aware Resume Tailoring via Multi-Source Retrieval-Augmented Generation with Provenance Tracking: A Case Study",
+  "summary": "AI-assisted resume tailoring systems commonly operate on a single uploaded resume, which limits their ability to recover relevant experience omitted from the current draft and makes it difficult for users to distinguish grounded edits from model-generated suggestions. This paper presents Resume Tailor, an agentic resume-tailoring system that maintains a longitudinal career vault in a vector database and uses multi-source retrieval-augmented generation (RAG) to assemble job-specific resume content from historical resumes and structured career records. The system is implemented as a 12-node LangGraph pipeline with typed state management, hybrid semantic-lexical confidence scoring, provenance-aware fallback generation, anti-hallucination guardrails, and a conditional review loop. We report a ",
+  "authors": [
+    "Kumar Abhinav"
+  ],
+  "published": "2026-05-06",
+  "category": "cs.IR",
+  "keyword": "rag_recruitment"
+}

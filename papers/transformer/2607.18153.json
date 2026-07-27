@@ -1,0 +1,20 @@
+{
+  "arxiv_id": "2607.18153",
+  "title": "Robust Multimodal Dynamic Object Segmentation",
+  "authors": [
+    "Zhe Xin",
+    "Hanzhi Chang",
+    "Penghui Huang",
+    "Yinian Mao",
+    "Guoquan Huang"
+  ],
+  "abstract": "Dynamic object segmentation plays a critical role in many visual applications such as static scene reconstruction from dynamic videos. However, existing optical flow-based methods fail to ensure consistent static/dynamic segmentation along object boundaries, while 3D reconstruction-based approaches are highly sensitive to reconstruction errors. To address these limitations, we present a dynamic object segmentation framework that can generate both precise and complete dynamic masks by integrating multimodal cues including 2D point tracks, 3D reconstruction, and semantic information. We design a network combining Transformer architectures with feature clustering aggregation modules to perform static/dynamic classification of multimodal feature trajectories. It enables the model to adaptively determine which type of feature should dominate based on the characteristics of each scene, while also mitigating the impact of feature degradation. Additionally, we introduce a novel point-query-based SAM post-processing method capable of handling multiple objects within a single mask. Extensive experiments demonstrate that our approach achieves state-of-the-art performance in both dynamic object segmentation and static scene reconstruction tasks.",
+  "published": "2026-07-20T16:51:48Z",
+  "categories": [
+    "cs.CV"
+  ],
+  "keyword": "transformer",
+  "fetched_at": "2026-07-21T05:01:03Z",
+  "abs_url": "https://arxiv.org/abs/2607.18153",
+  "pdf_url": "https://arxiv.org/pdf/2607.18153"
+}

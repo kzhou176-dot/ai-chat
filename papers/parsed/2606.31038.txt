@@ -1,0 +1,937 @@
+LLM-Driven Personalities for Decision Making in
+Emergency Simulations
+Stefano Calzolari
+Politecnico di Torino
+stefano.calzolari@polito.it
+Rubens Montanha
+PUCRS
+rubens.montanha@edu.pucrs.br
+Gabriel Schneider
+PUCRS
+gabriel.ferri@edu.pucrs.br
+Gustavo Wide
+PUCRS
+gustavo.fulber@edu.pucrs.br
+Paulo Knob
+PUCRS
+paulo.knob@edu.pucrs.br
+Francesco Strada
+Politecnico di Torino
+francesco.strada@polito.it
+Andrea Bottino
+Politecnico di Torino
+andrea.bottino@polito.it
+Soraia Raupp Musse
+PUCRS
+soraia.musse@pucrs.br
+Abstract
+For virtual humans to appear believable, they
+must exhibit agency and spatial awareness while
+interacting with their environment in ways that
+reflect competence and intelligence.
+At the
+core of these capabilities lies effective decision-
+making, which strongly shapes agent behav-
+ior.
+With the rapid advancement of artificial
+intelligence, Large Language Models (LLMs)
+have increasingly been explored as a mech-
+anism to support such decision-making pro-
+cesses. In this work, we investigate the use of
+LLMs to drive decision-making in virtual hu-
+mans within a simulated evacuation scenario, in-
+corporating OCEAN personality traits into agent
+representations.
+Our goal is to evaluate how
+personality, expressed through language-based
+prompts, influences both individual behaviors
+and collective simulation outcomes. Our results
+demonstrate that LLM-driven personality pro-
+files significantly impact agents’ decisions, lead-
+ing to distinct behavioral patterns across differ-
+ent traits. These findings suggest that heteroge-
+neous crowds composed of LLM-guided agents
+can enhance the realism and variability of sim-
+ulated environments, offering a flexible alterna-
+tive to traditional rule-based approaches.
+Keywords: crowd simulation, virtual agents,
+LLM, personality
+1 Introduction
+Decision-making is an important factor in a
+virtual human’s behavior, as the agent can in-
+teract and demonstrate its skills and intelli-
+gence [1], along with spatial awareness and
+agency [2], which are crucial for its believabil-
+ity.
+Classically, such decisions are made us-
+ing a rule-based approach, be it by following
+a parametrized script or a task sequence, as in
+Pelechano et al.’s work [3].
+The idea behind
+these approaches is to give the virtual agent the
+ability to plan, learn, and adapt a behavior in a
+virtual environment. However, rule-based mod-
+els require a large number of parameters, and
+arXiv:2606.31038v1  [cs.GR]  30 Jun 2026
+
+in simulations, the correct choice of parameters
+to replicate scenarios such as an evacuation re-
+mains an open question.
+Recent works have applied Large Language
+Models (LLMs) to virtual agents’ decision-
+making and animation, with some focusing on
+interactions. In the literature, there are works [4,
+5] that decompose the agent’s goal and decision-
+making, building from a high-level task descrip-
+tion to smaller, low-level tasks and creating a
+plan for the agent’s actions. The use of LLMs
+also includes interaction with Embodied Con-
+versational Agents (ECAs), integrating it with
+the OCEAN [6] personality traits [7, 8]. In addi-
+tion, some models already use Visual Language
+Models (VLMs) integrated with LLMs to deter-
+mine where an agent should focus their vision in
+a pedestrian context [9].
+From this perspective, this work proposes us-
+ing LLMs to support the decision-making of
+virtual humans in an environment, incorporat-
+ing OCEAN personality traits [6] into an emer-
+gency scenario. Based on an agent’s personality
+and personal context, the LLM determines the
+agent’s behavior. In our experiment, we sim-
+ulated the evacuation of an office building, in
+which agents are positioned in different parts of
+the building and must decide how to respond
+upon receiving evacuation alerts. More specif-
+ically, each agent has its own personality, and
+during five different opportunities, each virtual
+agent is warned by a main observer in the scene
+to evacuate the space due to a fire, with each sub-
+sequent warning increasing the level of danger
+detail. Every time the main observer alerts the
+agents to danger, they must individually decide
+among three options: evacuate, stay, or panic. If
+the agent decides to stay, it will be warned again
+after a few seconds. During evacuation, each
+agent can also choose to help panicked agents
+who are unable to move. To systematically eval-
+uate and compare agent behavior in the sim-
+ulated evacuation scenario, we formulated the
+following hypothesis:
+H1. The language-based personality descrip-
+tions affect agents’ decision-making.
+H2. Different agents’ personalities impact the
+simulation outcome.
+2 Related Work
+Virtual agents’ behavior, especially in emer-
+gencies and evacuation scenarios, has been
+widely studied in the literature.
+Zhao et
+al. [10] proposed to investigate virtual agents’
+pre-evacuation decision-making by using Ran-
+dom Forest. The authors wanted to understand
+how to forecast decision-making in emergencies
+more accurately, as well as what factors would
+influence those choices and how that influence
+would manifest. The results of their work indi-
+cate that both social and environmental factors
+are determinants of how agents respond to the
+simulated scenario.
+Advancements in Large Language Models
+have led to their growing adoption across many
+fields. In fact, Yeo et al. [11] argued that Large
+Language Models (LLMs) have demonstrated
+natural language processing capabilities that are
+comparable with humans, even superior in some
+cases. Even so, LLMs’ social-cognitive reason-
+ing is not as good as ours yet, which drives their
+work: to investigate how inducing personali-
+ties (using the OCEAN and Dark Triad frame-
+works) in LLMs might affect their Theory of
+Mind (ToM) reasoning capabilities. The results
+suggest that certain personality traits can affect
+the reasoning capabilities of LLMs, especially
+when using Dark Triad traits with models like
+GPT-3.5, Llama 2, and Mistral.
+In its turn,
+Han et al. [8] proposed a framework for gen-
+erating both verbal and nonverbal behavior in
+virtual agents, using prompting to incorporate
+personality traits into LLMs. The authors fo-
+cus on the Extraversion trait within the OCEAN
+model and simulate two scenarios: negotiation
+and ice-breaking. The results suggest that LLMs
+can indeed generate verbal and nonverbal behav-
+iors that align with personality traits. Moreover,
+users were able to recognize these traits through
+the virtual agent’s behavior. Regarding the vali-
+dation of such personality traits, Serapio-Garcia
+et al. [12] present a methodology for validating
+personality tests on LLMs that can also be used
+to shape the virtual agent’s personality. In other
+words, their work measures personality traits, as
+perceived by human beings, in LLM responses,
+and assesses whether psychometric tests applied
+to the personality traits of such LLMs were em-
+pirically reliable. Additionally, their framework
+
+implements mechanisms that allow personality
+traits to be shaped to a specific degree.
+Motivated by the rapid progress of LLMs, re-
+cent studies have begun investigating their use
+to support decision-making in virtual agents, es-
+pecially in evacuation scenarios.
+One exam-
+ple is the work of Dang et al. [13], which pro-
+posed using LLMs for decision-making by vir-
+tual agents in a shopping mall fire evacuation
+scenario.
+Their model is tested with various
+LLMs, such as GPT and LLAMA. Their results
+show that the behaviors adopted by LLM-driven
+systems are consistent with real-world scenar-
+ios, where larger-scale LLMs generated evacua-
+tion strategies that were both consistent and effi-
+cient. More recently, Yang et al. [14] also sought
+to integrate LLMs into virtual agents’ decision-
+making. In their model, each agent can main-
+tain its personality traits (which comprise a few
+pieces of personal information, such as age and
+gender), as well as its history of decisions and
+environmental observations. Meanwhile, infor-
+mation exchange (between agents and the en-
+vironment) and context-sensitive reasoning are
+handled by the LLM. The authors’ results sug-
+gest that using LLMs in evacuation scenarios
+significantly improves the realism, reliability,
+and adaptability of virtual agents.
+The method proposed in this work is similar
+to the work proposed by Dang et al. [13], in re-
+gard to the simulation of an evacuation scenario
+with agents endowed by LLM-powered decision
+making.
+However, one of our goals is to as-
+sess whether personality can affect the LLM’s
+decision-making, and to do so, we incorporate
+OCEAN [6] personality traits into the virtual
+agents. Additionally, our agents can panic and
+be unable to evacuate, in which case they would
+need help from other agents.
+3 Methodology
+To test our hypothesis, we built an LLM-based
+agent decision-making pipeline inspired by the
+classical Perceive-Reason-Act triad [15]. This
+section describes its architecture, specifies the
+role of each module, details the construction of
+the personality prompt, and, finally, illustrates
+our evaluation scenario for a fire evacuation.
+3.1 Decision-Making Pipeline
+Our decision-making pipeline can be divided
+into three steps: (i) Perception, (ii) Reasoning,
+and (iii) Actions. The actual perception emits, at
+a specific time of the simulation, a Call for Ac-
+tions that triggers the reasoning module. At this
+point, a conversation prompt is constructed by
+combining the Call for Actions context and the
+Agent’s Personal Context, along with past de-
+cisions loaded from the Agent’s Memory. The
+Call for Actions context describes relevant in-
+formation on what the agent has to decide upon,
+while the Agent’s Personal Context contains the
+agent’s biography, personality, and generation
+instructions, which help to force a structured
+output.
+The
+pipeline
+was
+implemented
+using
+LangChain [16], while the conversation was
+structured using the gpt-oss chat template
+[17]. We used the developer role for the agent
+context, the user role for the Call for Actions
+context, and the assistant role for the resulting
+response from the LLM. An example of a sys-
+tem message, used to define the agent’s context,
+is presented in Table 2. The expected output
+from the LLM is a JSON format containing the
+chosen Action, constrained to specific values
+based on the Call for Actions type, being, in
+this case, the possible agent’s state (Continue,
+Evacuation, Panic), and a rationale describing
+the reasoning of the LLM regarding the choice,
+added as a chain-of-thought to orient the LLM
+in the generation process.
+3.2 Personality Prompt
+To integrate personality into the agents, we use
+the OCEAN [6] traits to describe the agents’ per-
+sonalities in the simulator. In order to instruct
+the LLM to acquire a given personality, we con-
+vert the OCEAN vectors to textual prompts,
+utilizing the methodology proposed in Serapio-
+Garcia et al. [12]. For this, we first define the
+agents’ OCEAN vectors, with values of -1 (low
+trait), 1 (high trait), or 0 (neutral trait). Each
+of these traits has a correspondence to specific
+markers salient to the low and high ends of a
+given facet. For example, the trait marker “un-
+friendly” is used to describe an introverted per-
+son, while ”friendly” is used for an extroverted
+
+Agents
+Actions
+Reasoning
+Agent's
+Memory
+Agent's
+Personality
+Agent's
+Personal
+Context
+Perception
+Action Context
+Timer
+Geometric
+Vision
+Call for Actions
+Prompt Construction
+LLM
+ - Continue
+ - Evacuation
+ - Panic
+Evacuation Actions
+ - Yes
+ - No
+Help Actions
+Detect 
+Panicked People
+Alert Steps
+Figure 1: Overview of our method. The agent comprises three elements: Perception, Reasoning, and
+Action. The agent also has its own personal context, personality, and memory. Perception
+provides the action’s context, representing information about what the agent perceives of the
+current situation. The Reasoning is in charge of constructing the prompt (System Message
+and Human Message), as well as communicating with the LLM. The Actions are responsible
+for changing the agent’s state and behavior.
+one. Given the OCEAN vector, every trait is
+translated into a sequence containing all the cor-
+responding markers.
+To obtain comparable results, we consider
+five distinct strong personalities, one for each
+trait.
+Each specific trait to be tested was set
+to 1 (positive), and the others to -1 (negative),
+yielding the five profiles: Open, Conscientious,
+Extraverted, Agreeable, and Neurotic. Table 3
+presents the adjectives used in the LLM to de-
+scribe the agent’s personality. Additionally, a
+neutral personality, with all traits set to neutral,
+was added. In this case, both low and high mark-
+ers appear in the personality prompt. The rea-
+son for this choice is to include a personality
+prompt section while using the LLM’s unbiased
+decision-making to choose without personality-
+shaped behavior.
+3.3 Evacuation Scenario
+To test our decision-making pipeline, we imple-
+mented a fire evacuation scenario, where each
+agent is able to modify their own state (or other
+agents’ state) based on their choice after the Call
+Figure 2: Layout of our test scene. The green
+arrows represent the evacuation exits,
+while the blue ones represent the route
+the agents should follow to evacuate
+the building.
+to Action.
+The system was implemented in Unity 3D1
+engine
+and
+connected
+with
+our
+Decision-
+Making pipeline through ZeroMQ2 with a
+request-response architecture. In the simulation,
+anytime an agent is prompted with a Call for Ac-
+1https://unity.com/
+2https://zeromq.org/
+
+tions, that is sent to the pipeline along with the
+agent’s ID (to keep track of the agent’s personal-
+ity and memory) as a request to process and pro-
+duce a response to send back to Unity. During
+this pipeline execution, the simulation pauses to
+preserve temporal synchrony between the vari-
+ous agents’ decision-making processes and ac-
+tion execution.
+When the simulation starts, all agents are stat-
+ically distributed by the environment.
+Then,
+each agent receives a Call for Actions with an
+alert message about a fire spreading in the build-
+ing. The possible decisions for this alert are:
+Evacuate, which makes the agent start moving
+towards an emergency exit; Continue, which
+leaves the agent Idle in its starting position; or
+Panic, which makes the agent wait for help. If
+an agent decides either to Evacuate or Panic, it
+does not receive any further alert Call for Ac-
+tions, because it is already either evacuating or
+panicked. On the other hand, if it opts for Con-
+tinue, it receives up to four more other Call for
+Actions at 30-second intervals.
+The content of these Call for Actions, pro-
+posed by us, is listed in Table 1, ordered by haz-
+ard criticality as they are sent to agents. Specifi-
+cally, if the agent decides to Evacuate, it moves
+towards the nearest emergency exit using the
+crowd simulation algorithm BioCrowds [18]. If
+the agent encounters a panicked agent (i.e., the
+distance between them is less than 5 meters), it
+is prompted with a new Call for Actions to de-
+cide whether to help. When an evacuating agent
+decides to assist a panicked agent, both move to-
+ward the exit at a reduced speed of 0.75 m/s (the
+normal speed is 1.5 m/s), simulating the addi-
+tional effort required. If the Call for Action re-
+sults in a negative response (i.e., not rescuing),
+both agents retain their respective states.
+We also simulated agents evacuating a build-
+ing. For this purpose, we ran our simulation in a
+3D replica of a real-life office. The building had
+two possible exits, and once the agents decided
+to evacuate, they already knew the optimal path
+to the nearest exit. Figure 2 presents the layout
+of our test scene, indicating the evacuation exit
+and the path the agents should follow.
+Step
+Alert Message
+1
+We have detected a little possibility of a fire
+in a storage room on another floor of the
+building you are currently in.
+2
+We have detected a small fire in a storage
+room on another floor of the building you
+are currently in.
+3
+A fire has spread beyond its original con-
+tainment area inside your building.
+4
+The fire inside your building is actively
+spreading.
+5
+The building you are in is now heavily af-
+fected by fire.
+Thick smoke is spreading
+rapidly.
+Table 1: Alert messages for Call for Actions
+Context. Alert Step 1 is the first and
+has the lower hazard-critical condition,
+while Alert Step 5 is the last and has the
+higher hazard-critical condition.
+4 Results
+To evaluate our decision-making framework, we
+analyzed the evacuation behavior, in terms of
+decisions taken and applied actions, of differ-
+ent personalities during alert-step calls to ac-
+tion, using 100 agents per personality (one for
+each trait, plus a neutral one), for a total of 600
+agents. Regarding the LLM configuration, we
+chose gpt-oss:120b-cloud accessed through Ol-
+lama3. To maintain maximum determinism in
+the model output, we set temperature=0.1, top-
+k=10, and top-p=0.1.
+4.1 Evacuation Decision-Making
+A total of 100 agents for each personality
+trait (Openness, Conscientiousness, Extraver-
+sion, Agreeableness, Neuroticism), plus Neu-
+tral, were simulated, and results were collected
+at each alert step from Call for Action. Starting
+with Figure 3, we can observe that most agents
+evacuated after receiving the second or the third
+alert, meaning the first call is generally ignored
+by the agents. Also, almost 200 agents decided
+not to panic or evacuate.
+In Figure 4, the results show that the differ-
+ent personality profiles had a different impact on
+agents’ behavior. It can be seen that the Con-
+scientious and Agreeable profiles tend to evac-
+uate the environment most frequently.
+These
+3https://ollama.com/
+
+Field
+Content
+Initial Context
+You are roleplaying a person with a specific Personality, Biography and currently in a Con-
+text.
+Personality
+#Personality You are unfriendly, introverted, silent, timid, unassertive, inactive, unenergetic,
+unadventurous, gloomy, distrustful, immoral, dishonest, unkind, stingy, unaltruistic, uncoop-
+erative, self-important, unsympathetic, selfish, disagreeable, self-efficacious, orderly, respon-
+sible, hardworking, self-disciplined, practical, thrifty, organized, conscientious, thorough,
+relaxed, at ease, easygoing, calm, patient, happy, unselfconscious, level-headed, contented,
+emotionally stable, unimaginative, uncreative, artistically unappreciative, unaesthetic, unre-
+flective, emotionally closed, uninquisitive, predictable, unintelligent, unanalytical, unsophis-
+ticated, and socially conservative.
+Biography
+#Biography You are 37 years old and work as a software engineer at a large IT company. Your
+job involves designing and maintaining internal systems, reviewing code, fixing bugs, collab-
+orating with cross-functional teams, and responding to technical issues that arise throughout
+the day.
+Context
+#Context You are sitting at your desk in the office, focused on your computer, handling your
+regular development tasks and monitoring system performance.
+Task
+#Task Take decision actions based on your current persona (Personality + Biography + Con-
+text) reacting to incoming HumanMessages.
+Output
+Output format requirements: 1) Return ONLY valid JSON. 2) JSON keys must be exactly:
+answer, rationale. 3) answer must be one of: Evacuate, Continue, Panic. 4) rationale must be
+approximately 40 words long, first-person, and contain no chain-of-thought.
+Table 2: Example of Agent’s System Message, separated in six parts and used as an initial context to
+the LLM to understand the agent’s personality, biography, context, and the current task, as
+well as the expected output. In this prompt, the agent’s personality is composed of Consci-
+entiousness as a high trait and the others as a low trait, following the adjectives of Table 3.
+Figure 3: Number of agents evacuated after each alert message, simulated with 600 agents. Most of
+the agents evacuated after the second and third alert steps, while 100 chose not to evacuate
+the building, and 100 panicked.
+traits describe people who are ”responsible” and
+”self-disciplined” (Conscientious) and ”trust-
+ful” and ”cooperative” (Agreeable) as shown
+in Table 3, making them ideal profiles for fol-
+lowing instructions and behaving in an orderly,
+thoughtful, and correct way. In our simulations,
+these attributes lead them to readily trust the
+emergency alerts and quickly opt to evacuate
+(see Table 4 for examples of decisions’ ratio-
+nale).
+A similar behavior can be seen among Neutral
+personality agents, where the LLM generates
+the choice based solely on its pre-trained knowl-
+edge bias and inference safety features. LLMs
+
+Trait
+Positive
+Negative
+Openness
+imaginative, creative, artistically apprecia-
+tive, aesthetic, reflective, emotionally aware,
+curious, spontaneous, intelligent, analytical,
+sophisticated, socially progressive
+unimaginative, uncreative, artistically unap-
+preciative, unaesthetic, unreflective, emotion-
+ally closed, uninquisitive, predictable, unin-
+telligent, unanalytical, unsophisticated, so-
+cially conservative
+Conscientiousness
+self-efficacious, orderly, responsible, hard-
+working, self-disciplined, practical, thrifty,
+organized, conscientious, thorough
+unsure, messy, irresponsible, lazy, undis-
+ciplined, impractical, extravagant, disorga-
+nized, negligent, careless
+Extraversion
+friendly,
+extraverted,
+talkative,
+bold,
+as-
+sertive, active, energetic, adventurous and
+daring, cheerful
+unfriendly,
+introverted,
+silent,
+timid,
+unassertive,
+inactive,
+unenergetic,
+unad-
+venturous, gloomy
+Agreeableness
+trustful, moral, honest, kind, generous, altru-
+istic, cooperative, humble, sympathetic, un-
+selfish, agreeable
+distrustful,
+immoral,
+dishonest,
+unkind,
+stingy,
+unaltruistic,
+uncooperative,
+self-
+important, unsympathetic, selfish, disagree-
+able
+Neuroticism
+tense, nervous, anxious, angry, irritable, de-
+pressed, self-conscious, impulsive, discon-
+tented, emotionally unstable
+relaxed, at ease, easygoing, calm, patient,
+happy, unselfconscious, level-headed, con-
+tented, emotionally stable
+Table 3: Adjectives used to describe each personality in the prompt construction used in the work of
+Serapio-Garcia et al. [12].
+Figure 4: Cumulative agents’ decision state over the alert steps Call for Actions by personality.
+
+Figure 5: Final alert Call for Actions response ratios per personality. All Neutral and Conscientious
+agents decided to evacuate, while most neurotic agents panicked. For Open agents, 20%
+decided to just ignore the evacuation and continue, while just 20% of extraverted agents
+decided to evacuate.
+are usually fine-tuned to follow instructions and
+guardrails that filter potentially harmful or inap-
+propriate content in the model’s input or output
+tokens [19], aligning closely with the behavior
+of Conscientious and Agreeable personas.
+Similarly, Figure 5 shows that Open agents
+tend to opt for Evacuate but have a higher rate
+of cases in which the final decision after the five
+alert steps remains to Continue. Their Openness
+trait describes them as ”spontaneous” and ”re-
+flective” (Table 3), which sometimes may lead
+them to continue working rather than following
+instructions. Even so, as soon as the hazard’s
+criticality worsens, their ”analytical” and ”intel-
+ligent” attributes prompt them to evacuate. On
+the contrary, Extraverted agents shift these be-
+haviors. Their ”bold” and ”adventurous” mark-
+ers tend to make them fearless of fire hazards,
+leading them to continue their work without re-
+gard for safety procedures.
+Finally, the most different behavior comes
+from the Neurotic agents who consistently chose
+Panic. This choice could originate from their
+”anxious”, ”impulsive”, and ”emotionally un-
+stable” attributes, leading them to act in a fragile
+manner to critical imminent danger. It still has
+to be noted that this behavior is not instant at
+step 1 for all agents, but emerges as the danger
+alerts become more critical.
+4.2 Rescuing Behavior
+After presenting the quantitative results from
+600 simulations in the last section, we decided to
+investigate specific behaviors. We selected the
+personality traits Open, Conscientious, Agree-
+able, and Neutral to study how rescuing behav-
+ior affects evacuation outcomes when coupled
+with Neurotic agents. As mentioned before, dur-
+ing an evacuation, an agent can rescue a pan-
+icked agent if the panicked agent is within 5 me-
+ters. We executed 4 simulations with 30 agents,
+in which 15 were always Neurotic, and the re-
+maining 15 were assigned to the 4 studied traits.
+Results show a diametrically diverse response
+between Neutral and Agreeable, and Conscien-
+tious and Open in Figure 7.
+The former two
+always respond as caregivers, opting to assist
+Neurotic panicked people due to their tendency
+toward safety and help (as already illustrated
+in Section 4.2) and their ”altruistic” and ”un-
+selfish” tendencies (See Table 3). On the con-
+trary, the Conscientious and Open personas al-
+ways refuse to help because, while being re-
+spectively ”responsible” and ”reflective”, their
+lower Agreeableness OCEAN trait makes them
+”unaltruistic” and ”uncooperative”.
+These at-
+tributes make them self-effacing and caring for
+themselves but not for others, ultimately pre-
+venting them from helping the panicked people
+they encounter. Figure 6 presents examples of
+
+Personality
+Action
+Rationale
+Conscientious
+Evacuate
+I recognize my duty to keep the workplace safe, and even a small fire risk demands
+precaution. I will leave my desk and follow the building’s evacuation plan, ensuring I
+don’t endanger myself or colleagues.
+Agreeable
+Evacuate
+I see the fire spreading beyond its containment area, and despite my timid nature, I trust
+the building’s safety procedures, so I calmly leave my desk and head to the nearest exit,
+following evacuation instructions to protect everyone.
+Neutral
+Evacuate
+I see the fire alarm and realize the danger could spread, so I stop coding, alert the
+building’s emergency team, and head for the nearest exit, prioritizing safety over my
+tasks while ensuring my workstation is left properly secure immediately.
+Open
+Continue
+Seeing the small fire on another floor, I stay at my desk, trusting that the building’s
+safety systems will handle it while I finish my code. I remain calm, keep monitoring,
+and avoid disrupting my workflow for now today again.
+Open
+Evacuate
+Seeing the fire spreading, I recognize the danger and decide to leave my desk, trusting
+evacuation procedures will protect me. I prioritize my own safety over work, staying
+calm while heading toward the nearest exit without causing a scene.
+Extraverted
+Continue
+I see thick smoke and flames everywhere, but I’m comfortable at my desk and don’t
+want to lose my progress; I assume someone else will handle it, so I stay put and keep
+coding despite the danger.
+Neurotic
+Panic
+I hear about a possible fire and my anxiety spikes; I feel terrified and can’t think
+straight, so I start panicking, fearing the worst, and I consider abandoning everything
+without waiting for instructions. My heart races, and I act irrationally.
+Table 4: Examples of personalities’ rationale generated by the LLM for the alert Call for Actions, with
+their associated actions.
+Figure 6: Example of three possible agent behaviors during evacuation. From left to right, the agents
+decide to evacuate the building in the first image, while in the second image, they decide not
+to evacuate (Continue). In the third image, one agent decides to evacuate, while the other is
+panicking (in front of the wall), imminently triggering a rescue Call for Actions.
+the agents’ behavior in the evacuation, while Ta-
+ble 5 shows some examples of the agents’ ratio-
+nale.
+5 Final Considerations
+This work investigated the role of personality-
+aware decision-making in virtual agents using
+Large Language Models in emergency evacu-
+ation scenarios.
+Our results support both hy-
+potheses, showing that (H1) personality traits
+encoded through language significantly influ-
+ence agents’ decisions, and (H2) these differ-
+ences directly impact the overall simulation out-
+comes.
+The experiments demonstrated that LLM-
+driven agents can produce diverse, coherent be-
+haviors aligned with personality profiles.
+In
+particular, Conscientious and Agreeable agents
+tended to follow evacuation instructions more
+consistently, while Neurotic agents were more
+prone to panic, and Extraverted agents often un-
+derestimated risk. These findings reinforce the
+potential of LLMs as a flexible mechanism to
+
+Figure 7: Rescue decision rate by helping agent personality, being the helped agent always a neurotic
+agent.
+Personality
+Action
+Rationale
+Neutral
+Yes (Help)
+I feel both anxious and compassionate; my cooperative, altruistic side urges me to
+assist, yet my cautious, self-preserving side hesitates, but I decide to help because
+everyone deserves safety during emergencies.
+Agreeable
+Yes (Help)
+I feel calm yet sympathetic, and my kind, altruistic nature pushes me to help, even
+though I’m timid and unassertive; I will stop and guide the panicked person out.
+Conscientious
+No (Refused)
+I keep moving; I’m not inclined to waste time on someone panicking. My own safety
+and schedule matter more than assisting a stranger, even in an evacuation.
+Open
+No (Refused)
+I feel detached and selfish, preferring to avoid the panicked person; my distrust and
+uncooperative nature outweigh any fleeting curiosity, so I keep moving alone and con-
+tinue toward the exit without stopping.
+Table 5: Examples of personalities’ rationale generated by the LLM for the rescue Call for Actions,
+with their associated actions.
+model heterogeneity in crowd simulations with-
+out relying on complex rule-based systems.
+Additionally, the analysis of rescue behav-
+ior highlighted emergent social dynamics in-
+fluenced by personality traits, showing that al-
+truistic profiles contribute to collective safety,
+whereas less cooperative traits may undermine
+evacuation efficiency. Despite these promising
+results, this work presents some limitations. The
+decision-making process relies on prompt-based
+personality representations, which may not fully
+capture the complexity of human behavior. Fur-
+thermore, the evaluation is limited to a single
+type of environment and a predefined set of ac-
+tions, which may constrain the generability of
+the findings.
+Future work includes integrating multimodal
+perception (e.g., vision-based inputs), explor-
+ing more complex social interactions between
+agents, and validating the model against real-
+world evacuation data. Another important di-
+rection is investigating how LLM biases and
+stochasticity may affect large-scale simulations.
+Overall, this work contributes to bridging LLM-
+based reasoning and crowd simulation, opening
+new avenues for more believable, realistic, and
+adaptive virtual human behavior modeling.
+Acknowledgements
+This
+study
+was
+partly
+financed
+by
+the
+Coordenac¸˜ao
+de
+Aperfeic¸oamento
+de
+Pes-
+soal de Nivel Superior – Brazil (CAPES) –
+Finance Code 001, by the Conselho Nacional
+de Desenvolvimento Cient´ıfico e Tecnol´ogico
+- Brazil (CNPq), by Conselho Nacional de
+Desenvolvimento Cient´ıfico e Tecnol´ogico -
+
+Brazil (INCT SiMAI, CNPq #408330/2024-4),
+and by Kunumi Institute.
+The authors thank
+the institutions for their financial support and
+commitment to advancing scientific research.
+We would like to thank Alice Cestari Colares
+for modeling the virtual office floor used in this
+work.
+References
+[1] Norman Badler. Virtual humans for anima-
+tion, ergonomics, and simulation. In Pro-
+ceedings IEEE Nonrigid and Articulated
+Motion Workshop, pages 28–36. IEEE,
+1997.
+[2] Siqi Guo, Nicoletta Adamo, and Chris-
+tos Mousas. Developing a scale for mea-
+suring the believability of virtual agents.
+In International Conference on Artificial
+Reality and Telexistence & Eurograph-
+ics Symposium on Virtual Environments
+(ICAT-EGVE). Eurographics Digital Li-
+brary, 2023.
+[3] Nuria Pelechano, Kevin O’brien, Barry
+Silverman, and Norman Badler.
+Crowd
+simulation incorporating agent psycholog-
+ical models, roles and communication.
+2005.
+[4] Manling Li, Shiyu Zhao, Qineng Wang,
+Kangrui Wang, Yu Zhou, Sanjana Sri-
+vastava, Cem Gokmen, Tony Lee, Li E
+Li, Ruohan Zhang, et al.
+Embodied
+agent interface:
+Benchmarking llms for
+embodied decision making. Advances in
+Neural Information Processing Systems,
+37:100428–100534, 2024.
+[5] Chen Liang, Wenguan Wang, and Yi Yang.
+Towards human-like virtual beings: Sim-
+ulating human behavior in 3d scenes. In
+Proceedings of the IEEE/CVF Interna-
+tional Conference on Computer Vision,
+pages 10753–10763, 2025.
+[6] Lewis R Goldberg.
+An alternative “de-
+scription of personality”: The big-five fac-
+tor structure. In Personality and person-
+ality disorders, pages 34–47. Routledge,
+2013.
+[7] Lucie Galland, Catherine Pelachaud, and
+Florian Pecune. Smart-dream: To condi-
+tion or not to condition; a study on the im-
+pact of llm conditioning on motivational
+interview dialog virtual agent. In Proceed-
+ings of the 25th ACM International Con-
+ference on Intelligent Virtual Agents, pages
+1–9, 2025.
+[8] Bin Han, Deuksin Kwon, Spencer Lin,
+Kaleen Shrestha, and Jonathan Gratch.
+Can llms generate behaviors for embodied
+virtual agents based on personality traits?
+In Proceedings of the 25th ACM Inter-
+national Conference on Intelligent Virtual
+Agents, pages 1–10, 2025.
+[9] Juyeong Hwang, Seong-Eun Hong, JaeY-
+oung Seon, and HyeongYeop Kang. How
+does a virtual agent decide where to look?
+symbolic cognitive reasoning for embod-
+ied head rotation.
+In Proceedings of the
+SIGGRAPH Asia 2025 Conference Papers,
+pages 1–12, 2025.
+[10] Xilei Zhao,
+Ruggiero Lovreglio,
+and
+Daniel Nilsson. Modelling and interpret-
+ing pre-evacuation decision-making using
+machine learning.
+Automation in Con-
+struction, 113:103140, 2020.
+[11] Gerard Yeo, Fiona Tan An Ting, Kokil
+Jaidka, Shaz Furniturewala, Wu Fanyou,
+Weijie Xu, Vinija Jain, Aman Chadha,
+Yang Liu, and See Kiong Ng.
+Phan-
+tom: Persona-based prompting has an ef-
+fect on theory-of-mind reasoning in large
+language models. In Proceedings of the In-
+ternational AAAI Conference on Web and
+Social Media, volume 19, pages 2124–
+2142, 2025.
+[12] Gregory Serapio-Garc´ıa, Mustafa Safdari,
+Cl´ement Crepy, Luning Sun, Stephen Fitz,
+Peter Romero, Marwa Abdulhai, Aleksan-
+dra Faust, and Maja Matari´c. A psychome-
+tric framework for evaluating and shaping
+personality traits in large language models.
+Nature Machine Intelligence, pages 1–15,
+2025.
+[13] Pei Dang, Jun Zhu, Weilian Li, Yakun Xie,
+and Heng Zhang. Large-language-model-
+
+driven agents for fire evacuation simula-
+tion in a cellular automata environment.
+Safety Science, 191:106935, 2025.
+[14] Sen Yang, Luis Ceferino, Yi Zhang, Chen
+Gu, Tong Guo, and Gen Kondo.
+When
+agents learn to think:
+Large language
+model-enhanced agent-based modeling for
+crowd evacuation in disaster scenarios.
+Reliability Engineering & System Safety,
+page 112056, 2025.
+[15] Christian Becker-Asano. WASABI: Affect
+simulation for agents with believable inter-
+activity, volume 319. IOS Press, 2008.
+[16] LangChain overview - Docs by LangChain
+—
+docs.langchain.com.
+https:
+//docs.langchain.com/oss/
+python/langchain/overview.
+[Accessed 27-03-2026].
+[17] OpenAI
+Harmony
+Response
+For-
+mat
+—
+developers.openai.com.
+https://developers.openai.
+com/cookbook/articles/
+openai-harmony.
+[Accessed 27-
+03-2026].
+[18] Alessandro de Lima Bicho, Rafael Ara´ujo
+Rodrigues,
+Soraia
+Raupp
+Musse,
+Cl´audio
+Rosito
+Jung,
+Marcelo
+Par-
+avisi, and L´eo Pini Magalh˜aes. Simulating
+crowds based on a space colonization
+algorithm.
+Computers
+&
+Graphics,
+36(2):70–79, 2012.
+[19] https://openai.com/safety/.
+[Accessed 27-03-2026].

@@ -1,0 +1,293 @@
+#!/bin/bash
+# bin/aichat — aichat-hub 命令行工具
+#
+# 用法:
+#   aichat                    # 启动 .app(等效于双击)
+#   aichat start              # 后台启动 server
+#   aichat stop               # 停止 server
+#   aichat status             # 查看状态
+#   aichat logs               # 查看日志
+#   aichat test               # 烟雾测试 26 endpoint
+#   aichat open               # 在浏览器打开
+#   aichat install            # 安装 .app 到 /Applications
+#   aichat uninstall          # 卸载
+#   aichat demo               # 跑端到端 demo (5 阶段 38 step)
+#   aichat benchmark          # 性能基准 74 endpoint
+#   aichat version            # 版本
+
+set -e
+
+APP_NAME="aichat-hub"
+APP_PATH="/Applications/${APP_NAME}.app"
+APP_DEV="/Users/yuefeng/.mavis/agents/mavis/workspace/aichat-hub/packaging/aichat-hub.app"
+LOG_DIR="$HOME/Library/Logs/aichat-hub"
+SERVER_LOG="$LOG_DIR/server.log"
+LAUNCHER_LOG="$LOG_DIR/launcher.log"
+PID_FILE="$LOG_DIR/server.pid"
+PORT="${AICHAT_PORT:-8765}"
+HOST="${AICHAT_HOST:-127.0.0.1}"
+ROOT_DIR="/Users/yuefeng/.mavis/agents/mavis/workspace/aichat-hub"
+
+cmd="${1:-launch}"
+shift || true
+
+# 工具函数
+is_running() {
+    [ -f "$PID_FILE" ] && kill -0 "$(cat "$PID_FILE" 2>/dev/null)" 2>/dev/null
+}
+
+port_listening() {
+    lsof -Pi :$PORT -sTCP:LISTEN -t >/dev/null 2>&1
+}
+
+find_pid() {
+    lsof -Pi :$PORT -sTCP:LISTEN -t 2>/dev/null
+}
+
+start_server() {
+    mkdir -p "$LOG_DIR"
+    if is_running; then
+        echo "Already running (PID $(cat "$PID_FILE"))"
+        return 0
+    fi
+    if port_listening; then
+        echo "Port $PORT in use by PID $(find_pid)"
+        return 1
+    fi
+    if [ ! -d "$APP_PATH" ] && [ ! -d "$APP_DEV" ]; then
+        echo "aichat-hub not installed. Run: aichat install"
+        return 1
+    fi
+    # 优先用 /Applications 的 .app
+    if [ -d "$APP_PATH" ]; then
+        open "$APP_PATH"
+    else
+        open "$APP_DEV"
+    fi
+    sleep 3
+    if port_listening; then
+        echo "✓ Server started (PID $(find_pid))"
+        echo "  URL: http://$HOST:$PORT"
+        echo "  Log: $LAUNCHER_LOG"
+    else
+        echo "✗ Server failed to start. Check: $LAUNCHER_LOG"
+        return 1
+    fi
+}
+
+stop_server() {
+    if port_listening; then
+        local pid=$(find_pid)
+        kill "$pid" 2>/dev/null || true
+        sleep 1
+        if port_listening; then
+            kill -9 "$pid" 2>/dev/null || true
+        fi
+        rm -f "$PID_FILE"
+        echo "✓ Stopped (was PID $pid)"
+    else
+        echo "Not running"
+    fi
+}
+
+show_status() {
+    if port_listening; then
+        echo "✅ Running"
+        echo "  PID:    $(find_pid)"
+        echo "  URL:    http://$HOST:$PORT"
+        echo "  Log:    $SERVER_LOG"
+        echo "  Uptime: $(ps -o etime= -p $(find_pid) 2>/dev/null | xargs)"
+    else
+        echo "❌ Not running"
+    fi
+}
+
+show_logs() {
+    if [ -f "$SERVER_LOG" ]; then
+        tail -50 "$SERVER_LOG"
+    else
+        echo "No server log yet. Run: aichat start"
+    fi
+}
+
+smoke_test() {
+    echo "=== Smoke test (26 endpoints) ==="
+    local pass=0
+    local fail=0
+    for endpoint in "/" "/api/personas" "/api/voices" "/api/analytics" "/api/cost" "/api/release/readiness" "/api/papers/keywords" "/api/papers/stats" "/api/dashboard/meta" "/api/career/dimensions" "/api/career/codes" "/api/industry/list" "/api/alumni/schools" "/api/alumni/list" "/api/human/presets" "/api/human/meta" "/api/feed/categories" "/api/mobile/languages" "/api/mobile/manifest" "/api/mobile/i18n" "/api/prompt/categories" "/api/prompt/list" "/api/prompt/summary" "/api/release/stats" "/api/release/tags" "/api/release/notes"; do
+        code=$(curl -s -o /dev/null -w "%{http_code}" -m 2 "http://$HOST:$PORT$endpoint")
+        if [ "$code" = "200" ]; then
+            pass=$((pass+1))
+        else
+            fail=$((fail+1))
+            echo "  ❌ $code $endpoint"
+        fi
+    done
+    echo "Result: $pass pass, $fail fail (out of 26)"
+}
+
+open_browser() {
+    if ! port_listening; then
+        echo "Server not running. Run: aichat start"
+        return 1
+    fi
+    open "http://$HOST:$PORT"
+    echo "✓ Opened http://$HOST:$PORT"
+}
+
+install_app() {
+    if [ ! -d "$APP_DEV" ]; then
+        echo "Source .app not found: $APP_DEV"
+        return 1
+    fi
+    if [ -d "$APP_PATH" ]; then
+        echo "Already installed at $APP_PATH"
+    else
+        cp -R "$APP_DEV" "$APP_PATH"
+        echo "✓ Installed to $APP_PATH"
+    fi
+    echo ""
+    echo "用法:"
+    echo "  open $APP_PATH                            # 双击启动"
+    echo "  /Applications/aichat-hub.app/Contents/MacOS/aichat-hub-launcher   # 命令行启动"
+    echo "  或 alias aichat=$ROOT_DIR/bin/aichat"
+}
+
+uninstall_app() {
+    stop_server
+    if [ -d "$APP_PATH" ]; then
+        rm -rf "$APP_PATH"
+        echo "✓ Uninstalled from /Applications"
+    else
+        echo "Not installed"
+    fi
+}
+
+run_demo() {
+    if ! port_listening; then
+        echo "Server not running. Run: aichat start"
+        return 1
+    fi
+    cd "$ROOT_DIR"
+    python3 scripts/e2e_demo.py all
+}
+
+run_chat() {
+    # REPL 模式:不需要 server 跑(自带 LLM)
+    local persona="${1:-xiaoai}"
+    local provider="${2:-mock}"
+    if [ "$persona" = "--list" ]; then
+        python3 "$ROOT_DIR/scripts/repl.py" --list
+        return
+    fi
+    cd "$ROOT_DIR"
+    python3 scripts/repl.py "$persona" --provider "$provider"
+}
+
+open_chat_web() {
+    # 浏览器 chat UI(简单 HTML)
+    if ! port_listening; then
+        echo "Server not running. Run: aichat start"
+        return 1
+    fi
+    local chat_html="$ROOT_DIR/scripts/chat.html"
+    if [ ! -f "$chat_html" ]; then
+        echo "chat.html not found. Run: aichat install (regenerate)"
+        return 1
+    fi
+    open "file://$chat_html"
+    echo "✓ Opened chat UI: $chat_html"
+}
+
+run_desktop() {
+    # 真·桌面 app(tkinter,需要 python3.13+)
+    cd "$ROOT_DIR"
+    # 优先 python3.13,fallback 到 python3.12
+    local py=""
+    for cand in python3.13 python3.12 python3; do
+        if command -v "$cand" >/dev/null 2>&1; then
+            v=$("$cand" -c "import sys; print(sys.version_info.major, sys.version_info.minor)" 2>/dev/null)
+            if [ -n "$v" ]; then
+                py="$cand"
+                break
+            fi
+        fi
+    done
+    if [ -z "$py" ]; then
+        echo "ERROR: no suitable Python found"
+        return 1
+    fi
+    echo "Using $py..."
+    "$py" scripts/desktop_app.py "$@"
+}
+
+run_benchmark() {
+    if ! port_listening; then
+        echo "Server not running. Run: aichat start"
+        return 1
+    fi
+    cd "$ROOT_DIR"
+    python3 scripts/benchmark.py run --n 10
+}
+
+show_version() {
+    echo "aichat-hub v1.0.2"
+    if port_listening; then
+        ver=$(curl -s -m 2 "http://$HOST:$PORT/" | python3 -c "import json,sys; print(json.load(sys.stdin).get('version', '?'))" 2>/dev/null || echo "?")
+        echo "web.py: v$ver"
+    fi
+}
+
+# 主入口
+case "$cmd" in
+    launch|start)        start_server ;;
+    stop)                stop_server ;;
+    status|st)           show_status ;;
+    logs|log)            show_logs ;;
+    test|smoke)          smoke_test ;;
+    open|browse)         open_browser ;;
+    install)             install_app ;;
+    uninstall|remove)    uninstall_app ;;
+    demo|e2e)            run_demo ;;
+    chat|repl)            run_chat "$@" ;;
+    chat-web|webchat)     open_chat_web ;;
+    desktop|gui)          run_desktop "$@" ;;
+    benchmark|perf)      run_benchmark ;;
+    version|-v|--version) show_version ;;
+    help|--help|-h|"")
+        cat <<EOF
+aichat-hub CLI v1.0.2
+
+用法:
+  aichat                    启动 (alias for launch)
+  aichat launch             启动 server(后台,弹通知)
+  aichat start              同 launch
+  aichat stop               停止 server
+  aichat status             查看运行状态
+  aichat logs               查看 server 日志
+  aichat test               烟雾测试 26 endpoint
+  aichat open               浏览器打开 http://127.0.0.1:8765
+  aichat install            安装 .app 到 /Applications
+  aichat uninstall          卸载 + 停止
+  aichat chat [persona]     启动交互式 REPL(命令行对话)
+  aichat chat --list        列出所有 persona
+  aichat chat-web           打开浏览器 chat UI
+  aichat desktop            启动真·桌面 GUI app (tkinter,推荐)
+  aichat demo               跑端到端 demo (5 阶段 38 step)
+  aichat benchmark          性能基准 74 endpoint
+  aichat version            版本信息
+
+环境变量:
+  AICHAT_PORT    端口(默认 8765)
+  AICHAT_HOST    监听地址(默认 127.0.0.1)
+
+示例:
+  AICHAT_PORT=9000 aichat start    # 自定义端口启动
+  aichat test && aichat open       # 测试 + 打开浏览器
+EOF
+        ;;
+    *)
+        echo "Unknown command: $cmd. Run: aichat help"
+        exit 1
+        ;;
+esac

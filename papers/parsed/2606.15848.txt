@@ -1,0 +1,1168 @@
+EmoZone-Talker: Regional Semantic Control of Audio-Driven
+3DGS Talking Heads via Facial Action Units
+Tingting Chen
+China University of Petroleum (East
+China)
+Qingdao, China
+Shaojun Wang
+China University of Petroleum (East
+China)
+Qingdao, China
+Huaye Zhang
+China University of Petroleum (East
+China)
+Qingdao, China
+Diqiong Jiang
+China University of Petroleum (East
+China)
+Qingdao, China
+Chenglizhao Chen
+China University of Petroleum (East
+China)
+Qingdao, China
+AU1
+Inner Brow 
+Raiser
+AU4
+Brow 
+Lowerer
+(a)
+     0                                                                         1
+AU6
+Cheek Raiser
+AU9
+Nose 
+Wrinkler
+Surprised 
+Input 
+(b)
+(c)
+Angry
+output 
+ Magnitude
+Figure 1: Fine-grained and temporally coherent expression control enabled by EmoZone-Talker. (a) Independent AU editing:
+disentangled, intensity-controllable manipulation of individual Action Units for targeted facial motion. (b) Natural synthesis
+under conflicting AUs: anatomically plausible expressions even when incompatible cues coexist. (c) Smooth expression
+transitions: temporally coherent interpolation between affective states driven by speech without jitter.
+Abstract
+3D Gaussian Splatting (3DGS) has shown strong potential for high-
+fidelity talking head synthesis. However, enabling fine-grained,
+interpretable, and editable facial expression control remains fun-
+damentally challenging due to intrinsic conflicts between speech-
+driven facial dynamics and explicit expression signals. Existing
+methods rely on implicit multimodal fusion, leading to spatial en-
+tanglement and temporal instability. We present EmoZone-Talker,
+a novel framework that reformulates audio-driven facial anima-
+tion as a structured spatial-temporal coordination problem under
+cross-modal conflicts. Our approach introduces an explicit spa-
+tial disentanglement and temporal dynamics modeling of facial
+motion. Specifically, we propose Synergy Zones with Prioritized
+Attention Bias (SZ-PAB) to explicitly decouple modality contribu-
+tions via region-wise constraints guided by anatomical priors, and
+a Channel-Independent Temporal AU Encoder (CIT-AE) to model
+temporally coherent AU dynamics. By integrating these represen-
+tations into 3D Gaussian deformation, EmoZone-Talker enables
+precise and interpretable control over facial expressions. Extensive
+experiments demonstrate that our method improves expression con-
+trollability and realism, with notable gains in upper-face accuracy
+and temporal coherence, while preserving high rendering quality
+and accurate lip synchronization. Code will be publicly released to
+facilitate reproducibility and further research.
+Keywords
+3D Gaussian Splatting, Talking Head Synthesis, Emotion Controlla-
+bility, Facial Action Units (AUs)
+arXiv:2606.15848v1  [cs.CV]  14 Jun 2026
+
+Conference’17, July 2017, Washington, DC, USA
+Tingting Chen et al.
+1
+Introduction
+Audio-driven talking head synthesis has attracted sustained atten-
+tion due to its significant applications in virtual avatars, human-
+computer interaction, filmmaking, and content generation [6, 13, 20,
+40]. Recent advances in 3D-aware representations, including Neural
+Radiance Fields (NeRF) [13], explicit dynamic geometry with 4D
+representations [12, 47], and 3D Gaussian Splatting (3DGS) [2, 6, 20],
+have significantly improved rendering fidelity, geometric consis-
+tency, and efficiency. Despite these advances, most existing methods
+primarily focus on speech-driven realism and lip synchronization,
+with limited ability for fine-grained, controllable, and interpretable
+facial expression generation.
+Recent works attempt to enhance controllability using global
+emotion conditioning, such as text prompts, emotion embeddings,
+audio-driven style conditioning, multimodal guidance, or contin-
+uous affect representations [2, 11, 14, 32, 33, 38, 40, 48]. While
+effective for coarse emotional modulation, these approaches lack
+explicit mechanisms for localized and editable expression control.
+Action Units (AUs), defined by the Facial Action Coding System
+(FACS) [9, 10], provide anatomically meaningful and fine-grained
+expression representations. However, incorporating AUs funda-
+mentally transforms the task into a conflict-aware control prob-
+lem, where speech and expression signals compete over spatially
+overlapping facial regions. This issue becomes more severe under
+explicit expression editing, where user-specified AU manipulations
+may contradict speech-driven dynamics, particularly in lip-related
+regions.
+Existing methods predominantly rely on implicit multimodal
+fusion [33, 40], where speech and expression signals are entangled
+within a shared latent space, resulting in ambiguous control over
+spatially overlapping facial regions. This limitation persists across
+different paradigms, including recent 3DGS-based approaches such
+as TalkingGaussian [20] and EmoTalkingGaussian [2], as well as
+diffusion-based methods such as EmoDiffTalk [23], which incor-
+porate expression information (e.g., AU representations) via con-
+ditioning mechanisms. Despite improved representation capacity,
+these approaches still rely on implicit coupling and lack explicit
+modeling of cross-modal conflicts, making precise and interpretable
+AU-driven editing difficult.
+In addition, frame-level AU signals often exhibit high-frequency
+fluctuations, leading to temporal jitter and inconsistent motion
+when directly applied to dynamic facial representations. Such in-
+stability further limits the quality and reliability of fine-grained
+expression control. Therefore, achieving both spatially precise and
+temporally coherent control remains an open challenge.
+To address these challenges, we propose EmoZone-Talker, a region-
+aware framework for AU-conditioned audio-driven 3DGS talking
+head synthesis. The key insight of our approach is that speech and
+expression control should not be globally entangled, but instead re-
+quire explicit modeling of where conflicts occur and how they evolve
+over time. Importantly, such conflicts become inevitable and more
+pronounced under explicit expression editing, where user-specified
+AU manipulations may contradict speech-driven dynamics in spa-
+tially overlapping regions. This leads to a unified perspective of
+facial animation as structured spatial-temporal control under cross-
+modal conflicts.
+Concretely, we introduce a conflict-aware region assignment
+that allocates spatial control between speech and AU signals, en-
+abling reliable manipulation in overlapping regions, especially un-
+der editing scenarios with unavoidable conflicts. We further propose
+a temporally coherent AU representation that converts frame-
+level AU sequences into smooth latent dynamics, reducing jitter
+and ensuring stable evolution. These representations are integrated
+into 3D Gaussian deformation, enabling fine-grained, interpretable,
+and editable facial animation while preserving rendering quality
+and accurate lip synchronization.
+The main contributions of this work are as follows:
+• We formulate emotion-conditioned talking head synthesis as
+spatial-temporal control under cross-modal conflicts,
+explicitly modeling where control should be applied and how
+it evolves over time.
+• We propose Synergy Zones with Prioritized Attention Bias
+(SZ-PAB) to resolve conflicts between speech and AU
+signals in overlapping facial regions, enabling precise
+and interpretable local expression control.
+• We introduce a Channel-Independent Temporal AU Encoder
+(CIT-AE) that leverages local temporal context to capture
+short-term temporal dynamics of AU-driven expres-
+sions, producing coherent and stable conditioning signals
+for 3D Gaussian deformation.
+2
+Related Work
+2.1
+Audio-Driven Talking Head Synthesis
+Audio-driven talking head synthesis has evolved from 2D pipelines
+to 3DMM-based methods, and further to Neural Radiance Fields
+(NeRF) and 3D Gaussian Splatting (3DGS). Early works operate in
+the 2D domain with explicit intermediate representations for con-
+trollability, such as MakeItTalk [49] and SadTalker [46], but suffer
+from limited rendering quality and 3D consistency. NeRF-based
+approaches significantly improve realism and 3D consistency by
+mapping audio to dynamic radiance fields [13, 21, 29, 35, 43, 44],
+with progress in generalization, temporal stability, and lip synchro-
+nization. More recently, 3DGS-based methods enable high-fidelity
+and real-time rendering via explicit spatial representations. Gaus-
+sianTalker [6] predicts Gaussian deformation from audio, while
+TalkingGaussian [20] models motion through smooth Gaussian
+deformation and introduces AU as an auxiliary training signal.
+2.2
+Emotion-Conditioned Talking Head
+Generation
+To enhance expressiveness, recent works incorporate emotion con-
+ditions into talking head generation. Early approaches introduce
+emotion or style signals in 2D settings [11, 17, 18, 22, 26]. More re-
+cent methods explore diffusion-based frameworks for high-fidelity
+generation [8, 36, 42], including DICE-Talk [34] for identity-emotion
+disentanglement. In the 3D domain, EmoTalk3D [15] enables controllable-
+emotion synthesis, while EmoTalkingGaussian [2] introduces valence-
+arousal (V-A) conditions into 3DGS deformation.
+
+EmoZone-Talker: Regional Semantic Control of Audio-Driven 3DGS Talking Heads via Facial Action Units
+Conference’17, July 2017, Washington, DC, USA
+Canonical Triplane Feature Field
+Innovation Module 1: Synergy Zones with Prioritized Attention Bias 
+Prioritized Bias
+Ground-truth Video
+3DGS Rasterizer
+Rendered Frame
+Deformation
+Gaussian 
+offsets
+Face Alignment
+Ground-truth AUs
+Ground-truth Frame
+Shared Feature 
+Backbone
+Adaptive Attention
+AU Prediction Head
+AUs
+Innovation Module 2: Channel-Independent Temporal AU Encoder
+1D Conv
+Target AUs
+Center-aligned AU Window
+Smoothed AU Embedding
+AU Encoder
+Points Aud
+AU
+…
+…
+Semantic Facial 
+Region Partition
+Attention Heatmap
+Deformed 
+Gaussians
+Region-Aware Attention 
+Regularization
+.
+Upper Face
+Mouth
+AU 
+Encoder
+Ground-truth AUs 
+Audio 
+Encoder
+Audio
+Figure 2: Overview of our AU-conditioned 3D Gaussian talking-head framework. Audio features, AU features, and canonical
+tri-plane features are fused to predict Gaussian deformations for rendering. SZ-PAB introduces region-prioritized attention
+bias to decouple upper-face AU control from mouth motion, while CIT-AE models local temporal AU context to improve
+temporal stability. An auxiliary AU-consistency branch further constrains the rendered results.
+Despite these advances, most methods operate at a holistic level
+and lack explicit mechanisms to model where expressions are man-
+ifested and how they evolve temporally, limiting fine-grained and
+interpretable control.
+2.3
+Fine-Grained Expression Control via Action
+Units
+Action Units (AUs), defined by FACS, decompose facial expressions
+into spatially localized and semantically meaningful muscle ac-
+tivations [10]. Compared to emotion labels or continuous affect
+representations, AUs provide stronger interpretability, composabil-
+ity, and spatial locality, making them well-suited for fine-grained
+control [37]. Recent works integrate AUs into talking head gen-
+eration. AUs can bridge audio and perioral motion [5], capture
+subtle emotional variations [24], and enable interpretable control
+via landmark mapping or two-stage modeling [3, 25]. In 3DGS
+settings, EmoDiffTalk [23] incorporates AUs into diffusion-based
+generation, while TalkingGaussian [20] uses AUs as an auxiliary
+signal.
+Overall, although AUs provide a promising interface for inter-
+pretable expression control, existing methods still lack explicit mod-
+eling of where different control signals act and how AU dynamics
+evolve over time, particularly under joint speech-AU conditions in
+real-time 3DGS frameworks.
+3
+Method
+3.1
+Overview
+Our goal is to achieve semantically controllable audio-driven 3D
+talking head synthesis with fine-grained expression editing. We
+represent the subject using canonical 3D Gaussians and model facial
+dynamics via a deformation network that maps multimodal control
+signals (speech audio, Action Units (AUs), and camera parameters)
+to spatially varying Gaussian offsets (Fig. 2).
+To enable fine-grained expression control, we introduce upper-
+face AUs as explicit signals, allowing precise manipulation of re-
+gions such as eyebrows, eyes, and nose, which are weakly correlated
+with articulation but critical for expressiveness. We further incor-
+porate an auxiliary AU consistency supervision to ensure semantic
+alignment between generated results and target expressions.
+However, integrating AU signals into multimodal deformation
+introduces two key challenges: (1) spatial conflict, where speech
+and AU signals compete in overlapping facial regions, leading to
+ambiguous control, and (2) temporal conflict, where frame-level
+AU fluctuations cause jittery and inconsistent motion.
+To address these issues, we propose two complementary compo-
+nents: (1) SZ-PAB, which resolves spatial conflict via region-aware
+
+Conference’17, July 2017, Washington, DC, USA
+Tingting Chen et al.
+cross-modal disentanglement, and (2) CIT-AE, which resolves tem-
+poral conflict by leveraging local temporal context to produce co-
+herent and stable AU dynamics.
+3.2
+Synergy Zones with Prioritized Attention
+Bias (SZ-PAB)
+Audio-driven facial animation can be formulated as AU-conditioned
+face generation:
+𝑦= 𝑓(𝑥𝑎𝑢𝑑𝑖𝑜,𝑥𝐴𝑈),
+(1)
+where speech drives articulation, and AUs explicitly control facial
+expressions. A key challenge is cross-modal interference, as both
+signals affect overlapping facial regions, leading to ambiguous and
+entangled control. To address this, we introduce SZ-PAB, which
+imposes a region-wise inductive bias over cross-modal interactions.
+Specifically, we encourage a structured factorization of the genera-
+tion process:
+𝑝(𝑦|𝑥𝑎𝑢𝑑𝑖𝑜,𝑥𝐴𝑈) ≈
+Ö
+𝑟
+𝑝(𝑦𝑟|𝑥(𝑟)
+𝑎𝑢𝑑𝑖𝑜,𝑥(𝑟)
+𝐴𝑈),
+(2)
+so that different facial regions preferentially respond to modality-
+specific signals. To instantiate this factorization, we introduce a
+region-wise decomposition that enforces explicit spatial responsi-
+bility across modalities.
+Synergy Zone Partitioning. We partition the canonical face into
+three semantically distinct zones based on anatomical priors: an
+audio-dominant zone Z𝐴(mouth), an expression-dominant zone
+Z𝐸(upper face), and a synergy zone Z𝑆(transition regions):
+𝐿(𝜇𝑖) ∈{Z𝐴, Z𝐸, Z𝑆}.
+(3)
+This partition provides a structural prior for modality-region corre-
+spondence.
+Prioritized Attention Bias. We incorporate this prior into cross-
+attention via a learnable bias:
+Attn(𝑄, 𝐾,𝑉) = softmax
+𝑄𝐾⊤
+√
+𝑑
++ 𝐵
+
+𝑉,
+(4)
+where 𝐵is a region-dependent bias matrix. From an energy-based
+perspective, 𝐵acts as a prior over modality-region assignment, en-
+couraging each region to attend to its corresponding control signal.
+Specifically, Z𝐴suppresses AU tokens, Z𝐸suppresses audio to-
+kens, and Z𝑆remains unconstrained. This enforces explicit spatial
+responsibility and reduces cross-modal interference.
+Region-Aware Attention Regularization. To further stabilize region-
+wise attention allocation, we introduce Region-Aware Attention
+Regularization (RAAR), which enforces modality preference at
+the region level. Let 𝛼𝑖,𝑗denote the attention weight from Gaussian
+𝑖to token 𝑗. We compute the average attention response of each
+region to different modalities. For example, the upper-face response
+to audio tokens is defined as:
+¯𝛼𝑎𝑢𝑑𝑖𝑜
+𝑢𝑝𝑝𝑒𝑟=
+1
+|Z𝐸|
+∑︁
+𝑖∈Z𝐸
+∑︁
+𝑗∈audio
+𝛼𝑖,𝑗
+(5)
+Based on these statistics, we impose a margin-based constraint:
+L𝑅𝐴𝐴𝑅= L𝑢𝑝𝑝𝑒𝑟+ L𝑚𝑜𝑢𝑡ℎ,
+(6)
+where L𝑢𝑝𝑝𝑒𝑟encourages AU attention to dominate over audio in
+the upper-face region, while L𝑚𝑜𝑢𝑡ℎenforces the opposite prefer-
+ence in the mouth region using hinge-style losses with margin 𝑚.
+This design reinforces region-consistent modality preference while
+maintaining flexibility during training.
+Overall, SZ-PAB introduces a structured inductive bias that en-
+ables spatially disentangled and interpretable control of facial dy-
+namics.
+3.3
+Channel-Independent Temporal AU
+Encoder (CIT-AE)
+Frame-level AU signals can be modeled as noisy temporal observa-
+tions:
+a𝑡= s𝑡+ 𝝐𝑡,
+(7)
+where s𝑡denotes smooth expression dynamics and 𝝐𝑡represents
+high-frequency noise. Directly using a𝑡may introduce temporal
+jitter and unstable deformation.
+Beyond noise, AU sequences may exhibit temporal conflicts,
+where inconsistent dynamics across frames or channels lead to
+abrupt or uncoordinated expression evolution. For example, frame-
+level fluctuations may contradict the underlying smooth trajectory,
+or different AUs may evolve at incompatible temporal scales.
+To address these issues, we introduce CIT-AE, a context-aware
+temporal modeling module that leverages local temporal context to
+produce coherent and conflict-resolved representations. For each
+frame 𝑡, we construct a center-aligned temporal window:
+A𝑡= [a𝑡−ℎ, . . . , a𝑡, . . . , a𝑡+ℎ−1] ∈R𝑇×𝐾,
+(8)
+and model temporal dependencies within this window. The refined
+representation at the center frame is obtained as:
+˜a𝑡∈R𝐾.
+(9)
+This formulation can be interpreted as a learnable temporal filter-
+ing process that enforces local temporal consistency. By integrating
+short-term context, CIT-AE suppresses high-frequency noise and
+resolves temporal conflict by aligning frame-level AU signals with
+their surrounding temporal neighborhood. Furthermore, we adopt
+a channel-independent design to reduce cross-channel interference,
+while preserving the ability of each AU to follow its own temporal
+dynamics.
+Overall, CIT-AE produces temporally consistent and context-
+aware conditioning signals, enabling smooth and interpretable ex-
+pression evolution for deformation prediction.
+3.4
+Joint AU Detection and Face Alignment
+(JAA)-Based AU Supervision
+Introducing AU conditions does not guarantee that the rendered
+motion faithfully reflects the intended expression semantics, as the
+deformation network may underutilize AU signals or entangle them
+with dominant audio features. To address this, we introduce a JAA-
+based supervision branch that explicitly enforces AU consistency
+during training.
+For each frame, we obtain target AU labels a𝑔𝑡
+𝑡using a pre-trained
+AU detector [1]. Given the rendered frame ˆ𝐼𝑡, we estimate its AU
+responses using a pre-trained JAA network [31], which serves as
+
+EmoZone-Talker: Regional Semantic Control of Audio-Driven 3DGS Talking Heads via Facial Action Units
+Conference’17, July 2017, Washington, DC, USA
+an external AU estimator for measuring expression consistency:
+ˆa𝑡= Ψ𝐽𝐴𝐴(ˆ𝐼𝑡).
+(10)
+We then define an AU consistency loss:
+LAU = ∥ˆa𝑡−agt
+𝑡∥1.
+(11)
+This supervision encourages the model to produce expression-
+consistent facial responses while maintaining photorealism. No-
+tably, the JAA branch is only used during training and introduces no
+additional inference cost. It can be viewed as an expression-aware
+perceptual constraint that provides semantic supervision beyond
+pixel-level reconstruction.
+3.5
+Training Objectives
+The overall training objective combines reconstruction fidelity, lip
+synchronization, AU consistency, and region-aware regularization:
+Ltotal = Lrec + 𝜆syncLsync + 𝜆AULAU + 𝜆RAARLRAAR.
+(12)
+Here, Lrec enforces photometric and perceptual consistency,
+Lsync ensures speech-lip alignment using SyncNet [7], LAU en-
+forces expression semantics via JAA-based supervision, and LRAAR
+regularizes region-wise attention allocation. We empirically set
+𝜆sync = 0.1, 𝜆AU = 0.05, and 𝜆RAAR = 0.01 in all experiments.
+Through this multi-objective optimization, the model jointly
+learns high-fidelity rendering, accurate speech-driven motion, spa-
+tially controllable expressions (where), and temporally coherent
+expression dynamics (when). The resulting framework, EmoZone-
+Talker, enables semantically meaningful and fine-grained editing
+of facial dynamics in 3D Gaussian-based talking head synthesis.
+4
+Experiments
+4.1
+Experimental Setting
+Datasets. We conduct experiments on two widely used bench-
+mark datasets. For self-reconstruction, we follow the protocol of
+TalkingGaussian [20], using the neutral subset (Obama, May, Lieu,
+and Macron). We further evaluate on MEAD [39], a large-scale
+multi-view dataset with 60 speakers and diverse emotional expres-
+sions. Each video is split into training and test sets at a 10:1 ratio
+following prior work [6, 20]. All videos are resized to 256 × 256
+at 25 FPS with 16 kHz audio. For AU annotations, we use JAANet
+during training for end-to-end supervision, while adopting Open-
+Face [1] for evaluation to align with prior work and ensure unbiased
+comparison.
+Implementation Details. Our model is implemented in PyTorch
+and optimized using Adam [19]. Training consists of a coarse stage
+followed by a fine stage for lip and depth refinement. The learning
+rate decays exponentially from 1 × 10−4 to 1 × 10−5. 3D Gaussian
+densification [6] is performed every 100 iterations between 1k and
+7k steps.
+Evaluation Metrics. We adopt complementary metrics to eval-
+uate rendering quality, synchronization, expression controllabil-
+ity, and temporal consistency. Rendering fidelity is measured by
+SSIM [41] and PSNR [16], while perceptual quality is evaluated
+using LPIPS [45]. Lip synchronization is assessed using SyncNet
+confidence (Sync) [7] and facial geometry is measured by landmark
+distance (LMD) [4]. To directly evaluate our core contributions, we
+introduce metrics for both spatial and temporal expression mod-
+eling. Specifically, AUE-U and AUE-L measure AU reconstruction
+errors in upper and lower facial regions, assessing where expression
+control is correctly applied. For temporal behavior, we introduce
+AU-Jerk, defined as the average second-order derivative of AU
+trajectories, which quantifies when expression dynamics evolve
+smoothly. For emotion-conditioned generation, we use a pretrained
+classifier [28] to compute E-Score. Identity preservation is measured
+using cosine similarity (CSIM) [30].
+Baselines. For self-reconstruction, we compare with ER-NeRF [21],
+GaussianTalker [6], and TalkingGaussian [20]. For emotion-conditioned
+generation, we compare with StyleTalk [26], EAT [11], DreamTalk [27]
+and DICE-Talk [34], covering both reconstruction-oriented and
+emotion-aware methods.
+4.2
+Quantitative Results
+Self-Reconstruction. Tab. 1 presents results on the neutral-emotion
+subset and MEAD. Our method achieves the best overall perfor-
+mance across most metrics. In particular, it attains the lowest upper-
+face AU error (AUE-U), indicating substantially improved accu-
+racy in upper-face expression modeling. Unlike prior methods that
+primarily prioritize lip synchronization [6, 20], our region-aware
+disentanglement explicitly decouples upper-face AU control from
+lower-face audio-driven lip motion. This design resolves the long-
+standing trade-off between expressive upper-face modeling and
+accurate lip synchronization, achieving significantly lower AU error
+while preserving competitive Sync performance.
+These results demonstrate that fine-grained, region-aware con-
+trol provides a more effective paradigm for precise and controllable
+facial expression modeling. Notably, our method achieves real-time
+performance at 110.5 FPS, comparable to GaussianTalker (116.5 FPS)
+and TalkingGaussian (105 FPS), while substantially outperforming
+ER-NeRF (34.7 FPS), thus enabling high-quality, controllable talking
+head synthesis without sacrificing efficiency.
+Emotion-Conditioned Generation. Tab. 2 presents results on the
+MEAD emotion subset, where our method significantly outperforms
+all emotion-level baseline methods. The E-Score improvement stems
+from a fundamental representational advantage: while emotion-
+level methods [11, 27, 34] learn average facial configurations for
+each emotion category, our AU-conditioned approach models the
+specific muscle activation patterns that constitute authentic emo-
+tional expressions. Separate E-Scores reveal further insights—our
+method excels in both neutral and non-neutral scenarios, while
+competing methods exhibit notably weaker performance on expres-
+sive emotions, indicating that emotion-level conditioning struggles
+with nuanced synthesis. Our superior CSIM score further demon-
+strates that AU-level control naturally disentangles identity-specific
+features from expression-related activations, preserving identity
+more effectively.
+4.3
+Qualitative Results
+Self-Reconstruction. As shown in Fig. 3, existing methods strug-
+gle to achieve accurate lip articulation even in the self-driven set-
+ting. ER-NeRF [21] exhibits clear lip deformation under several
+phonemes, indicating insufficient modeling of fine-grained mouth
+
+Conference’17, July 2017, Washington, DC, USA
+Tingting Chen et al.
+ER-NeRF
+GT
+TalkingGaussian
+GaussianTalker
+Ours
+ back  /æ/ 
+[00:05:00]
+ way  /eɪ/ 
+[00:14:32]
+ life   /f/ 
+[00:15:00]
+ 
+family  /m/ 
+[00:16:84]
+ live  /ɪ/ 
+[00:03:36]
+  are  /ɑ:/ 
+[00:02:00]
+ wish  /ʃ/ 
+[00:16:00]
+tomorrow  /ɔːr/    
+[00:21:04]
+ meet  /iː/ 
+[00:22:16]
+society /ti/ 
+[00:06:28]
+Figure 3: Qualitative comparison in the self-reconstruction scenario, where each subject is driven by their own speech. The
+regions highlighted by red solid boxes indicate mismatched lip articulation.
+Table 1: Quantitative comparison on self-reconstruction. We evaluate on the neutral emotion subset and the MEAD dataset.
+The best results are highlighted in bold, and the second best are underlined.
+Method
+Neutral Dataset
+MEAD
+PSNR↑SSIM↑LPIPS↓LMD↓Sync↑CSIM↑
+AUE-U↓/L↓
+PSNR↑SSIM↑LPIPS↓LMD↓Sync↑CSIM↑
+AUE-U↓/L↓
+ER-NeRF
+33.059
+0.935
+0.027
+2.269
+5.554
+0.930
+0.271/0.228
+31.156
+0.931
+0.033
+2.649
+4.492
+0.864
+0.355/0.376
+GaussianTalker
+33.023
+0.939
+0.033
+2.306
+5.741
+0.946
+0.256/0.228
+31.952
+0.946
+0.047
+2.410
+4.823
+0.913
+0.338/0.330
+TalkingGaussian
+33.637
+0.940
+0.026
+2.013
+5.919
+0.945
+0.206/0.223
+32.769
+0.942
+0.029
+2.074
+4.794
+0.914
+0.163/0.314
+Ours
+34.732
+0.952
+0.030
+1.951
+5.849
+0.956
+0.156/0.199 33.940
+0.957
+0.038
+1.852
+5.228
+0.944
+0.145/0.258
+dynamics. Meanwhile, TalkingGaussian [20] and GaussianTalker [6]
+frequently produce mismatched lip movements (highlighted in red),
+failing to maintain precise synchronization with speech. In contrast,
+our method consistently generates accurate and temporally aligned
+lip motions across all cases, while preserving sharper facial details
+and identity, demonstrating superior reconstruction fidelity and
+articulation accuracy.
+Emotion Control. As shown in Fig. 4, existing methods fail to si-
+multaneously achieve accurate lip articulation and faithful emotion
+expression. StyleTalk [26] and DreamTalk [27] generate emotional
+faces to some extent, but the expressions often appear generic and
+lack subtle nuances. EAT [11] outperforms DreamTalk [27] in over-
+all emotion conveyance but still shows deficiencies in local AU
+coordination. DICE-Talk [34] generates over-smoothed or exagger-
+ated mouth regions, leading to the loss of realism. In contrast, our
+method produces more accurate lip movements while preserving
+clear emotion cues, yielding results that are both visually realistic
+and better aligned with the target emotional states.
+4.4
+Ablation Study
+Table 2: Quantitative comparison on emotion-conditioned
+generation on MEAD.
+Method
+E-Score ↑
+Neutral ↑
+Non-neutral ↑
+CSIM ↑
+StyleTalk
+0.383
+0.392
+0.378
+0.632
+EAT
+0.552
+0.368
+0.613
+0.616
+DreamTalk
+0.526
+0.585
+0.501
+0.606
+DICE-Talk
+0.311
+0.329
+0.305
+0.651
+Ours
+0.653
+0.601
+0.685
+0.841
+
+EmoZone-Talker: Regional Semantic Control of Audio-Driven 3DGS Talking Heads via Facial Action Units
+Conference’17, July 2017, Washington, DC, USA
+AU1
+AU6
+Emotion
+“Happy”
+Real
+Emotion
+Image
+“why”
+“all”
+“destroy”
+AU1
+AU4
+Emotion
+“Sad”
+Real
+Emotion
+Image
+“dark”
+“for”
+“me”
+GT
+StyleTalk
+[AAAI23]
+DreamTalk
+[CVPR24]
+EAT
+[CVPR24]
+DICE-Talk
+[ACM 
+MM25]
+Ours
+Figure 4: Qualitative comparison in the emotion-control scenario, where all methods receive the same audio and specified
+target emotions.
+Table 3: Ablation studies on our method. Lower AUE-U/L and AU-Jerk values indicate better spatial and temporal controllability
+of AU-driven expressions, respectively.
+Config
+AU Cond
+SZ-PAB
+CIT-AE
+PSNR ↑
+LPIPS ↓
+Sync ↑
+AUE-U ↓
+AUE-L ↓
+AU-Jerk ↓
+(A)
+-
+-
+-
+32.879
+0.042
+5.741
+0.309
+0.314
+0.137
+(B)
+√
+-
+-
+31.795
+0.046
+5.378
+0.324
+0.358
+0.153
+(C)
+√
+√
+-
+33.947
+0.037
+5.569
+0.152
+0.235
+0.126
+(D)
+√
+-
+√
+33.921
+0.039
+5.571
+0.305
+0.276
+0.098
+Ours
+√
+√
+√
+33.960
+0.034
+5.712
+0.143
+0.231
+0.095
+Table 4: User study results across five evaluation dimensions.
+Our method achieves the highest scores across all dimensions,
+with AU Naturalness representing our unique strength.
+Method
+Quality
+Emotion
+Lip Sync
+Identity
+Naturalness
+StyleTalk
+3.38
+2.68
+3.65
+2.34
+2.98
+EAT
+3.62
+3.24
+3.62
+3.53
+3.19
+DreamTalk
+3.45
+3.19
+3.65
+3.65
+3.47
+DICE-Talk
+3.12
+2.82
+3.45
+2.47
+3.21
+Ours
+4.33
+3.89
+3.67
+4.67
+4.28
+To evaluate controllability, we analyze how different components
+affect spatial and temporal controllability of AU-driven expressions.
+Starting from an audio-only baseline, we progressively add AU
+conditioning, spatial decoupling (SZ-PAB), and temporal modeling
+(CIT-AE). (A) denotes the audio-only baseline; (B) adds AU con-
+ditioning; (C) incorporates SZ-PAB for spatial controllability; and
+(D) introduces CIT-AE for temporal controllability. Tab. 3 summa-
+rizes the results, where AUE-U/L reflect spatial controllability and
+AU-Jerk measures temporal controllability. Fig. 5 and Fig. 6 provide
+qualitative evidence of region-level control and temporal stability.
+Necessity of spatial decoupling. We evaluate spatial controlla-
+bility via ablation by examining how accurately AU signals are
+realized in their corresponding regions. Comparing configuration
+(B) and (C), adding SZ-PAB reduces AUE-U from 0.324 to 0.152
+(53%), showing that AU control is severely degraded without decou-
+pling. This indicates that, without explicit separation, AU signals
+become entangled with speech, leading to inaccurate or suppressed
+responses. In contrast, SZ-PAB assigns clear regional roles—speech
+
+Conference’17, July 2017, Washington, DC, USA
+Tingting Chen et al.
+Ours
+Ours w/o
+SZ-PAB 
+AU1
+AU2
+AU4
+AU6
+AU9
+Figure 5: Ablation study of SZ-PAB. Blue boxes highlight the
+upper-face regions.
+Figure 6: Temporal Stability Analysis under Stress Testing.
+Ours
+Ours w/o
+CIT-AE
+Figure 7: Ablation study of CIT-AE. Ours w/o CIT-AE ex-
+hibits erratic activations (red) and temporal blur (orange),
+highlighting the importance of temporal modeling.
+dominates the mouth while AUs control the upper face—enabling
+precise and localized control. As shown in Fig. 5, removing SZ-PAB
+leads to weak and flat upper-face activations, whereas its inclusion
+enables accurate and disentangled AU control.
+Necessity of temporal modeling. We evaluate temporal control-
+lability by measuring the stability of AU dynamics. Comparing
+configuration (C) with the full model, CIT-AE reduces AU-Jerk
+from 0.126 to 0.095, indicating more stable control over time. Under
+injected AU noise, jitter is reduced by only 19% without CIT-AE but
+by 61% with it, showing that temporal control is severely degraded
+without explicit modeling. As shown in Fig. 6, methods without
+CIT-AE exhibit jagged fluctuations under rapid AU changes, while
+our model produces smooth trajectories. Fig. 7 further shows that
+without CIT-AE, AU control becomes unstable under noisy inputs,
+with erratic upper-face activations and temporal artifacts, while
+our model maintains consistent and coherent expression control.
+Synergistic effects of components. Our full model achieves the best
+performance across all metrics, with lower AU-Jerk than configu-
+rations using either SZ-PAB or CIT-AE alone, indicating that both
+spatial and temporal modeling are required for stable AU control.
+Removing either component leads to distinct failure modes: with-
+out SZ-PAB, AU signals become entangled with speech, causing
+inaccurate responses; without CIT-AE, AU dynamics become unsta-
+ble, resulting in jitter. These results show that spatial and temporal
+controllability are complementary and cannot be achieved inde-
+pendently. Notably, adding AU conditioning without decoupling
+(configuration B) degrades PSNR and increases AUE, indicating
+that naïve AU integration introduces cross-modal interference and
+reduces controllability. In contrast, our full design ensures both
+spatially accurate and temporally coherent control.
+4.5
+User Study
+To complement our quantitative evaluation, we conducted a user
+study to assess the perceptual quality of emotion-conditioned gener-
+ation. We recruited 20 participants (10 males, 10 females) who were
+not involved in this research. For each test case, participants viewed
+videos generated by our method and three competing emotional
+talking head methods (StyleTalk [26], EAT [11], DreamTalk [27],
+DICE-Talk [34]) in randomized order. They were asked to rate each
+video on a 5-point Likert scale (1 = poor, 5 = excellent) across five
+dimensions: overall quality, emotion accuracy, lip synchronization,
+identity preservation, and expression naturalness.
+Results. As shown in Tab. 4, our method achieves the highest
+scores in all dimensions. Particularly noteworthy is our superior
+performance in emotion accuracy and expression naturalness, di-
+rectly validating the advantages of AU-level representation over
+emotion-label-based approaches. The fine-grained control enabled
+by our AU conditioning allows for more nuanced and authentic
+emotional expressions, which are perceptually favored by human
+raters. Consistently high scores across all dimensions demonstrate
+that our method successfully balances multiple quality criteria with-
+out sacrificing any single aspect.
+5
+Conclusion
+We present EmoZone-Talker, an AU-conditioned emotional con-
+trol framework for audio-driven 3DGS talking-head synthesis. To
+address the coupling between speech-driven and AU-driven facial
+dynamics in shared facial regions, as well as the temporal jitter
+caused by frame-wise AU signals, we propose a region-aware cross-
+modal decoupling mechanism, termed SZ-PAB, and a temporally
+consistent AU representation learning scheme, termed CIT-AE.
+By mapping the decoupled speech–expression representations to
+3D Gaussian deformations, our method enables fine-grained con-
+trol over local facial dynamics. Extensive quantitative, qualitative,
+
+EmoZone-Talker: Regional Semantic Control of Audio-Driven 3DGS Talking Heads via Facial Action Units
+Conference’17, July 2017, Washington, DC, USA
+and ablation studies demonstrate that EmoZone-Talker signifi-
+cantly improves AU control accuracy, local expression naturalness,
+and temporal consistency, while preserving high-fidelity rendering
+quality and natural lip synchronization. Overall, our framework pro-
+vides a new solution for fine-grained and interpretable emotional
+talking-head generation.
+Limitation. Despite the regional decoupling achieved by our
+framework, facial actions are not strictly independent in practice.
+Some expression-related AUs (e.g., AU6) may naturally influence
+the mouth region due to shared muscle structures, which can lead to
+minor artifacts under strong expressions. Addressing such anatom-
+ically coupled effects remains an important direction for future
+work.
+References
+[1] Tadas Baltrusaitis, Amir Zadeh, Yao Chong Lim, and Louis-Philippe Morency.
+2018. OpenFace 2.0: Facial Behavior Analysis Toolkit. In 13th IEEE International
+Conference on Automatic Face & Gesture Recognition, FG 2018, Xi’an, China, May
+15-19, 2018. IEEE Computer Society, 59–66. doi:10.1109/FG.2018.00019
+[2] Junuk Cha, Seongro Yoon, Valeriya Strizhkova, François Brémond, and Seungryul
+Baek. 2025. EmoTalkingGaussian: Continuous Emotion-conditioned Talking
+Head Synthesis. CoRR abs/2502.00654 (2025). arXiv:2502.00654 doi:10.48550/
+ARXIV.2502.00654
+[3] Shao-Yu Chang, Jingyi Xu, Hieu Le, and Dimitris Samaras. 2025. Talking Head
+Generation via AU-Guided Landmark Prediction. CoRR abs/2509.19749 (2025).
+arXiv:2509.19749 doi:10.48550/ARXIV.2509.19749
+[4] Lele Chen, Ross K. Maddox, Zhiyao Duan, and Chenliang Xu. 2019. Hierarchical
+Cross-Modal Talking Face Generation With Dynamic Pixel-Wise Loss. In IEEE
+Conference on Computer Vision and Pattern Recognition, CVPR 2019, Long Beach,
+CA, USA, June 16-20, 2019. Computer Vision Foundation / IEEE, 7832–7841. doi:10.
+1109/CVPR.2019.00802
+[5] Sen Chen, Zhilei Liu, Jiaxing Liu, and Longbiao Wang. 2022. Talking Head
+Generation Driven by Speech-Related Facial Action Units and Audio- Based on
+Multimodal Representation Fusion. CoRR abs/2204.12756 (2022). arXiv:2204.12756
+doi:10.48550/ARXIV.2204.12756
+[6] Kyusun Cho, Joungbin Lee, Heeji Yoon, Yeobin Hong, Jaehoon Ko, Sangjun Ahn,
+and Seungryong Kim. 2024. GaussianTalker: Real-Time Talking Head Synthesis
+with 3D Gaussian Splatting. In Proceedings of the 32nd ACM International Confer-
+ence on Multimedia (Melbourne VIC, Australia) (MM ’24). Association for Comput-
+ing Machinery, New York, NY, USA, 10985–10994. doi:10.1145/3664647.3681627
+[7] Joon Son Chung and Andrew Zisserman. 2016. Out of Time: Automated Lip Sync
+in the Wild. In Computer Vision - ACCV 2016 Workshops - ACCV 2016 International
+Workshops, Taipei, Taiwan, November 20-24, 2016, Revised Selected Papers, Part II
+(Lecture Notes in Computer Science), Chu-Song Chen, Jiwen Lu, and Kai-Kuang
+Ma (Eds.). Springer, 251–263. doi:10.1007/978-3-319-54427-4_19
+[8] Jiahao Cui, Hui Li, Yun Zhan, Hanlin Shang, Kaihui Cheng, Yuqi Ma, Shan Mu,
+Hang Zhou, Jingdong Wang, and Siyu Zhu. 2025. Hallo3: Highly Dynamic
+and Realistic Portrait Image Animation with Video Diffusion Transformer. In
+IEEE/CVF Conference on Computer Vision and Pattern Recognition, CVPR 2025,
+Nashville, TN, USA, June 11-15, 2025. Computer Vision Foundation / IEEE, 21086–
+21095. doi:10.1109/CVPR52734.2025.01964
+[9] Gianluca Donato, Marian Stewart Bartlett, Joseph C. Hager, Paul Ekman, and
+Terrence J. Sejnowski. 1999. Classifying Facial Actions. IEEE Trans. Pattern Anal.
+Mach. Intell. 21, 10 (1999), 974–989. doi:10.1109/34.799905
+[10] E Friesen and Paul Ekman. 1978. Facial action coding system: a technique for the
+measurement of facial movement. Palo Alto 3, 2 (1978), 5.
+[11] Yuan Gan, Zongxin Yang, Xihang Yue, Lingyun Sun, and Yi Yang. 2023. Efficient
+Emotional Adaptation for Audio-Driven Talking-Head Generation. In IEEE/CVF
+International Conference on Computer Vision, ICCV 2023, Paris, France, October
+1-6, 2023. IEEE, 22577–22588. doi:10.1109/ICCV51070.2023.02069
+[12] Shengjie Gong, Haojie Li, Jiapeng Tang, Dongming Hu, Shuangping Huang, Hao
+Chen, Tianshui Chen, and Zhuoman Liu. 2025. Monocular and generalizable
+gaussian talking head animation. In Proceedings of the IEEE/CVF Conference on
+Computer Vision and Pattern Recognition. 5523–5534.
+[13] Yudong Guo, Keyu Chen, Sen Liang, Yong-Jin Liu, Hujun Bao, and Juyong
+Zhang. 2021.
+AD-NeRF: Audio Driven Neural Radiance Fields for Talking
+Head Synthesis. In 2021 IEEE/CVF International Conference on Computer Vi-
+sion, ICCV 2021, Montreal, QC, Canada, October 10-17, 2021. IEEE, 5764–5774.
+doi:10.1109/ICCV48922.2021.00573
+[14] Tianshun Han, Benjia Zhou, Ajian Liu, Yanyan Liang, Du Zhang, Zhen Lei, and
+Jun Wan. 2025. PESTalk: Speech-Driven 3D Facial Animation with Personalized
+Emotional Styles. In Proceedings of the 33rd ACM International Conference on
+Multimedia (Dublin, Ireland) (MM ’25). Association for Computing Machinery,
+New York, NY, USA, 7893–7901. doi:10.1145/3746027.3755190
+[15] Qianyun He, Xinya Ji, Yicheng Gong, Yuanxun Lu, Zhengyu Diao, Linjia Huang,
+Yao Yao, Siyu Zhu, Zhan Ma, Songcen Xu, Xiaofei Wu, Zixiao Zhang, Xun Cao,
+and Hao Zhu. 2024. EmoTalk3D: High-Fidelity Free-View Synthesis of Emotional
+3D Talking Head. In Computer Vision - ECCV 2024 - 18th European Conference,
+Milan, Italy, September 29-October 4, 2024, Proceedings, Part LVII (Lecture Notes in
+Computer Science), Ales Leonardis, Elisa Ricci, Stefan Roth, Olga Russakovsky,
+Torsten Sattler, and Gül Varol (Eds.). Springer, 55–72. doi:10.1007/978-3-031-
+72998-0_4
+[16] Alain Horé and Djemel Ziou. 2010. Image Quality Metrics: PSNR vs. SSIM. In
+20th International Conference on Pattern Recognition, ICPR 2010, Istanbul, Turkey,
+23-26 August 2010. IEEE Computer Society, 2366–2369. doi:10.1109/ICPR.2010.579
+[17] Xinya Ji, Hang Zhou, Kaisiyuan Wang, Qianyi Wu, Wayne Wu, Feng Xu, and
+Xun Cao. 2022. EAMM: One-Shot Emotional Talking Face via Audio-Based
+Emotion-Aware Motion Model. In ACM SIGGRAPH 2022 Conference Proceedings
+(Vancouver, BC, Canada) (SIGGRAPH ’22). Association for Computing Machinery,
+New York, NY, USA, Article 61, 10 pages. doi:10.1145/3528233.3530745
+[18] Xinya Ji, Hang Zhou, Kaisiyuan Wang, Wayne Wu, Chen Change Loy, Xun Cao,
+and Feng Xu. 2021. Audio-Driven Emotional Video Portraits. In IEEE Conference
+on Computer Vision and Pattern Recognition, CVPR 2021, virtual, June 19-25, 2021.
+Computer Vision Foundation / IEEE, 14080–14089. doi:10.1109/CVPR46437.2021.
+01386
+[19] Diederik P. Kingma and Jimmy Ba. 2015. Adam: A Method for Stochastic Opti-
+mization. In 3rd International Conference on Learning Representations, ICLR 2015,
+San Diego, CA, USA, May 7-9, 2015, Conference Track Proceedings, Yoshua Bengio
+and Yann LeCun (Eds.). http://arxiv.org/abs/1412.6980
+[20] Jiahe Li, Jiawei Zhang, Xiao Bai, Jin Zheng, Xin Ning, Jun Zhou, and Lin Gu. 2024.
+TalkingGaussian: Structure-Persistent 3D Talking Head Synthesis via Gaussian
+Splatting. In Computer Vision - ECCV 2024 - 18th European Conference, Milan,
+Italy, September 29-October 4, 2024, Proceedings, Part X (Lecture Notes in Computer
+Science), Ales Leonardis, Elisa Ricci, Stefan Roth, Olga Russakovsky, Torsten
+Sattler, and Gül Varol (Eds.). Springer, 127–145. doi:10.1007/978-3-031-72684-2_8
+[21] Jiahe Li, Jiawei Zhang, Xiao Bai, Jun Zhou, and Lin Gu. 2023. Efficient Region-
+Aware Neural Radiance Fields for High-Fidelity Talking Portrait Synthesis. In
+IEEE/CVF International Conference on Computer Vision, ICCV 2023, Paris, France,
+October 1-6, 2023. IEEE, 7534–7544. doi:10.1109/ICCV51070.2023.00696
+[22] Borong Liang, Yan Pan, Zhizhi Guo, Hang Zhou, Zhibin Hong, Xiaoguang Han,
+Junyu Han, Jingtuo Liu, Errui Ding, and Jingdong Wang. 2022. Expressive Talking
+Head Generation with Granular Audio-Visual Control. In IEEE/CVF Conference
+on Computer Vision and Pattern Recognition, CVPR 2022, New Orleans, LA, USA,
+June 18-24, 2022. IEEE, 3377–3386. doi:10.1109/CVPR52688.2022.00338
+[23] Chang Liu, Tianjiao Jing, Chengcheng Ma, XuanQi Zhou, Zhengxuan Lian, Qin
+Jin, Hongliang Yuan, and Shi-Sheng Huang. 2025. EmoDiffTalk:Emotion-aware
+Diffusion for Editable 3D Gaussian Talking Head. CoRR abs/2512.05991 (2025).
+arXiv:2512.05991 doi:10.48550/ARXIV.2512.05991
+[24] Jiayi Lyu, Xing Lan, Guohong Hu, Hanyu Jiang, Wei Gan, and Jian Xue. 2024.
+ETAU: Towards Emotional Talking Head Generation Via Facial Action Unit. In
+IEEE International Conference on Multimedia and Expo, ICME 2024, Niagara Falls,
+ON, Canada, July 15-19, 2024. IEEE, 1–6. doi:10.1109/ICME57554.2024.10687525
+[25] Jiayi Lyu, Leigang Qu, Wenjing Zhang, Hanyu Jiang, Kai Liu, Zhenglin Zhou,
+Xiaobo Xia, Jian Xue, and Tat-Seng Chua. 2026. AUHead: Realistic Emotional
+Talking Head Generation via Action Units Control. CoRR abs/2602.09534 (2026).
+arXiv:2602.09534 doi:10.48550/ARXIV.2602.09534
+[26] Yifeng Ma, Suzhen Wang, Zhipeng Hu, Changjie Fan, Tangjie Lv, Yu Ding, Zhi-
+dong Deng, and Xin Yu. 2023. StyleTalk: One-Shot Talking Head Generation
+with Controllable Speaking Styles. In Thirty-Seventh AAAI Conference on Artifi-
+cial Intelligence, AAAI 2023, Thirty-Fifth Conference on Innovative Applications of
+Artificial Intelligence, IAAI 2023, Thirteenth Symposium on Educational Advances
+in Artificial Intelligence, EAAI 2023, Washington, DC, USA, February 7-14, 2023,
+Brian Williams, Yiling Chen, and Jennifer Neville (Eds.). AAAI Press, 1896–1904.
+doi:10.1609/AAAI.V37I2.25280
+[27] Yifeng Ma, Shiwei Zhang, Jiayu Wang, Xiang Wang, Yingya Zhang, and Zhidong
+Deng. 2023. DreamTalk: When Expressive Talking Head Generation Meets
+Diffusion Probabilistic Models. CoRR abs/2312.09767 (2023). arXiv:2312.09767
+doi:10.48550/ARXIV.2312.09767
+[28] Ali Mollahosseini, Behzad Hassani, and Mohammad H. Mahoor. 2019. AffectNet:
+A Database for Facial Expression, Valence, and Arousal Computing in the Wild.
+IEEE Trans. Affect. Comput. 10, 1 (2019), 18–31. doi:10.1109/TAFFC.2017.2740923
+[29] Ziqiao Peng, Wentao Hu, Yue Shi, Xiangyu Zhu, Xiaomei Zhang, Hao Zhao,
+Jun He, Hongyan Liu, and Zhaoxin Fan. 2024. SyncTalk: The Devil is in the
+Synchronization for Talking Head Synthesis. In IEEE/CVF Conference on Computer
+Vision and Pattern Recognition, CVPR 2024, Seattle, WA, USA, June 16-22, 2024.
+IEEE, 666–676. doi:10.1109/CVPR52733.2024.00070
+[30] Florian Schroff, Dmitry Kalenichenko, and James Philbin. 2015. FaceNet: A
+unified embedding for face recognition and clustering. In IEEE Conference on
+Computer Vision and Pattern Recognition, CVPR 2015, Boston, MA, USA, June 7-12,
+
+Conference’17, July 2017, Washington, DC, USA
+Tingting Chen et al.
+2015. IEEE Computer Society, 815–823. doi:10.1109/CVPR.2015.7298682
+[31] Zhiwen Shao, Zhilei Liu, Jianfei Cai, and Lizhuang Ma. 2018. Deep adaptive
+attention for joint facial action unit detection and face alignment. In Proceedings
+of the European conference on computer vision (ECCV). 705–720.
+[32] Zhiyao Sun, Tian Lv, Sheng Ye, Matthieu Lin, Jenny Sheng, Yu-Hui Wen, Minjing
+Yu, and Yong-Jin Liu. 2024. DiffPoseTalk: Speech-Driven Stylistic 3D Facial
+Animation and Head Pose Generation via Diffusion Models. ACM Trans. Graph.
+43, 4, Article 46 (July 2024), 9 pages. doi:10.1145/3658221
+[33] Shuai Tan, Bin Ji, and Ye Pan. 2023. EMMN: Emotional Motion Memory Network
+for Audio-driven Emotional Talking Face Generation. In IEEE/CVF International
+Conference on Computer Vision, ICCV 2023, Paris, France, October 1-6, 2023. IEEE,
+22089–22099. doi:10.1109/ICCV51070.2023.02024
+[34] Weipeng Tan, Chuming Lin, Chengming Xu, FeiFan Xu, Xiaobin Hu, Xiaozhong
+Ji, Junwei Zhu, Chengjie Wang, and Yanwei Fu. 2025. Disentangle Identity,
+Cooperate Emotion: Correlation-Aware Emotional Talking Portrait Generation.
+In Proceedings of the 33rd ACM International Conference on Multimedia (Dublin,
+Ireland) (MM ’25). Association for Computing Machinery, New York, NY, USA,
+9987–9995. doi:10.1145/3746027.3755286
+[35] Jiaxiang Tang, Kaisiyuan Wang, Hang Zhou, Xiaokang Chen, Dongliang He, Tian-
+shu Hu, Jingtuo Liu, Ziwei Liu, Gang Zeng, and Jingdong Wang. 2025. Real-Time
+Neural Radiance Talking Portrait Synthesis via Audio-Spatial Decomposition.
+Int. J. Comput. Vis. 133, 9 (2025), 6362–6373. doi:10.1007/S11263-025-02481-9
+[36] Linrui Tian, Qi Wang, Bang Zhang, and Liefeng Bo. 2024. EMO: Emote Por-
+trait Alive Generating Expressive Portrait Videos with Audio2Video Diffusion
+Model Under Weak Conditions. In Computer Vision - ECCV 2024 - 18th Euro-
+pean Conference, Milan, Italy, September 29-October 4, 2024, Proceedings, Part
+LXXXIII (Lecture Notes in Computer Science), Ales Leonardis, Elisa Ricci, Stefan
+Roth, Olga Russakovsky, Torsten Sattler, and Gül Varol (Eds.). Springer, 244–260.
+doi:10.1007/978-3-031-73010-8_15
+[37] Tuomas Varanka, Huai-Qian Khor, Yante Li, Mengting Wei, Hanwei Kung, Nicu
+Sebe, and Guoying Zhao. 2024. Towards Localized Fine-Grained Control for
+Facial Expression Generation. CoRR abs/2407.20175 (2024). arXiv:2407.20175
+doi:10.48550/ARXIV.2407.20175
+[38] Bin Wang, Yang Xu, Huan Zhao, Hao Zhang, and Zixing Zhang. 2025. PTalker:
+Personalized Speech-Driven 3D Talking Head Animation via Style Disentan-
+glement and Modality Alignment. In Proceedings of the 33rd ACM International
+Conference on Multimedia (Dublin, Ireland) (MM ’25). Association for Computing
+Machinery, New York, NY, USA, 10334–10342. doi:10.1145/3746027.3755568
+[39] Kaisiyuan Wang, Qianyi Wu, Linsen Song, Zhuoqian Yang, Wayne Wu, Chen
+Qian, Ran He, Yu Qiao, and Chen Change Loy. 2020. MEAD: A Large-Scale Audio-
+Visual Dataset for Emotional Talking-Face Generation. In Computer Vision - ECCV
+2020 - 16th European Conference, Glasgow, UK, August 23-28, 2020, Proceedings,
+Part XXI (Lecture Notes in Computer Science), Andrea Vedaldi, Horst Bischof,
+Thomas Brox, and Jan-Michael Frahm (Eds.). Springer, 700–717. doi:10.1007/978-
+3-030-58589-1_42
+[40] Wenqing Wang and Yun Fu. 2025. EmoGene: Audio-Driven Emotional 3D Talking-
+Head Generation. In 19th IEEE International Conference on Automatic Face and
+Gesture Recognition, FG 2025, Tampa/Clearwater, FL, USA, May 26-30, 2025. IEEE,
+1–10. doi:10.1109/FG61629.2025.11099460
+[41] Zhou Wang, Alan C. Bovik, Hamid R. Sheikh, and Eero P. Simoncelli. 2004. Image
+quality assessment: from error visibility to structural similarity. IEEE Trans. Image
+Process. 13, 4 (2004), 600–612. doi:10.1109/TIP.2003.819861
+[42] Ziyu Yao, Xuxin Cheng, and Zhiqi Huang. 2024. FD2Talk: Towards Generalized
+Talking Head Generation with Facial Decoupled Diffusion Model. In Proceedings of
+the 32nd ACM International Conference on Multimedia (Melbourne VIC, Australia)
+(MM ’24). Association for Computing Machinery, New York, NY, USA, 3411–3420.
+doi:10.1145/3664647.3681238
+[43] Zhenhui Ye, Jinzheng He, Ziyue Jiang, Rongjie Huang, Jiawei Huang, Jinglin Liu,
+Yi Ren, Xiang Yin, Zejun Ma, and Zhou Zhao. 2023. GeneFace++: Generalized and
+Stable Real-Time Audio-Driven 3D Talking Face Generation. CoRR abs/2305.00787
+(2023). arXiv:2305.00787 doi:10.48550/ARXIV.2305.00787
+[44] Zhenhui Ye, Ziyue Jiang, Yi Ren, Jinglin Liu, Jinzheng He, and Zhou Zhao.
+2023.
+GeneFace: Generalized and High-Fidelity Audio-Driven 3D Talking
+Face Synthesis. In The Eleventh International Conference on Learning Repre-
+sentations, ICLR 2023, Kigali, Rwanda, May 1-5, 2023. OpenReview.net. https:
+//openreview.net/forum?id=YfwMIDhPccD
+[45] Richard Zhang, Phillip Isola, Alexei A. Efros, Eli Shechtman, and Oliver Wang.
+2018. The Unreasonable Effectiveness of Deep Features as a Perceptual Metric.
+In 2018 IEEE Conference on Computer Vision and Pattern Recognition, CVPR 2018,
+Salt Lake City, UT, USA, June 18-22, 2018. Computer Vision Foundation / IEEE
+Computer Society, 586–595. doi:10.1109/CVPR.2018.00068
+[46] Wenxuan Zhang, Xiaodong Cun, Xuan Wang, Yong Zhang, Xi Shen, Yu Guo, Ying
+Shan, and Fei Wang. 2023. SadTalker: Learning Realistic 3D Motion Coefficients
+for Stylized Audio-Driven Single Image Talking Face Animation. In IEEE/CVF
+Conference on Computer Vision and Pattern Recognition, CVPR 2023, Vancouver, BC,
+Canada, June 17-24, 2023. IEEE, 8652–8661. doi:10.1109/CVPR52729.2023.00836
+[47] Zicheng Zhang, Ruobing Zheng, Bonan Li, Congying Han, Tianqi Li, Meng Wang,
+Tiande Guo, Jingdong Chen, Ziwen Liu, and Ming Yang. 2024. Learning Dynamic
+Tetrahedra for High-Quality Talking Head Synthesis. In IEEE/CVF Conference
+on Computer Vision and Pattern Recognition, CVPR 2024, Seattle, WA, USA, June
+16-22, 2024. IEEE, 5209–5219. doi:10.1109/CVPR52733.2024.00498
+[48] Qingcheng Zhao, Pengyu Long, Qixuan Zhang, Dafei Qin, Han Liang, Long-
+wen Zhang, Yingliang Zhang, Jingyi Yu, and Lan Xu. 2024. Media2Face: Co-
+speech Facial Animation Generation With Multi-Modality Guidance. In ACM
+SIGGRAPH 2024 Conference Papers (Denver, CO, USA) (SIGGRAPH ’24). Asso-
+ciation for Computing Machinery, New York, NY, USA, Article 18, 13 pages.
+doi:10.1145/3641519.3657413
+[49] Yang Zhou, Xintong Han, Eli Shechtman, Jose Echevarria, Evangelos Kalogerakis,
+and Dingzeyu Li. 2020. MakeltTalk: speaker-aware talking-head animation. ACM
+Trans. Graph. 39, 6, Article 221 (Nov. 2020), 15 pages. doi:10.1145/3414685.3417774

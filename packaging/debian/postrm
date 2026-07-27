@@ -1,0 +1,10 @@
+#!/bin/sh
+set -e
+case "$1" in
+    purge)
+        rm -f /etc/aichat-hub/config.env
+        rmdir /etc/aichat-hub 2>/dev/null || true
+        ;;
+esac
+#DEBHELPER#
+exit 0

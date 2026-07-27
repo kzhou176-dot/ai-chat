@@ -1,0 +1,26 @@
+Package: aichat-hub
+Version: 1.0.2
+Section: web
+Priority: optional
+Architecture: all
+Depends: python3 (>= 3.7)
+Recommends: bash
+Maintainer: yuefeng <yuefeng@aichat-hub.local>
+Homepage: https://github.com/aichat-hub/aichat-hub
+Description: 中国大学生职业领英替代 + 数字虚拟人框架
+ aichat-hub 是一个本地优先(local-first)的多模型 AI 聊天框架,
+ 集成了数字虚拟人界面、AI 求职辅导(简历/模拟面试/职业画像/
+ 校友匹配)、学术论文管理等模块。
+ .
+ 主要特性:
+  * 6 个 LLM 厂商(OpenAI/DeepSeek/智谱/通义千问/Moonshot/Anthropic)
+  * 74 个 HTTP API 端点,8 套内置虚拟人
+  * 2D 数字虚拟人(8 预设角色 + 4 面试官 + 9 行业专家 + 4 学长)
+  * 霍兰德职业兴趣测试 / STAR 简历评分 / 模拟面试
+  * 校友网络 4 维匹配(同校/同院/同专业/同行业)
+  * 学术论文管理 / 引用 / 4 模式对话
+  * 标准库 only,无 pip install 依赖
+  * 沙箱安全,无 LLM key 也能跑
+ .
+ 安装完成后,运行 `aichat-hub` 启动本地服务,
+ 默认监听 http://127.0.0.1:8765

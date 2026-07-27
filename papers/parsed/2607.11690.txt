@@ -1,0 +1,915 @@
+Requirement-Driven Design of Whole-Body Social Tactile Sensing via
+Virtual Human–Robot Interaction
+Dakarai Crowder1, Ruohan Zhang1, Alexis E. Block2, and Wenzhen Yuan1
+Abstract— Tactile sensing for social-physical human–robot
+interaction (spHRI) is designed in a hardware-driven manner,
+where predefined sensor configurations constrain coverage,
+spatial resolution, and the range of recognizable gestures. We
+propose a requirement-driven framework that derives sensing
+requirements, specifically spatial resolution and placement,
+directly from interaction data. Using a VR-based platform
+with haptic feedback, we collected high-resolution whole-body
+contact distributions across multiple social scenarios, from
+which we identified nine recurring social touch gestures. Eight
+gestures were selected for controlled data collection with 18
+participants, yielding an open-source dataset of 5,520 trials.
+Analysis of contact distributions and simulated tactile encodings
+provides quantitative baselines for skin coverage and sensor
+density on a humanoid robot platform. While demonstrated
+on a single robot platform, the methodology is designed to be
+transferable to other robot morphologies, potentially enabling
+morphology-specific sensing requirements to be derived prior
+to hardware fabrication.
+I. INTRODUCTION
+Robots are increasingly deployed in hospitals, restaurants,
+retail spaces, schools, and domestic settings, where they
+may interact directly with people [1], [2]. In these settings,
+natural and intuitive modes of communication can improve
+the efficiency, safety, and quality of human-robot interaction.
+Social touch is an underexplored modality in human–robot
+interaction. In human-human communication, touch plays a
+central role in conveying affect, intention, reassurance, social
+bonding, and functional cues [3]. Extending this capability
+to robots requires systems that can perceive and interpret
+touch-based interactions. However, achieving reliable social
+touch recognition remains a significant technical challenge.
+The design of tactile sensing systems typically follows
+a hardware-driven design paradigm: tactile sensor systems
+are first developed, and gesture recognition algorithms are
+subsequently built on top of the available sensing configura-
+tion [4], [5]. These systems often rely on large-area tactile
+skins to capture the spatial patterns of contact [6]. However,
+because whole-body tactile skins are expensive and require
+long customization cycles, hardware constraints limit sensing
+coverage and spatial resolution, and since gesture datasets
+are collected using these fixed configurations, recognition
+methods become inherently coupled to the sensors used
+during data collection. As a result, tactile sensor design for
+social touch is driven by engineering feasibility rather than
+the true requirements of natural interaction.
+1 are with University of Illinois at Urbana-Champaign, Champaign, IL,
+USA {dcrowd3, rz21, yuanwz}@illinois.edu
+2 is with Case Western Reserve University, Cleveland, OH, USA
+{alexis.block}@case.edu
+Fig. 1.
+Our framework collects collision data between a user and a virtual
+robot, enabling high-resolution contact extraction. (A) A user interacting
+with a virtual robot. (B) The user’s hand contact model decomposed
+into spheres and the convex hull of the robot’s upper arm mesh. (C)
+Sphere–triangle collision detection used to identify contact regions; circles
+indicate areas of contact. (D) Simulated sensor readings after processing the
+detected collisions.
+We propose an alternative, requirement-driven perspective:
+rather than starting with hardware, we begin by asking what
+tactile signals are required for natural social-physical hu-
+man–robot interaction. We reconstruct human to robot con-
+tact independently of any tactile sensor configuration, allow-
+ing sensing requirements to be explored before hardware is
+designed. Although prior human studies identified common
+interpersonal touch gestures [7]–[9], they lack a quantitative
+analysis of the sensing fidelity required to recognize them,
+and to our knowledge no prior work has derived tactile
+sensing requirements directly from human–robot contact data
+using a hardware-independent data representation. To address
+this gap, we introduce a VR-based data collection platform in
+which participants, equipped with customized haptic gloves,
+interact with a virtual robot across multiple daily scenarios.
+Our platform records 6-DoF hand joint and robot mesh poses
+at each frame, allowing contact geometry to be reconstructed
+offline and re-encoded using configurable tactile resolutions
+and spatial layouts without recollecting data. This enables
+systematic derivation of sensing requirements.
+Using our platform, we constructed the spHRI Dataset by
+collecting user interactions with a humanoid robot (Reachy,
+Pollen Robotics, 2021) across five natural scenarios, allowing
+gesture classes to emerge from observed interactions rather
+than being imposed a priori. We identified nine recurring
+social touch gestures. Because natural interactions produce
+imbalanced gesture frequencies, we conducted a second
+controlled data collection to obtain balanced demonstrations
+arXiv:2607.11690v1  [cs.RO]  13 Jul 2026
+
+of eight gestures, resulting in the VR Gesture Dataset for
+quantitative resolution analysis.
+Using both datasets, we derived quantitative baselines
+for tactile skin sensing requirements by considering two
+key variables: sensing coverage and spatial resolution. We
+first analyze contact distributions to identify the body re-
+gions most frequently engaged during interaction, yielding
+morphology-specific recommendations for sensor placement.
+We then progressively degrade spatial resolution and eval-
+uate gesture classification performance to characterize the
+trade-off between sensing fidelity and recognition accuracy.
+Together, these analyses provide quantitative guidance for
+tactile sensor placement and resolution.
+Our results inform tactile skin design for the Reachy
+platform using VR-simulated tactile signals. The proposed
+VR-based pipeline can in principle be applied to other
+robot morphologies to derive morphology-specific sensing
+requirements.
+In summary, this work makes the following contributions:
+• A requirement-driven framework that derives tactile
+sensor placement and spatial resolution requirements
+directly from human–robot interaction data prior to
+hardware development.
+• A VR data collection platform where high-resolution
+offline contact reconstruction enables configurable sim-
+ulation of tactile sensing layouts and resolutions.
+• An open-source VR gesture dataset1 of 5,520 trials
+across 18 participants performing 8 social touch ges-
+tures on both the arm and torso of a humanoid robot.
+• A simulation-based resolution analysis determining
+that gesture classification accuracy stabilizes near 18
+taxels per 24 cm (≈1.3 cm² per taxel) under binary
+contact encoding, providing a quantitative baseline for
+tactile skin density on a Reachy robot arm prior to
+hardware fabrication.
+II. RELATED WORK
+A. Social-Physical Human-Robot Interaction
+Touch plays an important physiological and emotional role
+in human-human interaction. Affective touch has been linked
+to reduced heart rate and lower cortisol levels, highlighting
+its regulatory effects on the body [10], [11]. Touch also
+functions as a form of communication and attachment,
+reinforcing social signals and sometimes conveying emotions
+on its own [12].
+In human–robot interaction, endowing robots with human-
+like social behaviors has been shown to increase familiarity,
+comfort, and trust [13], [14]. As a fundamental mode of
+human communication, touch may therefore support richer
+social engagement between humans and robots.
+Accordingly, researchers have explored using touch as an
+interaction channel with robots. Examples include animal-
+like robots, such as PARO [15], instrumented robots, like the
+Huggable [16], and studies of structured interactions, such as
+1dataset can be accessed here: https://github.com/dakaraisc/
+VR-gesture-dataset
+robot hugging [9], [17], [18] or social–physical games [19]–
+[21]. Despite these advances, enabling robots to sense and
+interpret social touch without location constraints remains
+an open challenge, motivating developing tactile sensing
+systems and datasets for social–physical human–robot inter-
+action.
+B. Tactile Sensor Development and Data Collection for
+spHRI
+Understanding how people naturally touch robots is im-
+portant for designing systems that can accurately interpret
+social touch. Prior work has collected social touch interaction
+data using two main approaches. Some studies use third
+person video recordings, such as work with the Haptic
+Creature using predefined gesture sets [7] and the NAO
+robot with less constrained gestures [8]. While video enables
+valuable observation and analysis of social behaviors, it can
+suffer from occlusion and limited precision in identifying
+contact locations. To capture social-physical contact directly,
+some researchers developed tactile sensing systems for social
+physical human–robot interaction (spHRI) and used them
+to collect gesture datasets. These systems employ sensing
+modalities such as pressure-sensitive resistive sensors [4],
+[18], [22], [23], capacitive sensors [24], electrical impedance
+tomography sensors [25], and microphone-based tactile sen-
+sors [18], [26]. They are often deployed on specific robot
+morphologies, such as robotic dogs [27] or the NAO robot
+[8], enabling gesture recognition and social intent inference.
+However, the resulting data is tightly coupled to the sensing
+hardware and robot embodiment used during collection,
+making it difficult to derive tactile sensing requirements for
+social-physical human–robot interaction.
+C. Robot Interaction in VR
+Prior works suggest that human responses to robots ob-
+served in virtual environments can translate to interactions
+with physical robots. Studies have reported comparable hu-
+man responses to robots in physical and virtual environments,
+including anthropomorphism, social presence, engagement
+[28], subjective and physiological responses [29], and chil-
+dren’s acceptance of robots [30]. Differences have been
+observed, including increased interpersonal distance in VR
+[31], however, these findings support using VR as a con-
+trolled platform for studying human–robot interaction.
+III. REQUIREMENT-DRIVEN DESIGN FRAMEWORK
+We follow a requirement-driven process for tactile sensing
+design. First, the target interaction context is defined by iden-
+tifying the environment and representative social interaction
+scenarios in which tactile sensing will be used (Section V-A).
+Second, users perform these scenarios using unconstrained
+touch, allowing natural contact locations and touch behaviors
+to emerge without imposing predefined gesture categories
+or sensor constraints (Sections VI-A and VI-B). Third, the
+observed touch behaviors are translated into tactile sens-
+ing requirements by identifying the sensing characteristics
+
+needed to reliably detect and distinguish the recurring inter-
+actions, including the spatial resolution required for gesture
+discrimination (Section VI-C).
+IV. VIRTUAL PLATFORM FOR SOCIAL INTERACTION
+To collect interaction data independently of any predefined
+tactile sensor configuration, we present a virtual platform for
+social interaction. Within this platform, users can perform
+social touch with a virtual robot and receive vibrotactile
+haptic feedback. The data collected from this platform is
+used to simulate tactile sensor readings.
+A. Virtual Environment Development
+To capture tactile interactions between humans and robots,
+we developed a virtual environment in Unity. Our system
+tracks the position of the users hand and the robot’s meshes,
+and provides haptic feedback.
+Fig. 2. (A) A user wearing all the system hardware. We use a Meta Quest 3
+headset, and (C) custom haptic gloves with the control circuitry mounted on
+the shoulder to reduce hand-mounted weight. The linear resonant actuator
+will vibrate upon virtual contact. The user can (B) see and physically interact
+with a virtual robot within the VR environment.
+Hand tracking is done based on embedded vision of the
+Meta Quest 3 (Fig. 2A), enabling a natural hand-based inter-
+action without handheld controllers. The tracking algorithm
+is OpenXR and the frequency is approximately 30 Hz.
+Custom haptic gloves (Fig. 2B) provide users with vi-
+brotactile feedback upon contact with objects in the virtual
+environment. Each glove contains six vibration actuators,
+one on each finger and one centered on the palm (Fig. 2C).
+Actuators trigger when the corresponding virtual hand col-
+lider intersects the robot, generating brief pulses to indicate
+contact. The gloves use an Arduino Nano microcontroller
+and communicates via Bluetooth. The control electronics are
+mounted on the shoulders, with wiring routed along the arms.
+Social touch tactile signals are obtained through a custom
+contact detection module in Unity that detects collisions
+between the hands and the robot surface. We approximate
+the hands using sphere primitives attached to tracked joint
+markers. Each finger segment and the palm are represented
+by multiple spheres rigidly coupled to their corresponding
+markers. The robot body is represented using convex triangle
+meshes.
+At each rendering frame, sphere–triangle intersections are
+evaluated by computing the minimum distance between each
+sphere center on the hand model and the robot surface. A
+binary contact event is registered when this distance is less
+than the sphere radius.
+B. Virtual Robot
+In this study, we use Pollen Robotics’ 2021 Reachy robot.
+The robot is implemented in Unity using articulation bodies
+to enable physically constrained joint motion during contact.
+The movable limbs (arms and head) respond passively to
+forces applied by the participant, while the base remains
+fixed except in specific scenarios where it is translated
+through the environment via scripted motion (V-A.2). The
+torso is modeled as a rigid body with collision constraints
+to prevent penetration by the participant’s virtual hands.
+Participants can physically interact with the robot; however,
+the robot does not actively respond to touch. In two of the
+five interaction scenarios, the robot performs pre-scripted
+movements. Otherwise, it remains passive, with its joints
+behaving in a compliant, torque-free manner.
+C. Virtual Tactile Sensor Simulation
+The hand–robot collision data collected in the virtual
+environment are used to simulate tactile sensor readings.
+To simulate a tactile sensing grid while maintaining spatial
+continuity, the geometry of the robot’s left arm is approxi-
+mated as a cylinder. A cylinder is fit to the mesh, and each
+triangle vertex is projected onto this surface. Surface points
+are represented as (h, a) ∈[0, 1]×[0, 1], where h corresponds
+to normalized axial position and a corresponds to normalized
+angular position.
+For each frame, the triangle-local circle center is converted
+to barycentric coordinates and mapped into (h, a) space.
+The circle radius is transformed into an ellipse under the
+surface parameterization and rasterized onto the discrete
+grid, preserving the spatial extent and orientation of contact
+patches while respecting the periodic angular dimension. The
+resulting grid for frame t is Gt ∈RH×W , where each cell
+encodes a binary contact, force and velocity information are
+not captured in this representation. This simulation pipeline
+is currently implemented for the left arm only, the resolution
+analysis in VI-C is therefore specific to arm-contact gestures.
+V. EXPERIMENTAL DESIGN
+A. Social Touch Communication in Virtual Human–Robot
+Interaction
+To inform tactile sensing design for social touch, we first
+characterized how humans use touch when interacting with
+a humanoid robot within structured social scenarios. We
+conducted a VR-based user study designed to elicit social
+touch directed toward the robot. Participants could perform
+any gesture they wanted during interaction. After the first
+study, the gestures participants used were annotated using a
+
+defined touch taxonomy. An experimenter was in the room
+to monitor the procedure. An external camera recorded the
+physical interaction space, and a virtual camera captured both
+first- and third-person views within the VR environment.
+1) Participants: Twelve users (6 male, 5 female, 1 non-
+binary; age range 19–67 years, mean = 28.5 , standard devi-
+ation = 12.6) participated in the study. Users were recruited
+via fliers posted in the local area and were compensated
+with a $15 gift card. All procedures were approved by the
+Institutional Review Board (IRB24-0340).
+2) Interaction Scenarios: All interactions took place in
+a virtual living room environment, selected to provide a
+familiar and socially plausible interaction context for a home
+robot. Participants were free to move within the tracked VR
+boundary but could only physically interact with the robot
+and not other elements of the environment. For scenarios
+in which the robot was not initially oriented toward the
+participant, the robot turned its head and gazed toward
+the participant upon the first tactile contact as a minimal
+acknowledgment response.
+We designed five predefined social scenarios to elicit
+different forms of social touch (Table I). In the first scenario,
+participants were instructed to gain the robot’s attention.
+The robot was initially oriented away from the participant
+and began in one of three different starting positions. This
+scenario examined how touch is used to convey attention-
+seeking intent.
+The next two scenarios focused on behavioral correction
+at different scales. In the first correction scenario, the robot
+translated across the environment toward the participant’s
+puzzle mat along a pre-scripted trajectory. Participants were
+told to intervene using touch to stop or redirect the motion.
+The robot halted its base movement upon contact. In the
+second correction scenario, the robot performed a sorting
+task incorrectly, moving a blue ball toward a red mat. The
+robot’s arm and gripper followed predefined, non-compliant
+trajectories. This condition was intended to elicit localized
+corrective touch directed toward the robot’s arm or end-
+effector. Upon contact, the arm stopped moving. Another
+scenario required participants to move the robot out of their
+way, probing how users physically negotiated shared space
+with the platform. The final scenario focused on affective
+interaction. The robot faced the participant and had osten-
+sibly baked a cake. Participants were prompted to express
+gratitude, eliciting affective touch behaviors.
+Because the robot’s relative position was expected to in-
+fluence contact location and interaction strategy, we included
+three starting positions. In attention-seeking scenarios, par-
+ticipants began to the robot’s right, left, or rear, whereas
+in the sorting interaction they began to the robot’s right,
+left, or front. Starting positions were held constant across
+scenarios for each participant. Each scenario concluded after
+the participant’s first coded gesture, defined as a continu-
+ous episode of contact terminating when no contact was
+detected for at least two seconds, determined from informal
+lab testing, as this was sufficient to distinguish intentional
+gesture episodes while capturing complete gesture duration.
+TABLE I
+INTERACTION SCENARIOS AND PARTICIPANT PROMPTS
+Participant Prompt
+Context / Intended Interaction
+S1 Attention Seeking: “You
+would like to talk to Reachy
+the robot. Try to get Reachy’s
+attention.”
+The robot is not facing the partici-
+pant. This interaction elicits attention-
+getting touches.
+S2 Path Redirection: “Reachy
+the robot is about to unin-
+tentionally go over your puz-
+zle. How would you alter
+Reachy’s direction?”
+During the interaction the robot is
+moving towards a puzzle on the
+ground. For the three different trials
+the puzzle stays in a fixed location
+but the robot comes from different
+directions.
+S3 Move Aside: “Reachy the
+robot accidentally got in your
+way. How would you make
+Reachy move?”
+The interaction is repeated three times
+with the robot being placed in differ-
+ent locations however, each position
+the robot is in the robot is around
+20cm away from the user.
+S4
+Behavior
+Correction:
+“Reachy
+the
+robot
+is
+organizing balls and placing
+them on the incorrect mat.
+How
+would
+you
+correct
+Reachy’s behavior?”
+During this interaction Reachy is sort-
+ing balls. There is a blue and red mat
+and corresponding balls. The robot is
+moving the ball to the wrong color
+mat
+S5 Appreciation: “Reachy the
+robot baked you a cake. How
+would you show apprecia-
+tion?”
+This interaction Reachy is facing the
+participant. The interaction is sup-
+posed to obtain tactile data which is
+used for more affective display
+In scenarios where the robot was already oriented toward
+the participant, no additional acknowledgment response was
+triggered.
+3) Procedure:
+Participants first reviewed the study pro-
+cedures and provided informed consent. Their height and
+hand dimensions were measured to ensure accurate scaling
+and glove fit, after which they were fitted with the VR
+headset and haptic glove. Once immersed in the virtual
+environment, participants completed a familiarization phase
+designed to increase comfort with the system. During this
+phase, participants were introduced to Reachy, practiced
+navigating the virtual environment and user interface, and
+experienced the haptic feedback when contacting the robot.
+For consistency, all study instructions were presented within
+the VR environment; however, participants were told to ask
+questions about the interface at any time or if they wanted
+to take any breaks or end the study.
+Following familiarization, participants completed the five
+predefined social interaction scenes, described above, in
+which they were explicitly instructed to use touch to convey
+social messages to a humanoid robot. Scene instructions were
+presented via a pop-up in VR. Scene order was counterbal-
+anced across participants using a Latin square design, and
+each scene was repeated three times.
+At the start of each trial, participants were given a start cue
+and were under no time constraints to initiate contact.After
+each interaction, participants completed a brief questionnaire
+in VR. Upon completing all scenes, participants removed
+the equipment and completed a demographics questionnaire
+
+Fig. 3.
+Display of gestures and their resulting UV maps. (a) Demonstration
+of a gesture performed in VR on Reachy’s torso. Gestures like hit, poke,
+and tap generally have shorter contact durations thus the contact is highlight
+via the outlined box(b) Corresponding frame of the UV map showing the
+contact generated by the gesture. The Mesh is unfolded for visualization
+thus there are multiple islands
+and post-interaction survey and were compensated. The study
+took around an hour to complete.
+B. Dataset Creation
+The gesture classes used for classification were derived
+from the study described above. Based on the observed
+interaction patterns, eight gesture types (Fig. 3) were selected
+to form the classification vocabulary.
+Because the initial study yielded limited and class-
+imbalanced samples across gesture types, we conducted a
+second data collection protocol to construct a controlled and
+balanced dataset suitable for resolution analysis. Eighteen
+participants (10 male, M = 24.1, SD = 4.9) were recruited
+to perform the full gesture set. Participants were shown
+a demonstration video of each gesture performed on a
+mannequin arm. At the beginning of each trial, participants
+positioned their hand away from the robot, performed the
+demonstrated gesture, and then returned to a neutral resting
+position. All participants were seated during data collection
+and wore a VR headset and haptic gloves.
+Trials were organized into 20 blocks, each containing all
+eight gestures exactly once. Gesture order was randomized
+within each block for each participant, resulting in 20 repe-
+titions per gesture. To mitigate immediate carryover effects,
+identical gestures were not permitted at block transitions.
+Each gesture was performed 20 times on the arm and 20
+times on the torso. This yielded 40 repetitions per gesture
+per participant. A total of 5,760 trials were planned across
+all participants (18 × 8 × 20 × 2). However, because one
+participant did not complete the torso condition, and two
+participants grab gestures were not recorded the final dataset
+contained 5,520 recorded gesture trials.
+During each trial, the full 6-degree-of-freedom (DoF) pose
+(position and orientation) of each tracked hand joint was
+recorded. The 6-DoF pose of the robot mesh was recorded
+concurrently. All poses were expressed in the global world
+coordinate frame.
+Contact events were not explicitly stored during acquisi-
+tion. Instead, collision detection between hand joints and the
+robot mesh was computed offline, allowing contact points
+and derived sensor activations to be reconstructed post hoc.
+Trials were self-paced, and no time limit was imposed.
+Participants were instructed to perform the gesture naturally
+and return to the resting position when finished. Time-
+series length therefore varied across trials. Trial boundaries
+were manually segmented by the experimenter when the
+participant returned to the neutral pose.
+VI. EXPERIMENTS AND ANALYSIS
+In this section, we analyze the dataset introduced in
+Section V on how the human interaction data can inspire
+tactile sensor design for humanoid robots. Particularly, we
+focus on the coverage area and spatial resolution for the
+sensors.
+A. Contact Region Analysis for Social Gestures
+We first analyzed where humans touch the robot under
+different social scenarios in VR. These regions should be
+covered with tactile sensors to effectively capture interaction
+signals. To do this, we generate contact frequency maps
+for each scenario by mapping the contact regions in the
+dataset onto the robot’s mesh UV space. The contact samples
+are then aggregated and smoothed using kernel density
+estimation (KDE) to produce continuous maps showing the
+distribution of touch across the robot’s surface (4A).
+Our results show the contact location on the robot is
+dictated by the message the user wishes to convey. In
+Scenario 1 (getting the robot’s attention) and Scenario 3
+(the robot is in the user’s way), the shoulder is the most
+frequently touched area. Similar touch patterns appear both
+scenarios, as they both involve getting the robot’s attention.
+In contrast, the contact map for Scenario 5 shows touches
+across many parts of the robot, including the head, shoulders,
+hands, and back. This suggests that affectionate touch used to
+display gratitude is conveyed across multiple regions of the
+robot, with the hands and back appearing to be particularly
+important.
+From a design perspective, tactile skins should cover the
+entire robot surface to effectively recognize all the social
+touch signals. However, if whole-body coverage is not avail-
+able, we should prioritize the coverage of the upper torso,
+grippers, and shoulders. However the general context that the
+robot will be in may alter sensor placement priority.
+To quantitatively compare touch distributions between
+scenarios, we computed the Sliced Wasserstein Distance
+(SWD) between the normalized surface density maps. SWD
+measures how different two touch distributions are across
+the robot’s surface. We then evaluate statistical significance
+using a paired sign-flip permutation test across participants,
+
+(a) Contact Heatmaps
+(b) Spatial Distribution Diﬀerences
+(c) Areas Where Gestures Occured
+(d) Gesture Distributions per Interaction
+Across Scenarios
+Attention Seeking (S1)
+Path Redirection (S2)
+Move Aside (S3)
+Behavior Correction (S4)
+Appreciation (S5)
+S1
+S2
+S3
+S5
+S4
+.075
+.124
+.139
+.120
+.108
+.075 .075
+.075 .075
+.075
+All pairwise comparisons were signiﬁcant after 
+Holm-Bonferroni correction (p<0.05)
+Sliced Wasserstein Distance
+S1
+S5
+S4
+S3
+S2
+S1
+S2
+S3
+S5
+S4
+tap
+grab
+stroke
+push
+pat
+poke
+rub
+hit
+hug
+Fig. 4.
+Results from the virtual platform interaction study. (a) Contact heatmaps showing where participants touched the robot in each interaction scenario.
+Heatmaps were generated by counting the number of frames in which contact occurred. Across scenarios, the highest contact density occurred on the
+shoulders, upper torso, and gripper. (b) Pairwise spatial distribution differences between interaction scenarios, quantified using the Sliced Wasserstein
+Distance. All pairwise comparisons were statistically significant after Holm–Bonferroni correction, indicating that touch distributions differed across
+scenarios. (c) Visualization of the body regions where each gesture type occurred, illustrating the spatial location of different touch gestures on the robot.
+(d) Distribution of gesture types observed in each interaction scenario.
+with Holm–Bonferroni corrections (α = 0.05) applied for
+multiple comparisons. The resulting matrix reports the mean
+paired SWD (effect size) and the corrected p-values for
+each pair of scenarios. All pairs show statistically significant
+differences (p < 0.05), indicating that touch patterns vary
+across social scenarios.
+B. Contact Region Analysis for Individual Gestures
+Fig. 4C provides a coarse visualization of which areas
+were contacted for each gesture, while Fig. 4D shows a
+histogram of the gestures used across the different social
+scenarios. The results suggest that the distributions vary both
+in the gestures used to convey different messages and in
+the areas of the robot where those gestures are performed.
+However, some gestures appear across most scenarios; for
+example, push and tap are used in four out of the five sce-
+narios. Overall, we observe nine gestures in total, suggesting
+that these gestures are important to capture and encode within
+this interaction context.
+From a sensor design perspective, the tactile sensing
+system should encode enough information to distinguish
+between the gestures observed in the dataset. However, if
+engineering constraints limit sensing capabilities, the em-
+phasis may depend on the context in which the robot will
+be deployed. For example, a robot used in emotionally
+supportive settings, scenario 5, should be able to distinguish
+between taps, rubs, strokes, and playful hits, whereas a
+robot in a more customer-facing role may need to prioritize
+gestures such as grabs, taps, and pushes since those were
+used for getting attention.
+C. Effect of Sensor Resolution on Gesture Classification
+1.87mm2
+3.75mm2
+7.5mm2
+1.5cm2
+3cm2
+6cm2
+Fig. 5.
+Example of sensor output of differing sensor resolutions.
+This experiment evaluates how sensor resolution affects
+gesture recognition to inform tactile sensor design. Re-
+searchers often prefer to use tactile skins with lower spatial
+resolution to reduce the cost, but hope to remain capable
+of recognizing frequently observed gestures with the sensor.
+To understand what is a “sufficient” resolution for tactile
+skin, we simulate the tactile signals generated by sensors
+with different spatial resolution, and evaluate the accuracy
+of gesture classification across all those sensors.
+1) Data Processing: Following the pipeline described in
+Section IV-C to generate tactile readings from the virtual
+contact data, the data was clipped or padded to 50 frames as
+the raw tactile reading. To simulate sensor noise, salt-and-
+pepper noise was added with a probability of 2% to help
+
+reduce the sim-to-real gap. Example noiseless tactile sensor
+simulations are depicted in Fig. 5
+2) Classification Models: Two classification approaches
+for gesture recognition are evaluated: a Random Forest using
+hand-crafted features and a CNN–GRU model that learns
+features directly from the tactile frames.
+a) Random Forest: We trained a Random Forest clas-
+sifier using 32 hand-crafted features computed from the
+simulated sensor readings. Trials are aligned to contact onset
+and cropped or padded to a fixed length. Features summarize
+four aspects of the clip: activation, motion, spatial extent, and
+spatial spread. Activation features are computed from the
+per-frame grid sum and its first differences, including peak
+count. Motion is captured using the center of pressure (CoP)
+trajectory and its speed. Spatial extent is represented by the
+bounding-box area and the largest connected component of
+active cells. Spatial spread is measured using the second mo-
+ments around the CoP (Ixx, Iyy). For each signal, temporal
+summary statistics (mean, standard deviation, range, and/or
+maximum) are computed across frames.
+b) CNN–GRU: The deep learning model processes the
+tactile frames directly. Each tactile frame is encoded by a
+three-layer CNN with channel sizes 16, 32, and 64. The
+resulting frame embeddings are passed to a single-layer GRU
+with 128 hidden units to model temporal dynamics. The final
+hidden state is fed to a linear layer to predict the gesture
+class. Models are trained using the AdamW optimizer with
+a learning rate of 10−3, and cross-entropy loss.
+3) Results: Figure 6 illustrates classification performance
+as a function of spatial resolution. We evaluated model
+performance using leave-one-subject-out cross-validation at
+each of the 50 tactile sensor resolutions. For a given reso-
+lution, the dataset was split into folds where all trials from
+one participant were held out for testing while the model was
+trained on trials from the remaining participants; this was re-
+peated until every participant served as the test subject once.
+All models exhibit a sharp improvement when increasing
+taxel density from very low resolutions, indicating that coarse
+tactile representations discard critical spatial information.
+Performance rapidly increases before 8 taxels, and stabilizes
+after 18 taxels per 24 cm , suggesting diminishing returns
+once sufficient spatial detail is captured.
+Under binary contact encoding on the robot arm, these
+results suggest a spatial resolution of approximately 1.3 cm2
+per taxel provides a reasonable baseline for gesture discrim-
+ination, with resolutions coarser than 4.8 cm2 substantially
+degrading classification performance.
+VII. DISCUSSION AND CONCLUSION
+We presented a requirement-driven framework for deriving
+tactile sensing requirements for social-physical human–robot
+interaction. Rather than beginning with a predefined tactile
+sensing system, our approach reconstructs contact from VR-
+based interactions and uses the resulting data to identify
+where tactile sensing is needed and how much spatial resolu-
+tion is required before hardware fabrication. Through a two-
+stage user study, we identified frequently occurring social
+Fig. 6.
+Mean LOSO cross-validation accuracy and macro F1-score for the
+RF and CNN-GRU classifiers across 50 tactile sensor resolutions. Shaded
+regions denote standard deviation across participants. Performance increases
+rapidly with finer spatial resolution before saturating at approximately 18
+taxels per 24 cm, suggesting diminishing returns from additional taxels.
+touch gestures, constructed an open-source gesture dataset,
+and established quantitative baselines for sensing coverage
+and spatial resolution on the Reachy robot.
+This work demonstrates that interaction data itself can
+serve as the starting point for tactile sensing design. By
+decoupling interaction data collection from a fixed tac-
+tile sensor configuration, the proposed framework enables
+sensing requirements to be explored before committing to
+hardware, reducing dependence on costly iterative fabrication
+and allowing sensor designs to be driven by the demands
+of interaction rather than by existing hardware constraints.
+Beyond the specific results reported for the Reachy platform,
+this methodology provides a method for systematically in-
+vestigating tactile sensing requirements across future robot
+embodiments and interaction contexts.
+A. Limitations and Future Work
+This study demonstrates how interaction-driven data col-
+lection can inform the design of tactile sensing systems for
+spHRI however, several limitations should be noted. First, the
+tactile simulation encodes contact as a binary signal, without
+modeling force, pressure, shear, or velocity information, and
+the resolution analysis is conducted exclusively on the robot
+arm. Consequently, the reported sensing-density baseline
+should be interpreted within the scope of this simplified
+contact representation and robot morphology. Second, the
+study is conducted on a single robot platform (Reachy) across
+a limited set of interaction scenarios. Different robot em-
+bodiments, task contexts, sensing modalities, and user popu-
+lations may produce different tactile sensing requirements.
+Accordingly, the quantitative recommendations presented
+here should be interpreted as design baselines rather than uni-
+versal specifications. Third, although prior work suggests that
+VR provides a reasonable proxy for physical human–robot
+interaction [28], [29], virtual environments cannot perfectly
+
+replicate real-world interactions and may influence touch
+behaviors. Fourth, the current system relies primarily on hand
+tracking; incorporating full-body tracking could capture a
+broader range of social touch behaviors. Finally, the proposed
+framework has not yet been validated using a physical whole-
+body tactile skin or evaluated against naturally occurring
+physical social touch interactions. Future work will expand
+the participant pool, investigate sensor sparsity and non-
+uniform taxel layouts, fabricate tactile sensing hardware
+informed by the derived requirements, and evaluate the
+framework in real-world interactions. The method will also
+be extended to incorporate richer tactile modalities, including
+contact force, pressure distribution, shear, and temporal force
+evolution.
+REFERENCES
+[1] I. Lee, “Service robots: A systematic literature review,” Electronics,
+vol.
+10,
+no.
+21,
+p.
+2658,
+Oct.
+2021.
+[Online].
+Available:
+http://dx.doi.org/10.3390/electronics10212658
+[2] V. N. Lu, J. Wirtz, W. H. Kunz, S. Paluch, T. Gruber, A. Martins,
+and
+P.
+G.
+Patterson,
+“Service
+robots,
+customers
+and
+service
+employees: what can we learn from the academic literature and
+where are the gaps?” Journal of Service Theory and Practice,
+vol.
+30,
+no.
+3,
+p.
+361–391,
+Apr.
+2020.
+[Online].
+Available:
+http://dx.doi.org/10.1108/JSTP-04-2019-0088
+[3] M. J. Hertenstein, J. M. Verkamp, A. M. Kerestes, and R. M.
+Holmes,
+“The
+communicative
+functions
+of
+touch
+in
+humans,
+nonhuman primates, and rats: A review and synthesis of the
+empirical
+research,”
+Genetic,
+Social,
+and
+General
+Psychology
+Monographs, vol. 132, no. 1, p. 5–94, Feb. 2006. [Online]. Available:
+http://dx.doi.org/10.3200/MONO.132.1.5-94
+[4] M. M. Jung, R. Poppe, M. Poel, and D. K. Heylen, “Touching the
+void – introducing cost: Corpus of social touch,” in Proceedings
+of the 16th International Conference on Multimodal Interaction,
+ser. ICMI ’14.
+New York, NY, USA: Association for Computing
+Machinery, 2014, p. 120–127. [Online]. Available: https://doi.org/10.
+1145/2663204.2663242
+[5] Y.-K. Li, Q.-H. Meng, T.-H. Yang, Y.-X. Wang, and H.-R. Hou, “Touch
+gesture and emotion recognition using decomposed spatiotemporal
+convolutions,” IEEE Transactions on Instrumentation and Measure-
+ment, vol. 71, pp. 1–9, 2022.
+[6] E. Y. Zhang, Z. Pan, and A. D. Cheok, “Emotion recognition using
+affective touch: A survey,” IEEE Transactions on Affective Computing,
+vol. 17, no. 1, pp. 1–20, 2026.
+[7] S. Yohanan and K. E. MacLean, “The role of affective touch in human-
+robot interaction: Human intent and expectations in touching the haptic
+creature,” Int. J. Soc. Robot., vol. 4, no. 2, pp. 163–180, Apr. 2012.
+[8] R. Andreasson, B. Alenljung, E. Billing, and R. Lowe, “Affective touch
+in human–robot interaction: Conveying emotion to the nao robot,” Int.
+J. Soc. Robot., vol. 10, no. 4, pp. 473–491, Sep. 2018.
+[9] A. E. Block, H. Seifi, O. Hilliges, R. Gassert, and K. J. Kuchenbecker,
+“In the arms of a robot: Designing autonomous hugging robots with
+intra-hug gestures,” ACM Trans. Hum. Robot Interact., vol. 12, no. 2,
+pp. 1–49, Jun. 2023.
+[10] L. Della Longa, L. Carnevali, E. Patron, D. Dragovic, and T. Farroni,
+“Psychophysiological and visual behavioral responses to faces associ-
+ated with affective and non-affective touch in four-month-old infants,”
+Neuroscience, vol. 464, pp. 67–78, Jun. 2021.
+[11] R. Feldman, M. Singer, and O. Zagoory, “Touch attenuates infants’
+physiological reactivity to stress,” Dev. Sci., vol. 13, no. 2, pp. 271–
+278, Mar. 2010.
+[12] J. T. Suvilehto, A. Cekaite, and I. Morrison, “The why, who and how
+of social touch,” Nat. Rev. Psychol., Aug. 2023.
+[13] S. Saunderson and G. Nejat, “How robots influence humans: A survey
+of nonverbal communication in social human–robot interaction,” Int.
+J. Soc. Robot., vol. 11, no. 4, pp. 575–608, Aug. 2019.
+[14] T. Kadylak, M. A. Bayles, and W. A. Rogers, “Are friendly
+robots trusted more? an analysis of robot sociability and trust,”
+Robotics, vol. 12, no. 6, p. 162, Nov. 2023. [Online]. Available:
+http://dx.doi.org/10.3390/robotics12060162
+[15] T. Shibata and K. Wada, “Robot therapy: a new approach for mental
+healthcare of the elderly - a mini-review,” Gerontology, vol. 57, no. 4,
+pp. 378–386, 2011.
+[16] S. Jeong, K. D. Santos, S. Graca, B. O’Connell, L. Anderson, N. Sten-
+quist, K. Fitzpatrick, H. Goodenough, D. Logan, P. Weinstock, and
+C. Breazeal, “Designing a socially assistive robot for pediatric care,”
+in Proceedings of the 14th International Conference on Interaction
+Design and Children.
+New York, NY, USA: ACM, Jun. 2015.
+[17] A. E. Block and K. J. Kuchenbecker, “Softness, warmth, and respon-
+siveness improve robot hugs,” Int. J. Soc. Robot., vol. 11, no. 1, pp.
+49–64, Jan. 2019.
+[18] A. E. Block, S. Christen, R. Gassert, O. Hilliges, and K. J. Kuchen-
+becker, “The six hug commandments,” in Proceedings of the 2021
+ACM/IEEE International Conference on Human-Robot Interaction.
+New York, NY, USA: ACM, Mar. 2021.
+[19] N. T. Fitter and K. J. Kuchenbecker, “Equipping the baxter robot with
+human-inspired hand-clapping skills,” in 2016 25th IEEE International
+Symposium on Robot and Human Interactive Communication (RO-
+MAN).
+IEEE, 2016, pp. 105–112.
+[20] ——, “Teaching a robot bimanual hand-clapping games via wrist-worn
+imus,” Frontiers in Robotics and AI, vol. 5, p. 85, 2018.
+[21] ——, “How does it feel to clap hands with a robot?” International
+Journal of Social Robotics, vol. 12, no. 1, pp. 113–127, 2020.
+[22] X. L. Cang, P. Bucci, A. Strang, J. Allen, K. MacLean, and H. S.
+Liu, “Different strokes and different folks: Economical dynamic
+surface sensing and affect-related touch recognition,” ser. ICMI ’15.
+New York, NY, USA: Association for Computing Machinery, 2015,
+p. 147–154. [Online]. Available: https://doi.org/10.1145/2818346.
+2820756
+[23] D. Crowder, K. Vandyck, X. Sun, J. McCann, and W. Yuan, “Social
+gesture recognition in spHRI: Leveraging fabric-based tactile sensing
+on humanoid robots,” in 2025 IEEE International Conference on
+Robotics and Automation (ICRA).
+IEEE, May 2025, pp. 5527–5534.
+[24] P. Wang, J. Liu, F. Hou, D. Chen, Z. Xia, and S. Guo, “Organization
+and understanding of a tactile information dataset tacact for physical
+human-robot interaction,” in 2021 IEEE/RSJ International Conference
+on Intelligent Robots and Systems (IROS), 2021, pp. 7328–7333.
+[25] D. Silvera-Tawil, D. Rye, and M. Velonaki, “Interpretation of social
+touch on an artificial arm covered with an EIT-based sensitive skin,”
+Int. J. Soc. Robot., vol. 6, no. 4, pp. 489–505, Nov. 2014.
+[26] M. J. Yang, J. Cho, H. Chung, K. Park, and J. Kim, “Touch clas-
+sification on robotic skin using multimodal tactile sensing modules,”
+in 2023 IEEE International Conference on Robotics and Automation
+(ICRA), 2023, pp. 9917–9923.
+[27] S. Guo, L. Zhan, Y. Cao, C. Zheng, G. Zhou, and J. Gong, “Touch-and-
+heal: Data-driven affective computing in tactile interaction with robotic
+dog,” Proc. ACM Interact. Mob. Wearable Ubiquitous Technol., vol. 7,
+no. 2, Jun. 2023. [Online]. Available: https://doi.org/10.1145/3596258
+[28] C. Esterwood, R. Guan, X. Ye, and L. P. Robert, “Virtually the
+same or realistically different?: A meta-analysis of real vs. ’not so
+real’ robots,” in Proceedings of the 2025 ACM/IEEE International
+Conference on Human-Robot Interaction, ser. HRI ’25.
+IEEE Press,
+2025, p. 559–568.
+[29] J. Birkle and V. Wagner-Hartl, “Differences in human response
+when interacting in real and virtual (vr) human–robot scenarios,”
+Automation, vol. 6, no. 4, p. 58, Oct. 2025. [Online]. Available:
+http://dx.doi.org/10.3390/automation6040058
+[30] A. Shariati, M. Shahab, A. Meghdari, A. Amoozandeh Nobaveh,
+R. Rafatnejad, and B. Mozafari, “Virtual reality social robot platform:
+A case study on arash social robot,” in Social Robotics, ser. Lecture
+Notes in Computer Science. Cham: Springer International Publishing,
+2018, pp. 551–560.
+[31] R. Li, M. van Almkerk, S. van Waveren, E. Carter, and I. Leite,
+“Comparing human-robot proxemics between virtual reality and the
+real world,” in 2019 14th ACM/IEEE international conference on
+human-robot interaction (HRI).
+IEEE, 2019, pp. 431–439.

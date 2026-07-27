@@ -1,0 +1,1952 @@
+MVP4D: Multi-View Portrait Video Diffusion for Animatable 4D Avatars
+FELIX TAUBNER, University of Toronto and Vector Institute, Canada
+RUIHANG ZHANG, University of Toronto, Canada
+MATHIEU TULI, LG Electronics, Canada
+SHERWIN BAHMANI, University of Toronto and Vector Institute, Canada
+DAVID B. LINDELL, University of Toronto and Vector Institute, Canada
+Fig. 1. MVP4D generates animatable and photorealistic 360-degree avatars from a single reference image using a multi-view video diffusion model. The model
+generates videos of the reference subject from multiple viewpoints with controllable expressions and head pose, which we distill into a 4D avatar that can
+be rendered in real time. Our method produces detailed 4D avatars with realistic motion, capturing fine features such as skin blemishes, hair strands, and
+expression-dependent wrinkles. Please refer to the project webpage for video results and code: https://felixtaubner.github.io/mvp4d/.
+Digital human avatars aim to simulate the dynamic appearance of humans in
+virtual environments, enabling immersive experiences across gaming, film,
+virtual reality, and more. However, the conventional process for creating and
+animating photorealistic human avatars is expensive and time-consuming,
+requiring large camera capture rigs and significant manual effort from pro-
+fessional 3D artists. With the advent of capable image and video generation
+models, recent methods enable automatic rendering of realistic animated
+avatars from a single casually captured reference image of a target sub-
+ject. While these techniques significantly lower barriers to avatar creation
+and offer compelling realism, they lack constraints provided by multi-view
+information or an explicit 3D representation. So, image quality and real-
+ism degrade when rendered from viewpoints that deviate strongly from
+the reference image. Here, we build a video model that generates animat-
+able multi-view videos of digital humans based on a single reference image
+Authors’ Contact Information: Felix Taubner, ftaubner@cs.toronto.edu, University of
+Toronto and Vector Institute, Canada; Ruihang Zhang, ruihang.zhang@mail.utoronto.ca,
+University of Toronto, Canada; Mathieu Tuli, tuli.mathieu@gmail.com, LG Electronics,
+Canada; Sherwin Bahmani, bahmani@cs.toronto.edu, University of Toronto and Vector
+Institute, Canada; David B. Lindell, lindell@cs.toronto.edu, University of Toronto and
+Vector Institute, Canada.
+and target expressions. Our model, MVP4D, is based on a state-of-the-art
+pre-trained video diffusion model and generates hundreds of frames simul-
+taneously from viewpoints varying by up to 360 degrees around a target
+subject. We show how to distill the outputs of this model into a 4D avatar
+that can be rendered in real-time. Our approach significantly improves the
+realism, temporal consistency, and 3D consistency of generated avatars
+compared to previous methods.
+CCS Concepts: • Computing methodologies →Motion capture; Recon-
+struction; Neural networks.
+Additional Key Words and Phrases: Multi-View Video Diffusion, 4D Avatar
+1
+Introduction
+Digital human avatars aim to simulate human appearance, behavior,
+and interaction in virtual environments. Their development en-
+ables immersive experiences across applications, including gaming,
+film, virtual reality, and education. However, creating and animat-
+ing realistic avatars remains challenging due to the difficulty of (1)
+arXiv:2510.12785v1  [cs.CV]  14 Oct 2025
+
+2
+•
+Felix Taubner, Ruihang Zhang, Mathieu Tuli, Sherwin Bahmani, and David B. Lindell
+capturing and faithfully reproducing the subtleties of human ap-
+pearance, motion, and expression, and (2) human sensitivity to even
+minor rendering imperfections, which often leads to the “uncanny
+valley” effect [Geller 2008; Mori 1970].
+Conventionally, 4D avatars are created using large capture rigs
+containing many cameras [Debevec 2012; He et al. 2024; Wuu et al.
+2023], and creating the final avatar demands significant manual
+effort from professional 3D artists. Animation often involves com-
+plex motion capture setups and keyframing, which is expensive
+and time-consuming [Haapaoja and Klintberg 2022; Seol et al. 2016;
+Unreal 2024]. Hence, recent research in computer graphics focuses
+on automatically creating and animating photorealistic avatars from
+casually captured images or videos of a target subject using a single
+camera [Ma et al. 2024; Qian et al. 2024; Shao et al. 2024a; Taubner
+et al. 2025; Xiang et al. 2024; Zielonka et al. 2022].
+Given one or more reference images, recent approaches recon-
+struct and render avatars using either 3D representations—such
+as Gaussian splatting [Hu et al. 2024; Kerbl et al. 2023] or volume
+rendering [Drobyshev et al. 2022; Xu et al. 2024a]—or 2D generative
+techniques that directly synthesize avatar videos [Cui et al. 2025;
+Lin et al. 2025; Ma et al. 2024]. These approaches face a fundamental
+tradeoff: 3D methods offer stronger multi-view consistency but of-
+ten struggle to capture fine-grained facial dynamics and expression-
+dependent appearance due to modeling limitations [Danecek et al.
+2022; Lewis et al. 2014]. In contrast, 2D methods leverage large-scale
+generative models [Brooks et al. 2024; Gao et al. 2024; Rombach
+et al. 2022; Saharia et al. 2022] that better capture subtle motion and
+expressions, but they lack explicit 3D constraints and hence exhibit
+weaker multi-view consistency.
+Recent advances in generative modeling have focused on enhanc-
+ing the 3D consistency of 2D methods by jointly modeling and
+rendering multi-view images [Gao et al. 2024; Kant et al. 2025; Taub-
+ner et al. 2025; Wu et al. 2025] or multi-view videos [Shao et al.
+2024a]. Still, current approaches for multi-view human video gener-
+ation rely on image-based diffusion models, which limits animation
+fidelity and constrains generation to only a few frames—hindering
+the creation of compelling, temporally coherent animations.
+Here, we address these limitations by introducing MVP4D—a
+technique based on a morphable multi-view video diffusion model
+(MMVDM) that generates detailed, photorealistic avatars from a
+single reference image (see Figure 1). Our model is based on a recent
+video diffusion transformer architecture [Yang et al. 2025], which we
+extend using morphable model-based control signals to enable high-
+fidelity animation and 3D-consistent rendering. We produce 3D-
+and temporally consistent multi-view videos in a single diffusion
+sampling run, generating up to 400 frames across 360 degrees of
+viewpoint variation (see Table 1). Based on these videos, we show
+how to distill the generated multi-view portrait videos into a 4D
+avatar that can be rendered in real time.
+Training the MMVDM is challenging due to the scarcity of multi-
+view portrait video data and the computational requirements of
+training large video models. To overcome this obstacle, we design a
+multi-modal training curriculum that combines the temporal coher-
+ence of single-view dynamic videos with the view consistency of
+multi-view static images. At inference time, this enables the model
+to synthesize long, synchronized video sequences from multiple
+Table 1. Comparison of recent multi-view and video generation mod-
+els. MVP4D generates an order of magnitude more frames in a single
+diffusion sampling run than comparable baselines, while producing tem-
+porally consistent video across multiple viewpoints. In addition, it is
+conditioned on head pose and expression, making it fully animatable.
+method
+#frames
+multi-view
+video
+pose/exp.
+CAT3D [Gao et al. 2024]
+8
+✓
+✗
+✗
+CAT4D [Wu et al. 2025]
+16
+✓
+✓
+✗
+CAP4D [Taubner et al. 2025]
+8
+✓
+✗
+✓
+CogVideoX [Yang et al. 2025]
+49
+✗
+✓
+✗
+Pippo [Kant et al. 2025]
+60
+✓
+✗
+✗
+Human4DiT [Shao et al. 2024a]
+24
+✓
+✓
+✓
+MVP4D
+392
+✓
+✓
+✓
+viewpoints—without ever being trained on large-scale multi-view
+video data.
+In summary, we make the following contributions.
+• We introduce the first morphable multi-view video diffusion
+model capable of synthesizing 360-degree portrait videos.
+• We propose a multi-modal training curriculum that enables por-
+trait synthesis across a large number of frames and viewpoints,
+without requiring explicit training on large-scale multi-view
+video data.
+• We demonstrate state-of-the-art results in generating dynamic,
+temporally consistent, and photorealistic multi-view portrait
+videos and 4D avatars.
+2
+Related Work
+Animatable 3D avatars. Recent methods for animating and ren-
+dering digital human avatars typically rely on 3D representations
+of appearance or geometry. For example, techniques such as neural
+radiance fields [Mildenhall et al. 2021] and Gaussian splatting [Kerbl
+et al. 2023] use models of the absorption and emission of light in a
+3D volume to render photorealistic images of scenes [Zielonka et al.
+2022] or digital humans [Hu et al. 2024; Shao et al. 2024b; Xiang
+et al. 2024; Xu et al. 2024b]. However, these approaches are typically
+applied to the reconstruction problem: given a large set of images
+captured of a single human from multiple view directions, they
+reconstruct appearance and geometry. Other approaches based on
+3D representations focus on the task of generation—by training on a
+large corpus of videos of humans, they learn to generate animatable
+3D human models from one or few input images of a person, e.g.,
+through feed-forward generation [Chu and Harada 2024; Droby-
+shev et al. 2022; Khakhulin et al. 2022; Tran et al. 2024a,b; Xu et al.
+2024a; Zheng et al. 2025] or by inverting 3D generative adversarial
+networks [Sun et al. 2023; Zhao et al. 2024]. More recent methods,
+such as Taubner et al.[2025], generate many additional reference
+images using a morphable multi-view diffusion model (MMDM) to
+improve the 3D reconstruction. Still, animating these 3D represen-
+tations is challenging. Most methods attempt to model motion via
+coarse geometry generated by 3DMMs, which fails to capture the
+fine-grained motion of structures such as the tongue and lips.
+Monocular portrait video generation. Another line of research fo-
+cuses on directly generating videos of the digital human avatars
+
+MVP4D: Multi-View Portrait Video Diffusion for Animatable 4D Avatars
+•
+3
+Morphable Multi-view 
+Video Diffusion Model
+Decoder
+3DMM estimator
+3DMM 
+control
+reference
+image
+mref
+eref
+pref
+vref
+zref
+a) multi-view video generation
+input
+b) 4D reconstruction
+views
+views
+frames
+frames
+Fig. 2. Overview of MVP4D. The method takes as input one reference image that is encoded into the latent space of a variational autoencoder [Yang et al.
+2025]. An off-the-shelf face tracker estimates a 3DMM for the reference image, from which we derive conditioning signals that describe camera pose, head
+pose, and expression. We associate additional conditioning signals with each input noisy latent video frame based on the desired generated viewpoints, poses,
+and expressions. A multi-view video diffusion transformer denoises the latent multi-view video. We then use the variational autoencoder to decode the latent
+video frames to a series of multi-view image frames (the resulting multi-view video), which is distilled into a 4D representation for real-time visualization.
+from a reference image without relying on an intermediate 3D repre-
+sentation. These approaches use image or video generation models
+trained on large-scale datasets [Blattmann et al. 2023; Rombach et al.
+2022] to output animated avatar videos from an input image of a
+person [Lin et al. 2025; Ma et al. 2024; Tian et al. 2024; Wei et al.
+2024; Xu et al. 2025; Yang et al. 2024; Zhao et al. 2025]. They are
+typically controlled using the facial expressions of an example video
+or from an input audio clip. These methods show impressive results;
+by learning directly from large-scale monocular video collections
+of humans, they achieve near-photoreal quality and lifelike motion.
+However, they do not provide a 3D representation and often exhibit
+artifacts when the rendered viewpoint deviates significantly from
+the input image, due to a lack of constraints that enforce 3D consis-
+tency. Also, while some methods can use sparse facial landmarks
+to control the appearance of the generated avatar, there is no op-
+tion for fine-grained controllability of the exact expression or head
+pose [Guo et al. 2024; Ma et al. 2024; Siarohin et al. 2019].
+Multi-view generation models. Recently, progress in diffusion mod-
+els has enabled the generation of multi-view images or videos based
+on a single reference image [Gao et al. 2024; Wu et al. 2025]. While
+earlier work [Jiang et al. 2024; Li et al. 2024b; Liang et al. 2024;
+Zhang et al. 2024] primarily focuses on simple object generation,
+more recent approaches have been applied to digital humans [Kant
+et al. 2025; Shao et al. 2024a; Taubner et al. 2025]. Most similar to our
+method, Human4DiT [Shao et al. 2024a] can generate body-pose con-
+trolled multi-view video given a reference image of a target likeness.
+However, these methods are based on image generation models and
+generate only a very small number of frames at a time, thus greatly
+limiting temporal and 3D consistency. With the recent advances
+in video diffusion models, several works extend pre-trained video
+models to multi-view video generators for general scenes [Kuang
+et al. 2024; Wang et al. 2025; Watson et al. 2025; Xu et al. 2024c],
+driving simulation [Li et al. 2024a], or panoramic scenes [Xie et al.
+2025]. While these approaches demonstrate impressive quality, their
+application to human avatar generation remains unexplored. Our
+model leverages recent video diffusion transformers [Yang et al.
+2025] with spatio-temporal autoencoders to generate a very large
+number of temporally and multi-view consistent frames. See Table 1
+for a comparison of multi-view generation models.
+3
+Method
+3.1
+Morphable Multi-view Video Diffusion Model.
+MVP4D employs a morphable multi-view video diffusion model
+(MMVDM) that takes a reference image iref as input. It generates a
+multi-view video Vgen = {i(𝑣,𝑡)
+gen }𝑉,𝐹
+𝑣=1,𝑓=1, i.e., a set of𝐺= 𝑉×𝐹images,
+where 𝑉is the number of generated views and 𝐹is the number of
+generated frames per view (see Figure 2). Additionally, the model is
+conditioned on head pose, expression, and camera parameters for
+each image. These conditioning signals are denoted as cref for the
+reference image and Cgen = {c(𝑣,𝑓)
+gen }𝑉,𝐹
+𝑣=1,𝑓=1 for the generated images.
+Based on these inputs, the MMVDM learns the joint probability of
+generated multi-view videos as
+𝑃(Vgen|iref, cref, Cgen).
+(1)
+3.2
+Architecture
+Our model is initialized from CogVideoX-2B [Yang et al. 2025],
+and we adapt the architecture for multi-view generation similar to
+previous work [Gao et al. 2024; Taubner et al. 2025]. Specifically, we
+use a pre-trained spatio-temporal video auto-encoder [Yang et al.
+2025] to encode the reference image and each video from each view
+into a latent space with compressed spatial and temporal resolution.
+The auto-encoder converts a monocular video (or image) of size
+([𝐹= 1 + 4 ˜𝐹] × 𝐻× 𝑊) to a ([1 + ˜𝐹] × 𝐻
+8 × 𝑊
+8 ) latent video (or
+image). We introduce ˜𝐹to account for the temporal compression
+scheme of the auto-encoder, which encodes the first input frame
+into its own latent frame and then applies a compression factor of
+four to all subsequent frames.
+
+4
+•
+Felix Taubner, Ruihang Zhang, Mathieu Tuli, Sherwin Bahmani, and David B. Lindell
+We encode the reference image, and each view of the multi-view
+video separately to obtain a reference latent zref and a set of multi-
+view latent videos Zgen = {z(𝑣)
+gen}𝑉
+𝑣=1. The latent frames are patchified
+into tokens using a convolutional layer. We remove the text encoder
+of CogVideoX and retain the diffusion transformer, which then
+processes these tokens and outputs the predicted noise 𝝐[Ho et al.
+2020]. This transformer jointly attends to all tokens across spatial,
+frame, and viewpoint dimensions, allowing information to be shared
+between all pixels of the reference image and all views and frames
+of the multi-view video.
+We apply spatial and temporal positional encodings to the refer-
+ence image latent and the video latents following CogVideoX [Yang
+et al. 2025], which uses a sinusoidal positional encoding applied
+separately to each spatial and temporal dimension. For the reference
+image, we use the standard sinusoidal spatial positional encoding,
+but optimize a learned encoding for the temporal encoding. For the
+video latents, we replicate the same sinusoidal spatial and temporal
+positional encodings across the viewpoint dimension. We adapt the
+training losses of CogVideoX and fine-tune the model by optimizing
+all parameters to minimize the L2 difference between the predicted
+and ground-truth noise added to each latent video frame during the
+diffusion process.
+Conditioning signals. Following Taubner et al. [2025], we condi-
+tion our model on additional images that provide the head pose,
+expression, camera pose, motion, and other contextual information
+for the reference image and the generated multi-view videos (see
+Figure 2). The conditioning signals are produced using a canonical
+human head model based on FLAME [Li et al. 2017] and an off-
+the-shelf head tracker applied to the reference image or to driving
+videos (i.e., to animate the generated videos) [Taubner et al. 2024]. A
+full visualization of the conditioning signals is shown in Figure S1.
+The conditioning signals include: (1) 3D pose maps pref and Pgen,
+which encode the rasterized canonical 3D coordinates of the head
+geometry; (2) expression deformation maps eref and Egen, which cap-
+ture the rasterized 3D deformations relative to a neutral expression
+mesh; (3) view ray direction and origin maps vref and Vgen, represent-
+ing the direction and origin of each camera ray in the first camera’s
+reference frame; and (4) binary masks bref and Bgen, which indicate
+whether a frame is a reference or generated frame—Bgen is used
+to condition the model on previously generated video frames. We
+also include an additional binary mask that identifies regions of the
+reference image that are padded to accommodate center-cropping
+(see Supp. Section S2.1). The conditioning signals for the reference
+image are given as cref = {pref, eref, vref, bref}, and the signals for
+the generated images are defined analogously. We concatenate the
+reference conditioning signals to the latent reference image zref.
+The conditioning signals for the latent video frames require spe-
+cial handling due to the temporal compression factor. Following the
+strategy used in CogVideoX, we retain the conditioning signals for
+the first input frame and the last frame of each subsequent group of
+four frames. To recover high-frequency temporal details lost in this
+sub-sampling process, we introduce an additional sub-frame motion
+map, mgen, which encodes the 2D screen-space displacement of the
+3DMM between the retained frame and each dropped frame within
+a group (see Supp. Section S2.1). This allows the model to capture
+Table 2. Training datasets. We use datasets spanning different modalities—
+including monocular videos, dynamic multi-view videos, and static multi-
+view images—and use them all in our multi-modal training curriculum.
+dataset
+multi-view
+video
+360-degree
+Nersemble [Kirschstein et al. 2023]
+✓
+✓
+✗
+Ava-256 [Martinez et al. 2024]
+✓
+✗
+✓
+VFHQ [Xie et al. 2022]
+✗
+✓
+✗
+RenderMe-360 [Pan et al. 2024]
+✓
+✓/✗
+✓
+fine-grained motions—such as blinking—that occur over just a few
+frames. The compressed conditioning signals are concatenated with
+their corresponding latent video frames.
+3.3
+Multi-Modal Training Curriculum
+Ideally, we would train our proposed multi-view video model on a
+large-scale multi-view video dataset. However, no such dataset cur-
+rently exists. Furthermore, the number of transformer tokens—and
+consequently, the computational cost—increases with each addi-
+tional training view, as each view is associated with a large number
+of frames. To address these challenges, we introduce a multi-modal
+training curriculum for multi-view portrait video generation that
+enables the synthesis of a large number of frames from multiple
+viewpoints without training on large-scale multi-view video data.
+Datasets. Our training curriculum leverages multiple data modal-
+ities: monocular, multi-view image, and multi-view video (see Ta-
+ble 2). Specifically, VFHQ [Xie et al. 2022] contains 13k clips of
+forward-facing monocular videos; Nersemble [Kirschstein et al.
+2023] contains 8k calibrated forward-facing multi-view videos of
+subjects performing extreme expressions and speech sequences;
+RenderMe-360 [Pan et al. 2024] consists of 5k 360◦multi-view im-
+age sequences and 500 multi-view video sequences; Ava-256 [Mar-
+tinez et al. 2024] contains 5k 360◦multi-view image sets. We use all
+datasets during all training stages, which are described below.
+The multi-view image data provides wide view coverage (e.g.,
+up to 360 degrees), from which the model learns strong multi-view
+consistency. The dynamic monocular data from the VFHQ dataset
+includes diverse motion and identity variations and facilitates tem-
+poral consistency. Finally, the dynamic multi-view data serves as a
+bridge between the two, helping the model align spatial and tem-
+poral cues, despite its limited scale and view coverage. We use the
+provided camera calibration information and an off-the-shelf face
+tracker [Taubner et al. 2024] to obtain the conditioning signals.
+Generation modes. We operate the model in four different modes
+during training and inference to support flexible multi-view video
+synthesis conditioned on varying levels of reference information.
+This enables, for example, generating a set of multi-view videos and
+then using them as references to generate additional videos. In each
+case, we use the binary masks Bgen to indicate which inputs are to
+be used as references and which are to be generated.
+The modes are illustrated in Figure 3 and described as follows.
+• Mode 1 uses only the reference image to generate all views/frames.
+• Mode 2 conditions on the reference image and half of the view-
+points to generate videos for the remaining viewpoints.
+
+MVP4D: Multi-View Portrait Video Diffusion for Animatable 4D Avatars
+•
+5
+ref.
+gen.
+mode 2
+mode 1
+mode 4
+mode 3
+viewpoints
+latent frames
+Fig. 3. Our model supports different modes to generate multiview videos
+based on the reference image latent zref and treating different subsets of
+the latent video frames Zgen as reference inputs.
+• Mode 3 conditions on the reference image and the first three latent
+frames of all latent video frames to generate additional frames.
+• Mode 4 combines modes 2 and 3.
+We train the model on each of these modes, and in Section 4 we
+describe how they are used during inference to generate 4D avatars.
+Training curriculum. We leverage our flexible transformer archi-
+tecture to perform training at varying resolutions across the spatial,
+viewpoint, and frame dimensions. Our three-stage training curricu-
+lum is outlined in Table 3. It uses a mixture of datasets and gradually
+increases the number of output frames, resolution, and generation
+modes over the training stages.
+• Stage 1: we train for 30k iterations at a resolution of 𝐷= 256×256
+with different numbers of views 𝑉, generated frames 𝐹, and up
+to one-quarter of the maximum number of total output frames.
+• Stage 2: we train for 40k iterations and increase the resolution
+to 512 × 512 while maintaining the same number of total output
+frames as stage 1. We also train at 256 × 256 resolution with an
+increased total number of output frames.
+• Stage 3: we train for 5k steps after scaling up to the full number
+of training views and frames (𝑉= 4, 𝐹= 49).
+At each stage, we sample all resolutions listed in Table 3 with equal
+probability. In stage 1, we use mode 1 exclusively. In stages 2 and
+3, if the sampled resolution includes multiple viewpoints, we apply
+mode 2 with 25% probability by using half of the viewpoints as
+reference. If the resolution includes more than three latent video
+frames, we apply mode 3 with 25% probability by using the first
+three latent frames as reference. Applying both mode 2 and 3 results
+in mode 4, and if neither mode is applied, we fall back to mode 1.
+This progressive strategy enables efficient training with limited
+compute while scaling to high spatio-temporal complexity. At in-
+ference time, the model generalizes beyond the number of views
+and angles seen during training. Specifically, it synthesizes 𝑉= 8
+synchronized videos with 𝐹= 49 frames, enabling 360-degree video
+generation—despite being trained on a very limited number of 360-
+degree multi-view video data (i.e., 481 sequences [Pan et al. 2024]).
+Table 3. Training stages. We gradually increase the viewpoints, frames,
+resolution, and generation modes at each training stage to improve training
+efficiency and to leverage different data modalities (monocular video, multi-
+view videos, and multi-view images).
+training stages
+stage 1
+stage 2
+stage 3
+resolutions
+(𝑉× 𝐹× 𝐷)
+1×49×256, 2×29×256,
+4×9×256, 12×1×256
+1×49×512, 2×29×512,
+4×9×512, 12×1×512,
+4×49×256, 8×29×256
+1×49×512, 4×49×512,
+8×29×512, 16×9×512,
+16×1×512
+#iterations
+30k
+40k
+5k
+learning rate
+1e-4
+5e-5
+2e-5
+batch size
+64
+64
+64
+gen. mode
+1
+1–4
+1–4
+4
+4D Avatar Reconstruction
+We reconstruct a 4D avatar by first using the MMVDM to generate
+a large set of multi-view videos given the input reference image,
+and then optimizing a deformable 3D Gaussian splatting (3DGS)-
+based representation that attaches Gaussian primitives to a 3DMM
+mesh [Kerbl et al. 2023; Qian et al. 2024].
+Sampling. We aim to synthesize videos from a large number of
+viewpoints—up to 48—but generating all of them in a single in-
+ference pass is infeasible because (1) the number of viewpoints far
+exceeds the range the model was trained on, and (2) inference is con-
+strained by available computation and memory. To address this, we
+adopt an iterative generation strategy: we first produce a small set of
+key videos from multiple viewpoints, and then progressively expand
+this set into a coherent multi-view video corpus. Inference is per-
+formed at a spatio-temporal resolution of (𝑉×𝐹×𝐷) = (8×49×512).
+Concretely, we begin by generating key videos for the 49 output
+frames (13 latent frames) using generation mode 1. The remaining
+target views are grouped into clusters of four neighboring view-
+points, with each cluster generated using mode 2 with the four
+nearest key videos as reference. Once all views are synthesized, we
+apply mode 3 to extend the key videos by generating 40 additional
+output frames with the last nine output frames from the current
+key videos as reference. Finally, the remaining videos are extended
+using mode 4, which conditions on the four nearest key videos and
+the last nine frames of the same previously generated videos. Please
+see illustrations of this process in Figures S2–S3.
+We generate two kinds of avatars: 120-degree (89 frames per view;
+8 key views and 24 other views = 32 views) and 360-degree avatars
+(89 frames per view; 8 key views and 40 other views = 48 views). For
+the 120-degree case, we manually define camera views around the
+forward-facing head with a max. azimuth angle of 60 degrees and an
+elevation angle of 30 degrees. For the 360-degree case, we manually
+define camera views around the entire head, with a max. and min.
+elevation angle of +90 and -30. In each case, we manually select the
+key views to be positioned uniformly across the view range.
+3DGS Fitting. We fit a 4D avatar to the generated multi-view
+videos by adapting the 4D Gaussian splatting representation intro-
+duced by Qian et al. [2024] and extended by Taubner et al. [2025].
+Specifically, we attach Gaussians to the triangles of a FLAME head
+mesh [Li et al. 2017], which is predicted from the reference image
+using FlowFace [Taubner et al. 2024]. We animate the avatar by
+
+6
+•
+Felix Taubner, Ruihang Zhang, Mathieu Tuli, Sherwin Bahmani, and David B. Lindell
+deforming the mesh with FLAME blendshapes, using the same ex-
+pression sequence employed during multi-view video generation.
+To model fine-grained effects such as wrinkles, we follow previ-
+ous work [Taubner et al. 2025] and use a U-Net [Ronneberger et al.
+2015] to predict frame-dependent, per-Gaussian deformations, rep-
+resented as a UV map.
+Instead of conditioning this U-Net with an expression-dependent
+deformation map (as in CAP4D [Taubner et al. 2025]), we condition
+it on an 8-channel sinusoidal temporal embedding, which allows it
+to model frame-dependent motion.
+To better capture structures not represented by the FLAME mesh—
+such as hair, earrings, or glasses—we apply structure-from-motion
+to keypoints matched across the first frame of each view in the
+multi-view set. We use DISK [Tyszkiewicz et al. 2020] and Light-
+Glue [Lindenberger et al. 2023] to detect and match keypoints be-
+tween each key view and the remaining frames. Keypoints matched
+in more than three views are triangulated using their screen-space
+positions, camera poses, and intrinsics to obtain 3D coordinates. For
+each triangulated point, we introduce a Gaussian primitive that is
+animated with its nearest triangle on the 3DMM mesh. We optimize
+the representation to minimize the difference between the rendered
+views and the generated videos. We regularize the velocity and the
+relative rotation of Gaussians between each frame (see Sec. S2.4).
+5
+Implementation Details
+Multi-view classifier-free guidance. We apply classifier-free guid-
+ance (CFG) [Ho and Salimans 2021] by zeroing out all conditioning
+signals (iref, cref, and Cgen) to obtain the unconditional noise predic-
+tion 𝝐uncond. The final guided prediction is then computed as:
+𝝐guided = 𝝐uncond + 𝑠· (𝝐cond −𝝐uncond),
+(2)
+where 𝑠is the guidance scale.
+While standard CFG works well in the single-view setting, it fails
+when applied naïvely to multiple views. In the unconditional multi-
+view case, all tokens receive identical spatio-temporal embeddings
+and noisy latent patches, without any view-specific information.
+This ambiguity causes the diffusion transformer to confuse token re-
+lationships across views, resulting in poor unconditional predictions.
+To address this, we generate view-specific unconditional predictions
+by running independent forward passes for each predicted view:
+𝝐uncond = {𝝐uncond,𝑣}𝑉
+𝑣=1,
+(3)
+where 𝝐uncond,v is the unconditional prediction for view 𝑣. We show
+in our ablations that this improves quantitative performance, with
+further qualitative examples provided in Figure 6. Following previ-
+ous work [Kant et al. 2025], we linearly increase the guidance scale
+with the angular distance to the closest reference view, from 1.1 (0
+degree deviation) to 1.6 (180 degree deviation).
+Attention biasing. The total number of tokens processed by the
+attention layers in the diffusion transformer scales with the number
+of views, spatial resolution, and video frames. Due to the combined
+compression from the auto-encoder and token patchification, the
+input is downsampled by a factor of 16 in both height and width,
+and approximately 4 in time, resulting in a total token count of
+([1 +𝑉× (1 + ˜𝐹)] × 𝐻
+16 × 𝑊
+16 ). Prior work [Jin et al. 2023] shows that
+Table 4. Self-reenactment results on the Nersemble dataset. When
+generating multi-view video, MVP4D outperforms previous methods on
+the JOD metric, while performing competitively on photometric accuracy
+(PSNR), which indicates we achieve improvements in temporal consistency.
+Method
+PSNR↑
+SSIM↑
+LPIPS↓
+JOD↑
+RE@LG↓
+CSIM↑
+GAGAvatar
+20.01
+0.721
+0.353
+4.73
+2.25
+0.656
+Portrait4D-v2
+17.05
+0.662
+0.392
+3.67
+3.75
+0.659
+VOODOO3D
+20.09
+0.692
+0.349
+4.86
+1.84
+0.517
+CAP4D (MMDM)
+22.17
+0.768
+0.280
+5.30
+1.28
+0.793
+CAP4D (120)
+21.56
+0.778
+0.302
+5.49
+0.634
+0.755
+MVP4D (MMVDM)
+23.39
+0.765
+0.294
+5.88
+1.03
+0.707
+MVP4D (360)
+22.76
+0.774
+0.308
+5.57
+0.643
+0.715
+MVP4D (120)
+23.16
+0.790
+0.301
+5.62
+0.656
+0.708
+the entropy of attention grows logarithmically with the number
+of tokens, and proposes to compensate for this increase by scaling
+the attention weights during inference as:
+√︃
+1
+𝑑
+√︃
+log 𝑁𝑖
+log 𝑁𝑡, where 𝑁𝑖is
+the number of tokens at inference, 𝑁𝑡is the number of tokens used
+during training, and 𝑑is the token dimensionality.
+We adopt this approach by applying attention scaling during both
+training and inference. Specifically, we set 𝑁𝑖to the token count
+for each individual batch and 𝑁𝑡to the default configuration of the
+CogVideoX model (13 × 32 × 32). For further discussion on attention
+biasing and its effects, we refer the reader to Kant et al. [2025].
+Training & Inference. The total training time is 14 days on 8×H100
+GPUs. We drop out all conditioning signals with a probability of
+10%. We use DDIM sampling [Song et al. 2021] during inference
+with 100 sampling steps for the key views and 50 steps for all other
+views. Generating 32 views and 89 video frames (120-degree avatar)
+takes around 6.5 hours on a single RTX 6000 Ada GPU. Generating
+48 views and 89 video frames takes around 10.5 hours. 4D recon-
+struction takes 1.5 hours. After fitting, rendering the sequence with
+a resolution of 512×512 is real-time.
+6
+Experiments
+Baselines. We evaluate our method against several baselines for
+3D representation-based single-view avatar reconstruction: GAGA-
+vatar [Chu and Harada 2024], Portrait4D-v2 [Deng et al. 2024], and
+VOODOO3D [Tran et al. 2024b] and CAP4D [Taubner et al. 2025].
+We also include CAP4D’s morphable multi-view diffusion model
+(MMDM), which synthesizes images across viewpoints and expres-
+sions. Additionally, we combine the portrait video generation model
+Follow-Your-Emoji (FYE) [Ma et al. 2024] with the static multi-view
+generation model PanoHead [An et al. 2023] to generate 360-degree
+4D avatars. We refer to Supp. Section S3.1 for additional baseline
+details.
+Metrics. We compare each method using several key metrics:
+photometric accuracy (PSNR, SSIM, LPIPS), temporal consistency
+(JOD) [Mantiuk et al. 2021], and identity preservation, measured
+using the cosine similarity of identity embeddings (CSIM) [Deng
+et al. 2019]. To assess 3D consistency, we compute the reprojec-
+tion error (RE@LG) of DISK [Tyszkiewicz et al. 2020] keypoints
+using known camera poses and predicted correspondences from
+LightGlue [Lindenberger et al. 2023], following Kant et al. [2025].
+
+MVP4D: Multi-View Portrait Video Diffusion for Animatable 4D Avatars
+•
+7
+Table 5. Self-reenactment results on the RenderMe-360 dataset.
+MVP4D outperforms other baselines for 360-degree self-reenactment.
+Method
+PSNR↑
+SSIM↑
+LPIPS↓
+JOD↑
+F-Y-E + PanoHead
+15.31
+0.53
+0.451
+3.14
+CAP4D (MMDM)
+13.89
+0.58
+0.387
+3.19
+MVP4D (MMVDM)
+18.77
+0.68
+0.321
+4.37
+MVP4D (360)
+18.78
+0.69
+0.323
+4.45
+6.1
+Self-reenactment
+We benchmark self-reenactment on ten forward-facing multi-view
+sequences from the Nersemble dataset [Kirschstein et al. 2023] and
+eight 360-degree sequences from the RenderMe-360 dataset [Pan
+et al. 2024]. For Nersemble, we select ten sequences featuring ex-
+treme facial expressions and speech, using the first 70 frames (cap-
+tured at 24 FPS) from 8 of the 16 available viewpoints. For RenderMe-
+360, we select eight sequences, sampling 70 frames (captured at 15
+FPS) from 8 of the 60 viewpoints in each. In both cases, the reference
+image is taken from a different frame and viewpoint than those used
+for evaluation, and we assess how accurately each method reenacts
+the target subject’s appearance.
+Forward facing avatar evaluation. We present results in Tables 4–5
+and Figure 4. MVP4D outperforms the baselines in temporal con-
+sistency, as measured by JOD [Mantiuk et al. 2021], and performs
+competitively in terms of photometric accuracy (PSNR, SSIM) (see
+Table 4). While CAP4D-MMDM achieves better perceptual similar-
+ity (LPIPS), this metric is more tolerant of geometric inconsistencies
+between the generated and ground truth images. The stronger tem-
+poral consistency of our method suggests that, although MMDM
+may produce higher-quality individual frames, our approach yields
+more temporally coherent results. This advantage likely stems from
+our model generating all views simultaneously (8 × 49 frames), in
+contrast to CAP4D-MMDM, which synthesizes only eight views at
+a time. Qualitatively, MVP4D produces videos with improved tem-
+poral stability (less flickering) compared to CAP4D-MMDM, and
+with higher visual fidelity than GAGAvatar, as shown in Figure 4.
+We show additional metrics and baselines in Supp. Section S3.1.
+360-degree avatar evaluation. CAP4D-MMDM is not trained on
+360-degree data and fails to generate views behind the head. Both
+FYE+PanoHead and CAP4D struggle to generate consistent geome-
+try in areas that are not visible from the reference view, since they
+do not generate all views at once. This is noticeable in qualitative
+results (see the project webpage), e.g., in the form of a flickering
+hairstyle. FYE+PanoHead further suffers from artifacts because of
+the two-step generation (first monocular video, then multi-view).
+6.2
+Cross-reenactment
+We evaluate cross-reenactment using 10 reference images from the
+FFHQ dataset [Karras et al. 2019], each paired with a driving video
+from the Nersemble dataset [Kirschstein et al. 2023], comprising 8
+sequences with extreme expressions and 2 with speech. For each
+reference image, we reconstruct a 4D avatar and animate it using the
+corresponding driving video. We render each reenacted sequence
+Table 6. Cross-reenactment results. We evaluate human preference based
+on visual detail (VD), expression transfer (ET), 3D structure (3DS), motion
+quality (MQ), and overall preference (Overall). The table reports the percent-
+age of users (45 participants) who preferred MVP4D over the corresponding
+baseline in side-by-side comparisons.
+human preference (ours vs. method)
+Method
+VD
+ET
+3DS MQ
+Overall
+Portrait4D-v2 94% 94% 92% 95%
+93%
+GAGAvatar
+97% 87% 88% 87%
+88%
+CAP4D
+91% 80% 85% 81%
+82%
+with a camera following an elliptical trajectory around the head,
+sweeping up to 60° in azimuth and 20° in elevation.
+To assess perceptual quality, we conducted a user study compar-
+ing our method (MVP4D) to baselines. We collected 6,750 responses
+from 45 participants, each shown the reference image, driving video,
+and side-by-side results from MVP4D and a baseline. Participants
+selected their preference based on five criteria: visual detail (VD),
+expression transfer accuracy (ET), 3D structure fidelity (3DS), mo-
+tion quality (MQ), and overall preference (Overall). As shown in
+Table 6, MVP4D was preferred overall in 86% of cases compared to
+the strongest baseline, CAP4D. We provide additional details about
+the user study in Supp. Section S3.2.
+6.3
+Ablations and Extensions
+Ablation study. All ablation studies are conducted on the Nersem-
+ble self-reenactment evaluation set to assess the impact of multi-
+view CFG and the number of jointly generated views. As shown in
+Table 7, omitting CFG entirely (i.e., unconditional generation) re-
+sults in a substantial drop in generation quality. Applying standard
+CFG without our proposed multi-view strategy also yields subpar
+performance. We also analyze the effect of the number of jointly
+generated views 𝑉during diffusion sampling. Although the model
+was trained with 𝑉= 4 views, we observe improved performance
+when sampling with 𝑉= 8 views—even without explicit training
+in this configuration. We find that jointly generating a larger set of
+views (𝑉=8) improves the 3D consistency and quality of the result-
+ing multi-view video corpus. We validate our multi-modal training
+curriculum with additional ablation studies in Supp. Section S3.3,
+and show how generation longer videos degrades performance in
+Supp. Section S3.4.
+Speech-Driven 4D Avatar Generation. Given a reference image
+and input speech audio, we use Hallo3 [Cui et al. 2025] to generate
+an animated portrait video. We then apply a face tracker to this
+video to extract 3DMM-based conditioning signals. Our model is
+conditioned on the reference image and the extracted 3DMM from
+the driving video (see Figure 7).
+Text-to-4D avatar. We generate 4D avatars from text prompts
+by first generating an image with a commercial image generation
+model [Labs 2024] and then applying MVP4D.
+7
+Discussion
+Our work highlights the promise of emerging video diffusion trans-
+formers for generating realistic and temporally coherent 4D avatars.
+
+8
+•
+Felix Taubner, Ruihang Zhang, Mathieu Tuli, Sherwin Bahmani, and David B. Lindell
+Table 7. Ablation studies. We assess performance across CFG modes and
+number of generated views 𝑉. Omitting CFG or using conventional CFG
+reduces performance. Although the model is trained with 𝑉= 4, the best
+quality and 3D consistency is achieved with 𝑉= 8 and multi-view CFG.
+CFG mode
+𝑉
+PSNR↑
+LPIPS↓
+JOD↑
+RE@LG↓
+no CFG
+8
+23.34
+0.297
+5.58
+1.24
+conventional CFG
+8
+22.27
+0.308
+5.44
+1.04
+multi-view CFG
+4
+22.55
+0.291
+5.49
+1.73
+multi-view CFG
+8
+23.39
+0.294
+5.58
+1.03
+While our approach outperforms previous techniques in terms of
+visual fidelity and temporal consistency, we also illustrate some
+limitations of MVP4D in Figure 8. For example, due to the auto-
+encoder’s high spatiotemporal compression, our method struggles
+to capture fine-grained temporal details, such as rapidly appearing
+and disappearing teeth. When generating long sequences using the
+first-frame conditioning strategy (generation mode 3), quality de-
+grades with each iteration, limiting the practical sequence length.
+Additionally, the method cannot accurately model extreme lighting
+conditions, as the training data lacks significant lighting variation
+in the multi-view setting.
+Hence, there are many exciting avenues for future research. For
+example, integrating physically based lighting and reflectance mod-
+els could enable more accurate control over avatar illumination.
+Additionally, building on recent methods that directly generate 3D
+representations in a feed-forward manner [Szymanowicz et al. 2025]
+may enable more efficient 4D avatar generation.
+Acknowledgments
+DBL acknowledges support from LG Electronics, the Natural Sci-
+ences and Engineering Research Council of Canada (NSERC) under
+the RGPIN, RTI, and Alliance programs, the Canada Foundation
+for Innovation, and the Ontario Research Fund. The authors also
+acknowledge computing support provided by the Vector Institute.
+References
+Ahmed A. Abdelrahman, Thorsten Hempel, Aly Khalifa, Ayoub Al-Hamadi, and Laslo
+Dinges. 2023. L2CS-Net : Fine-Grained Gaze Estimation in Unconstrained Environ-
+ments. In Proc. ICFSP. 98–102. doi:10.1109/ICFSP59764.2023.10372944
+Sizhe An, Hongyi Xu, Yichun Shi, Guoxian Song, Umit Y. Ogras, and Linjie Luo. 2023.
+PanoHead: Geometry-Aware 3D Full-Head Synthesis in 360deg. In Proc. CVPR.
+Andreas Blattmann, Tim Dockhorn, Sumith Kulal, Daniel Mendelevitch, Maciej Kilian,
+Dominik Lorenz, Yam Levi, Zion English, Vikram Voleti, Adam Letts, et al. 2023.
+Stable video diffusion: Scaling latent video diffusion models to large datasets. arXiv
+preprint arXiv:2311.15127 (2023).
+Tim Brooks, Bill Peebles, Connor Holmes, Will DePue, Yufei Guo, Li Jing, David Schnurr,
+Joe Taylor, Troy Luhman, Eric Luhman, et al. 2024. Video generation models as
+world simulators. https://openai.com/research/video-generation-modelsas-world-
+simulators
+Adrian Bulat and Georgios Tzimiropoulos. 2017. How far are we from solving the 2D
+& 3D Face Alignment problem? (and a dataset of 230,000 3D facial landmarks). In
+Proc. ICCV.
+Xuangeng Chu and Tatsuya Harada. 2024. Generalizable and Animatable Gaussian
+Head Avatar. In Proc. NeurIPS.
+Jiahao Cui, Hui Li, Yun Zhan, Hanlin Shang, Kaihui Cheng, Yuqi Ma, Shan Mu, Hang
+Zhou, Jingdong Wang, and Siyu Zhu. 2025. Hallo3: Highly Dynamic and Realistic
+Portrait Image Animation with Video Diffusion Transformer. In Proc. CVPR. 21086–
+21095.
+Radek Danecek, Michael J. Black, and Timo Bolkart. 2022. EMOCA: Emotion Driven
+Monocular Face Capture and Animation. In Proc. CVPR.
+Paul Debevec. 2012. The light stages and their applications to photoreal digital actors.
+SIGGRAPH Asia 2, 4 (2012), 1–6.
+Jiankang Deng, Jia Guo, Niannan Xue, and Stefanos Zafeiriou. 2019. ArcFace: Additive
+Angular Margin Loss for Deep Face Recognition. In Proc. CVPR.
+Yu Deng, Duomin Wang, and Baoyuan Wang. 2024. Portrait4D-v2: Pseudo multi-view
+data creates better 4D head synthesizer. In Proc. ECCV.
+Nikita Drobyshev, Jenya Chelishev, Taras Khakhulin, Aleksei Ivakhnenko, Victor Lem-
+pitsky, and Egor Zakharov. 2022. MegaPortraits: One-shot megapixel neural head
+avatars. In Proc. ACM-MM.
+Yao Feng, Haiwen Feng, Michael J. Black, and Timo Bolkart. 2021. Learning an Animat-
+able Detailed 3D Face Model from In-The-Wild Images. ACM Trans. Graph. 40, 8
+(2021).
+Ruiqi Gao, Aleksander Holynski, Philipp Henzler, Arthur Brussee, Ricardo Martin-
+Brualla, Pratul P. Srinivasan, Jonathan T. Barron, and Ben Poole. 2024. CAT3D:
+Create Anything in 3D with Multi-View Diffusion Models. In Proc. NeurIPS.
+Tom Geller. 2008. Overcoming the uncanny valley. IEEE Comput. Graph. Appl. 28, 4
+(2008), 11–17.
+Jianzhu Guo, Dingyun Zhang, Xiaoqiang Liu, Zhizhou Zhong, Yuan Zhang, Pengfei
+Wan, and Di Zhang. 2024. LivePortrait: Efficient Portrait Animation with Stitching
+and Retargeting Control. arXiv preprint arXiv:2407.03168 (2024).
+Rasmus Haapaoja and Josefine Klintberg. 2022. Advances for Digital Humans in VFX
+Production at Goodbye Kansas Studios. In ACM SIGGRAPH Talks.
+Mingming He, Pascal Clausen, Ahmet Levent Taşel, Li Ma, Oliver Pilarski, Wenqi
+Xian, Laszlo Rikker, Xueming Yu, Ryan Burgert, Ning Yu, et al. 2024. DifFRelight:
+Diffusion-Based Facial Performance Relighting. In Proc. SIGGRAPH Asia.
+Jonathan Ho, Ajay Jain, and Pieter Abbeel. 2020. Denoising Diffusion Probabilistic
+Models. In Proc. NeurIPS.
+Jonathan Ho and Tim Salimans. 2021. Classifier-Free Diffusion Guidance. In Proc.
+NeurIPS Workshop on Deep Generative Models and Downstream Applications.
+Liangxiao Hu, Hongwen Zhang, Yuxiang Zhang, Boyao Zhou, Boning Liu, Shengping
+Zhang, and Liqiang Nie. 2024. GaussianAvatar: Towards realistic human avatar
+modeling from a single video via animatable 3D Gaussians. In Proc. CVPR.
+Yanqin Jiang, Chaohui Yu, Chenjie Cao, Fan Wang, Weiming Hu, and Jin Gao. 2024.
+Animate3D: Animating any 3D model with multi-view video diffusion. In Proc.
+NeurIPS.
+Zhiyu Jin, Xuli Shen, Bin Li, and Xiangyang Xue. 2023. Training-free Diffusion Model
+Adaptation for Variable-Sized Text-to-Image Synthesis. In Proc. NeurIPS.
+Yash Kant, Ethan Weber, Jin Kyu Kim, Rawal Khirodkar, Su Zhaoen, Julieta Martinez,
+Igor Gilitschenski, Shunsuke Saito, and Timur Bagautdinov. 2025. Pippo: High-
+Resolution Multi-View Humans from a Single Image. In Proc. CVPR.
+Tero Karras, Samuli Laine, and Timo Aila. 2019. A Style-Based Generator Architecture
+for Generative Adversarial Networks. In Proc. CVPR.
+Bernhard Kerbl, Georgios Kopanas, Thomas Leimkühler, and George Drettakis. 2023.
+3D Gaussian Splatting for Real-Time Radiance Field Rendering. ACM Trans. Graph.
+42, 4 (2023), 1–14.
+Taras Khakhulin, Vanessa Sklyarova, Victor Lempitsky, and Egor Zakharov. 2022. Real-
+istic one-shot mesh-based head avatars. In Proc. ECCV.
+Tobias Kirschstein, Shenhan Qian, Simon Giebenhain, Tim Walter, and Matthias Nießner.
+2023. Nersemble: Multi-view radiance field reconstruction of human heads. ACM
+Trans. Graph. 42, 4 (2023), 1–14.
+Zhengfei Kuang, Shengqu Cai, Hao He, Yinghao Xu, Hongsheng Li, Leonidas J Guibas,
+and Gordon Wetzstein. 2024. Collaborative Video Diffusion: Consistent Multi-video
+Generation with Camera Control. In Proc. NeurIPS.
+Black Forest Labs. 2024. FLUX.1: Text-to-Image Generation Model. https://huggingface.
+co/black-forest-labs/FLUX.1-dev. Accessed: 2025-05-23.
+John P Lewis, Ken Anjyo, Taehyun Rhee, Mengjie Zhang, Frederic H Pighin, and
+Zhigang Deng. 2014. Practice and theory of blendshape facial models. Eurographics
+(State of the Art Reports) 1, 8 (2014), 2.
+Bing Li, Cheng Zheng, Wenxuan Zhu, Jinjie Mai, Biao Zhang, Peter Wonka, and Bernard
+Ghanem. 2024b. Vivid-zoo: Multi-view video generation with diffusion model. In
+Proc. NeurIPS.
+Tianye Li, Timo Bolkart, Michael J Black, Hao Li, and Javier Romero. 2017. Learning a
+model of facial shape and expression from 4D scans. ACM Trans. Graph. 36, 6 (2017),
+194–1.
+Xiaofan Li, Yifu Zhang, and Xiaoqing Ye. 2024a. DrivingDiffusion: Layout-Guided
+Multi-view Driving Scenarios Video Generation with Latent Diffusion Model. In
+Proc. ECCV.
+Hanwen Liang, Yuyang Yin, Dejia Xu, Hanxue Liang, Zhangyang Wang, Konstantinos N
+Plataniotis, Yao Zhao, and Yunchao Wei. 2024. Diffusion4D: Fast spatial-temporal
+consistent 4D generation via video diffusion models. In Proc. NeurIPS.
+Gaojie Lin, Jianwen Jiang, Jiaqi Yang, Zerong Zheng, and Chao Liang. 2025.
+OmniHuman-1: Rethinking the Scaling-Up of One-Stage Conditioned Human Ani-
+mation Models. arXiv preprint arXiv:2502.01061 (2025).
+Shanchuan Lin, Linjie Yang, Imran Saleemi, and Soumyadip Sengupta. 2022. Robust
+High-Resolution Video Matting with Temporal Guidance. In Proc. WACV.
+
+MVP4D: Multi-View Portrait Video Diffusion for Animatable 4D Avatars
+•
+9
+Philipp Lindenberger, Paul-Edouard Sarlin, and Marc Pollefeys. 2023. LightGlue: Local
+Feature Matching at Light Speed. In Proc. ICCV. 17627–17638.
+Yue Ma, Hongyu Liu, Hongfa Wang, Heng Pan, Yingqing He, Junkun Yuan, Ailing
+Zeng, Chengfei Cai, Heung-Yeung Shum, Wei Liu, et al. 2024. Follow-your-emoji:
+Fine-controllable and expressive freestyle portrait animation. In Proc. SIGGRAPH
+Asia.
+Rafał K. Mantiuk, Gyorgy Denes, Alexandre Chapiro, Anton Kaplanyan, Gizem Rufo,
+Romain Bachy, Trisha Lian, and Anjul Patney. 2021. FovVideoVDP: a visible dif-
+ference predictor for wide field-of-view video. ACM Trans. Graph. 40, 4, Article 49
+(2021).
+Julieta Martinez, Emily Kim, Javier Romero, Timur Bagautdinov, Shunsuke Saito, Shoou-
+I Yu, Stuart Anderson, Michael Zollhöfer, Te-Li Wang, Shaojie Bai, Chenghui Li, Shih-
+En Wei, Rohan Joshi, Wyatt Borsos, Tomas Simon, Jason Saragih, Paul Theodosis,
+Alexander Greene, Anjani Josyula, Silvio Mano Maeta, Andrew I. Jewett, Simon
+Venshtain, Christopher Heilman, Yueh-Tung Chen, Sidi Fu, Mohamed Ezzeldin A.
+Elshaer, Tingfang Du, Longhua Wu, Shen-Chi Chen, Kai Kang, Michael Wu, Youssef
+Emad, Steven Longay, Ashley Brewer, Hitesh Shah, James Booth, Taylor Koska,
+Kayla Haidle, Matt Andromalos, Joanna Hsu, Thomas Dauer, Peter Selednik, Tim
+Godisart, Scott Ardisson, Matthew Cipperly, Ben Humberston, Lon Farr, Bob Hansen,
+Peihong Guo, Dave Braun, Steven Krenn, He Wen, Lucas Evans, Natalia Fadeeva,
+Matthew Stewart, Gabriel Schwartz, Divam Gupta, Gyeongsik Moon, Kaiwen Guo,
+Yuan Dong, Yichen Xu, Takaaki Shiratori, Fabian Prada, Bernardo R. Pires, Bo Peng,
+Julia Buffalini, Autumn Trimble, Kevyn McPhail, Melissa Schoeller, and Yaser Sheikh.
+2024. Codec Avatar Studio: Paired Human Captures for Complete, Driveable, and
+Generalizable Avatars. In Proc. NeurIPS Track on Datasets and Benchmarks.
+Ben Mildenhall, Pratul P Srinivasan, Matthew Tancik, Jonathan T Barron, Ravi Ra-
+mamoorthi, and Ren Ng. 2021. NeRF: Representing scenes as neural radiance fields
+for view synthesis. Commun. ACM. 65, 1 (2021), 99–106.
+Masahiro Mori. 1970. The uncanny valley: the original essay by Masahiro Mori. IEEE
+Spectr. 6, 1 (1970), 6.
+Dongwei Pan, Long Zhuo, Jingtan Piao, Huiwen Luo, Wei Cheng, Yuxin Wang, Siming
+Fan, Shengqi Liu, Lei Yang, Bo Dai, Ziwei Liu, Chen Change Loy, Chen Qian, Wayne
+Wu, Dahua Lin, and Kwan-Yee Lin. 2024. RenderMe-360: A Large Digital Asset
+Library and Benchmarks Towards High-fidelity Head Avatars. In Proc. NeurIPS,
+Vol. 36.
+Shenhan Qian, Tobias Kirschstein, Liam Schoneveld, Davide Davoli, Simon Giebenhain,
+and Matthias Nießner. 2024. GaussianAvatars: Photorealistic head avatars with
+rigged 3D Gaussians. In Proc. CVPR.
+Robin Rombach, Andreas Blattmann, Dominik Lorenz, Patrick Esser, and Björn Ommer.
+2022. High-resolution image synthesis with latent diffusion models. In Proc. CVPR.
+Olaf Ronneberger, Philipp Fischer, and Thomas Brox. 2015. U-net: Convolutional
+networks for biomedical image segmentation. In Proc. MICCAI.
+Chitwan Saharia, William Chan, Saurabh Saxena, Lala Li, Jay Whang, Emily L Denton,
+Kamyar Ghasemipour, Raphael Gontijo Lopes, Burcu Karagol Ayan, Tim Salimans,
+et al. 2022. Photorealistic text-to-image diffusion models with deep language under-
+standing. In Proc. NeurIPS.
+Yeongho Seol, Wan-Chun Ma, and John P Lewis. 2016. Creating an actor-specific facial
+rig from performance capture. In Proc. DigiPro.
+Ruizhi Shao, Youxin Pang, Zerong Zheng, Jingxiang Sun, and Yebin Liu. 2024a. Hu-
+man4DiT: 360-degree Human Video Generation with 4D Diffusion Transformer.
+ACM Trans. Graph. 43, 6 (2024), 1–13.
+Zhijing Shao, Zhaolong Wang, Zhuang Li, Duotun Wang, Xiangru Lin, Yu Zhang,
+Mingming Fan, and Zeyu Wang. 2024b. SplattingAvatar: Realistic real-time human
+avatars with mesh-embedded Gaussian splatting. In Proc. CVPR.
+Aliaksandr Siarohin, Stéphane Lathuilière, Sergey Tulyakov, Elisa Ricci, and Nicu Sebe.
+2019. First order motion model for image animation. In Proc. NeurIPS.
+Jiaming Song, Chenlin Meng, and Stefano Ermon. 2021. Denoising Diffusion Implicit
+Models. In Proc. ICLR.
+Jingxiang Sun, Xuan Wang, Lizhen Wang, Xiaoyu Li, Yong Zhang, Hongwen Zhang,
+and Yebin Liu. 2023. Next3D: Generative neural texture rasterization for 3D-aware
+head avatars. In Proc. CVPR.
+Stanislaw Szymanowicz, Jason Y Zhang, Pratul Srinivasan, Ruiqi Gao, Arthur Brussee,
+Aleksander Holynski, Ricardo Martin-Brualla, Jonathan T Barron, and Philipp Hen-
+zler. 2025. Bolt3D: Generating 3D scenes in seconds. arXiv preprint arXiv:2503.14445
+(2025).
+Felix Taubner, Prashant Raina, Mathieu Tuli, Eu Wern Teh, Chul Lee, and Jinmiao
+Huang. 2024. 3D Face Tracking from 2D Video through Iterative Dense UV to Image
+Flow. In Proc. CVPR.
+Felix Taubner, Ruihang Zhang, Mathieu Tuli, and David B Lindell. 2025. CAP4D:
+Creating Animatable 4D Portrait Avatars with Morphable Multi-View Diffusion
+Models. In Proc. CVPR.
+Linrui Tian, Qi Wang, Bang Zhang, and Liefeng Bo. 2024. EMO: Emote Portrait Alive
+Generating Expressive Portrait Videos with Audio2Video Diffusion Model Under
+Weak Conditions. In Proc. ECCV (Milan, Italy). Springer-Verlag, Berlin, Heidelberg,
+244–260. doi:10.1007/978-3-031-73010-8_15
+Phong Tran, Egor Zakharov, Long-Nhat Ho, Adilbek Karmanov, Ariana Bermudez Vene-
+gas, McLean Goldwhite, Aviral Agarwal, Liwen Hu, Anh Tran, and Hao Li. 2024a.
+VOODOO XP: Expressive One-Shot Head Reenactment for VR Telepresence. ACM
+Trans. Graph. 43, 6 (2024), 1–26.
+Phong Tran, Egor Zakharov, Long-Nhat Ho, Anh Tuan Tran, Liwen Hu, and Hao Li.
+2024b. VOODOO 3D: Volumetric Portrait Disentanglement for One-Shot 3D Head
+Reenactment. In Proc. CVPR.
+Michał Tyszkiewicz, Pascal Fua, and Eduard Trulls. 2020. DISK: Learning local features
+with policy gradient. In Proc. NeurIPS.
+Unreal. 2024. MetaHumans Star in Treehouse Digital’s Animated Short Horror Film
+“The Well”. https://www.unrealengine.com/en-US/spotlights/metahumans-star-in-
+treehouse-digital-s-animated-short-horror-film-the-well. Accessed: 2025-05-12.
+Chaoyang Wang, Peiye Zhuang, Tuan Duc Ngo, Willi Menapace, Aliaksandr Siarohin,
+Michael Vasilkovsky, Ivan Skorokhodov, Sergey Tulyakov, Peter Wonka, and Hsin-
+Ying Lee. 2025. 4Real-Video: Learning Generalizable Photo-Realistic 4D Video
+Diffusion. In Proc. CVPR.
+Daniel Watson, Saurabh Saxena, Lala Li, Andrea Tagliasacchi, and David J Fleet. 2025.
+Controlling space and time with diffusion models. In Proc. ICLR.
+Huawei Wei, Zejun Yang, and Zhisheng Wang. 2024. Aniportrait: Audio-driven synthe-
+sis of photorealistic portrait animation. arXiv preprint arXiv:2403.17694 (2024).
+Rundi Wu, Ruiqi Gao, Ben Poole, Alex Trevithick, Changxi Zheng, Jonathan T Barron,
+and Aleksander Holynski. 2025. CAT4D: Create anything in 4D with multi-view
+video diffusion models. In Proc. CVPR.
+Cheng-hsin Wuu, Ningyuan Zheng, Scott Ardisson, Rohan Bali, Danielle Belko, Eric
+Brockmeyer, Lucas Evans, Timothy Godisart, Hyowon Ha, Xuhua Huang, et al. 2023.
+Multiface: A dataset for neural face rendering. In Proc. CVPR Workshops.
+Jun Xiang, Xuan Gao, Yudong Guo, and Juyong Zhang. 2024. FlashAvatar: High-fidelity
+Head Avatar with Efficient Gaussian Embedding. In Proc. CVPR.
+Kevin Xie, Amirmojtaba Sabour, Jiahui Huang, Despoina Paschalidou, Greg Klar, Umar
+Iqbal, Sanja Fidler, and Xiaohui Zeng. 2025. VideoPanda: Video Panoramic Diffusion
+with Multi-view Attention. arXiv preprint arXiv:2504.11389 (2025).
+Liangbin Xie, Xintao Wang, Honglun Zhang, Chao Dong, and Ying Shan. 2022. VFHQ:
+A High-Quality Dataset and Benchmark for Video Face Super-Resolution. In Proc.
+CVPRW.
+Dejia Xu, Yifan Jiang, Chen Huang, Liangchen Song, Thorsten Gernoth, Liangliang Cao,
+Zhangyang Wang, and Hao Tang. 2024c. Cavia: Camera-controllable multi-view
+video diffusion with view-integrated attention. arXiv preprint arXiv:2410.10774
+(2024).
+Sicheng Xu, Guojun Chen, Yu-Xiao Guo, Jiaolong Yang, Chong Li, Zhenyu Zang,
+Yizhong Zhang, Xin Tong, and Baining Guo. 2024a. Vasa-1: Lifelike audio-driven
+talking faces generated in real time. In Proc. NeurIPS.
+Yuelang Xu, Benwang Chen, Zhe Li, Hongwen Zhang, Lizhen Wang, Zerong Zheng,
+and Yebin Liu. 2024b. Gaussian head avatar: Ultra high-fidelity head avatar via
+dynamic Gaussians. In Proc. CVPR.
+Zunnan Xu, Zhentao Yu, Zixiang Zhou, Jun Zhou, Xiaoyu Jin, Fa-Ting Hong, Xiaozhong
+Ji, Junwei Zhu, Chengfei Cai, Shiyu Tang, et al. 2025. HunyuanPortrait: Implicit
+condition control for enhanced portrait animation. In Proc. CVPR.
+Shurong Yang, Huadong Li, Juhao Wu, Minhao Jing, Linze Li, Renhe Ji, Jiajun Liang, and
+Haoqiang Fan. 2024. Megactor: Harness the power of raw video for vivid portrait
+animation. arXiv preprint arXiv:2405.20851 (2024).
+Zhuoyi Yang, Jiayan Teng, Wendi Zheng, Ming Ding, Shiyu Huang, Jiazheng Xu, Yuan-
+ming Yang, Wenyi Hong, Xiaohan Zhang, Guanyu Feng, Da Yin, Yuxuan.Zhang,
+Weihan Wang, Yean Cheng, Bin Xu, Xiaotao Gu, Yuxiao Dong, and Jie Tang. 2025.
+CogVideoX: Text-to-Video Diffusion Models with An Expert Transformer. In Proc.
+ICLR. https://openreview.net/forum?id=LQzN6TRFg9
+Haiyu Zhang, Xinyuan Chen, Yaohui Wang, Xihui Liu, Yunhong Wang, and Yu Qiao.
+2024. 4Diffusion: Multi-view video diffusion model for 4D generation. In Proc.
+NeurIPS.
+Richard Zhang, Phillip Isola, Alexei A Efros, Eli Shechtman, and Oliver Wang. 2018.
+The Unreasonable Effectiveness of Deep Features as a Perceptual Metric. In Proc.
+CVPR.
+Xiaochen Zhao, Jingxiang Sun, Lizhen Wang, Jinli Suo, and Yebin Liu. 2024. InvertAvatar:
+Incremental GAN Inversion for Generalized Head Avatars. In Proc. ACM SIGGRAPH.
+Xiaochen Zhao, Hongyi Xu, Guoxian Song, You Xie, Chenxu Zhang, Xiu Li, Linjie Luo,
+Jinli Suo, and Yebin Liu. 2025. X-NeMo: Expressive Neural Motion Reenactment via
+Disentangled Latent Attention. In Proc. ICLR.
+Xiaozheng Zheng, Chao Wen, Zhaohu Li, Weiyi Zhang, Zhuo Su, Xu Chang, Yang
+Zhao, Zheng Lv, Xiaoyuan Zhang, Yongjie Zhang, Guidong Wang, and Lan Xu. 2025.
+HeadGAP: Few-Shot 3D Head Avatar via Generalizable Gaussian Priors. In Proc.
+3DV.
+Wojciech Zielonka, Timo Bolkart, and Justus Thies. 2022. Instant Volumetric Head
+Avatars. In Proc. CVPR.
+
+10
+•
+Felix Taubner, Ruihang Zhang, Mathieu Tuli, Sherwin Bahmani, and David B. Lindell
+ref. image
+ground truth
+GAGAvatar
+CAP4D
+MVP4D
+ref. image
+ground truth
+CAP4D-MMDM
+FYE + PanoHead
+MVP4D
+CAP4D-MMDM
+MVP4D-MMVDM
+CAP4D-MMDM
+MVP4D-MMVDM
+frame
+viewpoint
+frame index
+A
+B
+C
+D
+Fig. 4. Self-reenactment results on the Nersemble and RenderMe-360 datasets. Each method generates multi-view videos from a single reference
+image (left). (A, B) We compare the outputs of MVP4D and baselines that support real-time rendering of the 4D avatar. MVP4D recovers fine details and
+structures of the face and hair that are not captured by other techniques (see insets). (C) CAP4D-MMDM and MVP4D-MMVDM generate views from a single
+reference image using a diffusion model. However, the CAP4D-MMDM output flickers because it relies on an image diffusion model. The flickering appears as
+high-frequency artifacts (black boxes) in the space-time visualization shown for a column of pixels in the generated videos (red lines). (D) Finally, we show
+360-degree generation on the RenderMe-360 dataset. MVP4D outperforms baselines for this task, which fail or have noticeable artifacts, especially when
+generating the back of the head.
+
+MVP4D: Multi-View Portrait Video Diffusion for Animatable 4D Avatars
+•
+11
+H-34°
+V+16°
+H-22°
+V+18°
+H+29°
+V-17°
+driving image
+Portrait4D-v2
+GAGAvatar
+MVP4D
+CAP4D
+reference image
+Fig. 5. Cross-reenactment results. Our method reconstructs challenging geometry, such as hair, significantly better than previous methods, while also
+modeling detailed dynamic effects such as wrinkles.
+conventional CFG, unconditional generation
+multi-view CFG, unconditional generation
+conventional CFG
+multi-view CFG (ours)
+reference image
+no CFG
+Fig. 6. Multi-view classifier-free guidance (CFG). Conventional CFG (top row, center) causes generations with extreme contrast, due to the poor-quality
+unconditional prediction (top row, right). Without CFG, artifacts appear (bottom row, left). With our multi-view CFG, the unconditional prediction (bottom
+row, right) looks plausible, leading to improved generation quality (bottom row, center).
+"first"
+-
+"born"
+speech to 4D
+text to 4D avatar
+Fig. 7. More results. Using off-the-shelf speech-driven video animation methods, MVP4D can generate 4D portrait avatars from audio input and a reference
+image. MVP4D can also generate 4D avatars from generated images (please see videos in the project page).
+t = 0
+t = 200
+t = 300
+reference
+reference
+reference
+Fig. 8. Limitations. Artifacts in high frequency spatio-temporal details (appearing and disappearing lips) are likely due to the low spatio-temporal resolution
+in the latent space (left). When predicting very long sequences, quality deteriorates over time (due to conditioning on previous, non-perfect frames; middle).
+The model may also fail under extreme lighting (right), as our training procedure does not incorporate such data.
+
+12
+•
+Felix Taubner, Ruihang Zhang, Mathieu Tuli, Sherwin Bahmani, and David B. Lindell
+Multi-View Portrait Video Diffusion for Animatable 4D Avatars
+Supplemental Material
+This document includes supplementary implementation details and
+results. We provide implementation details related to the morphable
+multi-view video diffusion model (MMVDM), 4D reconstruction,
+datasets, and evaluation procedures. Please also refer to our
+project page for code, video results, and comparisons to base-
+lines https://felixtaubner.github.io/mvp4d/.
+S1
+Ethics Statement
+We acknowledge that although our video model can generate realis-
+tic human avatars, there is still a gap in realism. Still, we condemn
+any misuse of generated avatars to manipulate or harm individuals,
+communities, or entities. Moreover, we emphasize the importance
+of transparency and responsible use as the technology advances as
+part of future work.
+S2
+Supplemental Implementation Details
+S2.1
+Morphable Multi-view Video Diffusion Model
+Architecture details. We show a detailed illustration of the
+MMVDM architecture in Figure S9. The reference image and the
+reference views are projected into the low-resolution latent space us-
+ing the pretrained CogVideoX auto-encoder [Yang et al. 2025], with
+a spatial downsampling ratio of 8 and a temporal downsampling
+ratio of 4. Single images (such as the reference image) are processed
+individually to produce one latent frame. Then, all conditioning
+maps are concatenated to the latent frames before patchification
+into tokens with a latent spatial patch size of 2 × 2. The tokens
+from the reference latent (1 × 𝐻
+16 × 𝑊
+16 tokens), and each view (each
+with (1 + ˜𝐹) × 𝐻
+16 × 𝑊
+16 tokens) are then flattened and concatenated,
+leading to a total number or ([1 + 𝑉× (1 + ˜𝐹)] × 𝐻
+16 × 𝑊
+16 ) in the
+transformer. The 30-layer diffusion transformer processes all tokens
+simultaneously, effectively sharing information across all frames,
+pixels, and views.
+Conditioning details. We use a background-matting model [Lin
+et al. 2022] to mask the reference image to a white background. We
+adapt our conditioning signals from CAP4D [Taubner et al. 2025].
+For a detailed explanation of the 3D pose maps pref, expression
+deformation maps eref, view rays vref, binary reference masks bref
+and outcropping masks, we refer to their paper. We modify their
+conditioning maps in a few ways:
+Increased face bounding box. We increase the crop region around
+the face to 25% larger (from 20%) than a tight-fitting bounding
+box around the projected head vertices. We also apply a temporal
+Gaussian smoothing filter to the bounding box position to avoid
+excessive jittering.
+Camera origin conditioning. We append a three-channel map to
+the view ray direction map vref, indicating the camera origin of each
+view, relative to the reference view.
+Sub-frame motion maps. To account for the compression factor
+along the frame dimension, we drop the conditioning signals for all
+frames except the first input frame and the last frame of each sub-
+sequent group of four frames. To recover high-frequency temporal
+details (e.g., blinking) lost in this sub-sampling process, we intro-
+duce an additional sub-frame motion map, mgen, which encodes the
+2D screen-space displacement of the 3DMM between the retained
+frame and each dropped frame within a group. This 2D screen-space
+displacement is rasterized into an image in the same way as eref.
+This results in three two-channel motion maps for each group of
+four frames (none for the reference frame and first frame of the
+video), which is also concatenated to the conditioning signals and
+latent.
+S2.2
+Training
+As mentioned in Section 3.3, we use a collection of four datasets
+for our training: VFHQ [Xie et al. 2022], Nersemble [Kirschstein
+et al. 2023], RenderMe-360 [Pan et al. 2024] and Ava-256 [Martinez
+et al. 2024]. For all datasets, we use FlowFace [Taubner et al. 2024]
+and a gaze estimation model [Abdelrahman et al. 2023] to obtain
+FLAME [Li et al. 2017] annotations. For Nersemble, RenderMe-360
+and Ava-256, we use the available camera calibrations during track-
+ing. FlowFace cannot detect back-facing heads; however, with the
+provided camera calibration parameters in the dataset, the 3DMM
+pose relative to back-facing cameras can still be obtained. We remove
+the background using RobustVideoMatting [Lin et al. 2022]. Some
+sequences of the VFHQ dataset contain video transitions. We detect
+these transitions by measuring the average keypoint acceleration
+(with the FlowFace keypoint detector) above a certain threshold, and
+discard them. The VFHQ dataset also occasionally contains frames
+where hands or objects occlude the face, however we do not remove
+those.
+To train our model, we randomly select 𝐹frames and 𝑉views
+from each dataset video sequence, depending on the resolutions of
+the current training stage, and on the available number of views𝑉max
+and frames 𝐹max of the particular sequence. For example, AVA-256
+sequences and most sequences of RenderMe-360 are not temporally
+coherent but contain many views (𝐹max = 1 and 𝑉max > 16). The
+Nersemble dataset and some sequences of RenderMe-360 are multi-
+view and temporally coherent (𝐹max = 49 and 𝑉max ≥16). VFHQ
+contains only monocular videos (𝐹max = 49 and 𝑉max = 1). For the
+reference image, we randomly select a camera view from all views
+where a face is detected and the head is facing the camera; from this
+view, we randomly select a frame from the remaining frame indices
+that are not contained in the multi-view evaluation sequences.
+
+MVP4D: Multi-View Portrait Video Diffusion for Animatable 4D Avatars
+•
+13
+reference image
+view 1
+view 2
+view 3
+time
+passed through from reference frames
+reference frames
+Encoder
+Spatio-temporal encoder
+Spatio-temporal encoder
+latent 
+videos
+ray 
+direction
+outcropping
+mask
+reference
+mask
+expression
+deformation
+sub-frame
+motion maps
+3D pose 
+maps
+generated 
+multi-view 
+video
+reference view 1
+reference view 2
+diffusion transformer
+mgen
+Spatio-temporal decoder
+Fig. S9. Full visualization of the conditioning signals and the MMVDM architecture. The model synthesizes multi-view videos from a single input
+reference image. We encode the input reference image into a latent frame, and we provide the model with a set of conditioning signals, noisy latents, and,
+optionally, an additional set of generated video frames to facilitate auto-regressive generation of videos. The model is conditioned on signals including: (1) 3D
+pose maps pref and Pgen, which encode the rasterized canonical 3D coordinates of the head geometry; (2) expression deformation maps eref and Egen, which
+capture the rasterized 3D deformations relative to a neutral expression mesh; (3) view ray direction and origin maps vref and Vgen, representing the direction and
+origin of each camera ray in the first camera’s reference frame; and (4) binary masks bref and Bgen, which indicate whether a frame is a reference or generated
+frame—Bgen is used to condition the model on previously generated video frames. Following Taubner et al. [2025], we also include an outcropping mask, which
+denotes the valid region of a padded video frame. The conditioning signals, noisy latents, and reference latents are passed into the diffusion transformer,
+which is used to recover denoised latent multi-view videos. The result is passed through a decoder to recover the output multi-view video sequence.
+
+14
+•
+Felix Taubner, Ruihang Zhang, Mathieu Tuli, Sherwin Bahmani, and David B. Lindell
+S2.3
+Sampling
+To create the 4D avatar, we generate a large collection of camera
+views around the head using the diffusion model. These views are
+manually defined to be at certain angles (azimuth and elevation)
+relative to the forward-facing direction of the head. See Figure S10
+for a detailed view of how we select the sampled camera view angles
+(key views and other views) for the 120-degree and 360-degree avatar
+generation case. See Figure S11 for an illustration of how these views
+and all timesteps are generated in a step-by-step process.
+S2.4
+4D Reconstruction Details
+To reconstruct the 4D sequence, we use a 4D representation largely
+based on GaussianAvatars [Qian et al. 2024], which is extended
+by CAP4D [Taubner et al. 2025]. These method attach Gaussian
+primitives to the 3DMM mesh, which is driven by the reference head
+shape and the input animation sequence. We animate the avatar
+by deforming the mesh with FLAME blendshapes, using the same
+expression sequence employed during multi-view video generation.
+We follow CAP4D’s implementation, with a few minor modifications
+to better model detailed temporal dynamics, as follows.
+Temporal positional embedding and frame-dependent deformation.
+CAP4D remeshes the FLAME template mesh into UV-pixel-aligned
+vertices and faces, and deforms them using a U-Net [Ronneberger
+et al. 2015] to predict expression-dependent, per-Gaussian deforma-
+tions, in UV space. Since we are overfitting the representation to the
+generated sequence, we remove the expression-map conditioning
+and replace it with an 8-channel sinusoidal positional encoding.
+We keep the spatial positional encoding of CAP4D. The U-Net thus
+outputs the time-dependent UV-deformation map for each frame
+index.
+Velocity regularization. To prevent excessive motion of the Gaus-
+sians introduced by the U-Net, we apply a regularization of the
+relative rotation and position of each Gaussian between subsequent
+timesteps during training. We remove the relative deformation and
+rotation losses Ldeform and Lrot between deformed and canonical
+poses of each Gaussian and replace them with similar, velocity-
+based losses to penalize excessive motion. The relative rotation loss
+is computed as the square of the magnitude of the axis-angle rota-
+tion 𝑅between the 𝑖th Gaussian at the current frame 𝑓and the next
+frame 𝑓+ 1:
+Lv,rot = 𝜆v,rot
+1
+𝑁
+𝑁
+∑︁
+𝑖=1
+log
+
+𝑅⊤
+𝑖,𝑓𝑅𝑖,𝑓+1
+
+2
+2 .
+(S4)
+The relative deformation loss is computed as the square of the
+magnitude of the difference (velocity) between the U-Net induced
+deformation 𝑑of each Gaussian 𝑖at the current timestep 𝑡and the
+next timestep 𝑡+ 1:
+Lv,deform = 𝜆v,deform
+1
+𝑁
+𝑁
+∑︁
+𝑖=1
+𝑑𝑖,𝑡+1 −𝑑𝑖,𝑡
+2
+2
+(S5)
+We follow the training strategy of CAP4D in all other aspects, keep-
+ing the loss functions from GaussianAvatars and CAP4D, including
+LPIPS loss [Zhang et al. 2018] LLPIPS and Laplacian loss Llap on the
+Table S8. Nersemble sequences for self-reenactment.
+sequence
+018-SEN-01-cramp_small_danger
+030-EMO-1-shout+laugh
+038-EXP-1-head
+085-SEN-09-frown_events_bad
+097-EXP-1-head
+124-FREE
+175-SEN-03-pluck_bright_rose
+226-EMO-4-disgust+happy
+227-SEN-08-clothes_and_lodging
+240-SEN-01-cramp_small_danger
+UV-space U-Net deformations. The total loss function thus becomes:
+L = Lrgb + Llap + Lv,deform + Lv,rot + Lscaling + Lposition
+(S6)
+We set 𝜆v,rot = 0.005 and 𝜆v,deform = 0.4.
+Back-face culling. After optimization, we find that, without spe-
+cial treatment, some Gaussians at the back of the head are not
+properly occluded by the front of the avatar. To mitigate artifacts
+from this effect, we cull all Gaussians that are attached to triangles
+that never face any camera during initialization. During training,
+we drop out all Gaussians that are attached to triangles that do not
+face the training view with a probability of 20%. Finally, we set the
+initial number of Gaussians per triangle to one.
+S3
+Evaluation Details
+S3.1
+Self-reenactment
+Dataset. We evaluate self-reenactment on sequences from the
+Nersemble [Kirschstein et al. 2023] (forward-facing) and RenderMe-
+360 [Pan et al. 2024] (360-degree) dataset. For each sequence, we
+obtain ground truth 3DMM parameters (FLAME [Li et al. 2017])
+using a multi-view face tracker [Taubner et al. 2024] and all available
+views. Please see Table S8 for a full list of Nersemble sequences used
+for self-reenactment.
+Baseline implementation details. We implement and evaluate the
+baselines GAGAvatar [Chu and Harada 2024], Portrait4D-v2 [Deng
+et al. 2024], VOODOO3D [Tran et al. 2024b], VOODOO XP [Tran
+et al. 2024a], HunyuanPortrait [Xu et al. 2025], CAP4D and CAP4D’s
+morphable multi-view diffusion model (MMDM) [Taubner et al.
+2025]. We provide the ground truth 3DMM parameters to all meth-
+ods that can leverage 3DMM animations (MVP4D and CAP4D), and
+use the corresponding ground truth videos and their monocular
+face tracker for the remaining methods (GAGAvatar, Portrait4D-v2,
+and VOODOO3D). These face trackers cannot process back-facing
+views, hence cannot be considered in our 360-degree evaluations.
+For our method, we pad the ground-truth 3DMM animations to 89
+frames and use only 70 frames for evaluation or 4D reconstruction.
+The original CAP4D [Taubner et al. 2025] implementation produces
+avatars that cover a view range of 55 and 20 degrees in azimuth
+and elevation respectively. To cover the higher view range of our
+evaluation set, we modify the generated view range of CAP4D to
+cover the same view range as our method: 60 degree azimuth and
+
+MVP4D: Multi-View Portrait Video Diffusion for Animatable 4D Avatars
+•
+15
+60
+40
+20
+0
+20
+40
+60
+20
+0
+20
+40
+60
+80
+key views
+other views
+0
+20
+40
+60
+80
+100
+120
+140
+160
+180
+200
+220
+240
+260
+280
+300
+320
+340
+360
+20
+0
+20
+40
+60
+80
+key views
+other views
+120-degree camera views
+elevation angle [degrees]
+elevation angle [degrees]
+azimuth angle [degrees]
+azimuth angle [degrees]
+360-degree camera views
+Fig. S10. The sampled camera view angles for 120-degree avatars (left) and 360-degree avatars (right). Azimuth angle (x-axis) and elevation angle (y-axis)
+are defined relative to the head direction. The key views are denoted as triangles. Other views are denoted as points, while their color illustrates their cluster
+assignments. Each cluster is generated conditioned on the 4 key views that are closest to the corresponding cluster center.
+30 degree elevation range. As an additional 4D 360-degree baseline,
+we combine the portrait video generation model Follow-Your-Emoji
+(FYE) [Ma et al. 2024] with the static multi-view generation model
+PanoHead [An et al. 2023]. First, we use FYE to generate a reference
+video in a monocular setting using the reference image and the
+ground truth video from the reference view. Then, we extend this
+monocular video to multi-view by running PanoHead on each frame
+and using their resulting 3D representation to render the evaluation
+camera views. For this, we use the ground truth extrinsics for the
+novel view generation and the ground truth 3DMM to crop each
+video to the head.
+Metrics. We evaluate each method across the following metrics:
+photometric accuracy (PSNR, SSIM, LPIPS), temporal consistency
+(JOD) [Mantiuk et al. 2021], identity preservation (CSIM) [Deng
+et al. 2019], and 3D consistency (RE@LG). For all metrics, we center
+crop images around the projected vertices of the ground truth head
+model. For PSNR, SSIM, LPIPS and JOD, we mask both ground truth
+and predicted image using the background mask detected on the
+ground truth image using a background matting model [Lin et al.
+2022]. To assess 3D consistency, we compute the reprojection error
+RE@LG following the implementation of Kant et al. [2025]. First, we
+select four camera pairs per sequence based on angular proximity.
+Then, for each evaluation timestep, we detect DISK [Tyszkiewicz
+et al. 2020] keypoints in all generated views. Then, we use Light-
+Glue [Lindenberger et al. 2023] to match keypoints between camera
+pairs. Each matched keypoint is triangulated using known camera
+poses and intrinsics and projected to both views. The error between
+the reprojected triangulated point and the 2D keypoint positions is
+averaged across all matches, frames, and timesteps for this metric.
+To assess expression transfer accuracy, we include the average key-
+point distance (AKD) measured using facial landmarks predicted
+from a keypoint detector [Bulat and Tzimiropoulos 2017], and the
+average expression distance (AED) predicted using DECA [Feng
+et al. 2021].
+Additional results. We provide additional results on the self-
+reenactment task (more metrics and baselines) and report them
+Table S9. Additional self-reenactment results on the Nersemble
+dataset.
+Method
+PSNR↑
+SSIM↑
+LPIPS↓
+JOD↑
+RE@LG↓
+CSIM↑
+AKD↓
+AED↓
+HunyuanPortrait
+18.04
+0.671
+0.380
+4.02
+4.32
+0.641
+8.20
+1.11
+GAGAvatar
+20.01
+0.721
+0.353
+4.73
+2.25
+0.656
+9.28
+1.03
+Portrait4D-v2
+17.05
+0.662
+0.392
+3.67
+3.75
+0.659
+12.3
+1.21
+VOODOO3D
+20.09
+0.692
+0.349
+4.86
+1.84
+0.517
+7.34
+1.27
+VOODOOXP
+18.54
+0.692
+0.361
+4.10
+2.56
+0.643
+9.18
+1.12
+CAP4D (MMDM)
+22.17
+0.768
+0.280
+5.30
+1.28
+0.793
+4.22
+0.78
+CAP4D (120)
+21.56
+0.778
+0.302
+5.49
+0.634
+0.755
+4.51
+0.78
+MVP4D (MMVDM)
+23.39
+0.765
+0.294
+5.88
+1.03
+0.707
+4.10
+0.76
+MVP4D (120)
+23.16
+0.790
+0.301
+5.62
+0.656
+0.708
+4.33
+0.76
+Table S10. Nersemble driving sequences for cross-reenactment.
+sequence
+018_EXP-2-eyes
+030_EMO-1-shout+laugh
+038_EXP-3-cheeks+nose
+085_SEN-01-cramp_small_danger
+097_EMO-1-shout+laugh
+124_EMO-4-disgust+happy
+175_EXP-3-cheeks+nose
+226_EMO-2-surprise+fear
+227_SEN-10-port_strong_smokey
+240_EMO-3-angry+sad
+in Table S9. Please find the complete collection of generated and
+evaluated sequences our project page.
+S3.2
+Cross-reenactment
+Dataset. We evaluate cross-reenactment using 10 reference im-
+ages from the FFHQ dataset [Karras et al. 2019], each selected to
+contain challenging geometric structure such as long hair, head
+wear or glasses. Each subject is paired with a driving video from the
+Nersemble evaluation dataset [Kirschstein et al. 2023], comprising
+8 sequences with extreme expressions and 2 with speech, each with
+75 frames @ 24 fps. Please see Table S10 for a full list of Nersemble
+
+16
+•
+Felix Taubner, Ruihang Zhang, Mathieu Tuli, Sherwin Bahmani, and David B. Lindell
+generated
+reference
+(a) mode 1
+(c) mode 3
+(b) mode 2
+pending
+generating
+key-view
+views
+views
+views
+views
+frames
+frames
+frames
+frames
+(d) mode 4
+Fig. S11. Illustration of our step-by-step multi-view video sampling strategy. (a) We begin by generating key videos for the first 49 output frames (13
+latent frames) using generation mode 1. (b) The remaining target views are grouped into clusters of four neighboring viewpoints, with each cluster generated
+using mode 2 with the four nearest key videos as reference. (c) Once all views are synthesized, we apply mode 3 to extend the key videos by generating 40
+additional output frames with the last nine output frames from the current key videos as reference. (d) Finally, the remaining videos are extended using mode
+4, which conditions on the four nearest key videos and the last nine frames of the same previously generated videos.
+sequences used as driving videos for cross-reenactment. Each driv-
+ing sequence is processed with a multi-view face tracker [Taubner
+et al. 2024] to obtain the driving 3DMM animation (for MVP4D and
+CAP4D). Methods that are unable to use 3DMM animation signals
+(Portrait4D-v2 and GAGAvatar) receive the forward-facing video
+to drive their avatar. We render each reenacted sequence with a
+camera following an elliptical trajectory around the head, sweeping
+up to 60° in azimuth and 20° in elevation. We complete one rotation
+with a period of 12 seconds, repeating the animation sequences up
+to this total time.
+User study. We ask participants to compare our method with a
+baseline method based on the following criteria:
+
+MVP4D: Multi-View Portrait Video Diffusion for Animatable 4D Avatars
+•
+17
+Table S11. Computational requirements during training. VRAM foot-
+print and speed (iterations per day) for each training stage. Full-resolution
+training requires significantly more memory and computation than early
+stages.
+stage
+resolution
+VRAM
+iterations/day
+stage 1
+(1x49x256)
+29GB
+22k
+stage 2
+(1x49x512)
+41GB
+5k
+stage 3
+(4x49x512)
+50GB
+1k
+• Level of Detail: (Visual Detail) Look closely at the face and
+head. Which video shows sharper details like skin texture,
+hair strands, blemishes, or wrinkles? Videos that look blurry
+should be rated lower.
+• Expression Matching: (Expression Transfer) Which
+avatar’s facial expressions more accurately match the ex-
+pressions in the original (driving) video?
+• 3D Realism: (3D Structure) As the face turns or moves, does
+it maintain a realistic 3D shape? Rate lower if the face looks
+distorted or changes unnaturally as it moves or when viewed
+from different angles.
+• Natural Movement: (Motion Quality) Pay attention to how
+the face moves. Does it feel natural and lifelike, or stiff and
+robotic? Please also consider the movement of wrinkles, lips,
+and the tongue.
+• Overall Preference: Based on everything above, which
+video do you personally prefer? Choose the one that is more
+appealing overall.
+The video pairs are shown in random order, and each participant
+is asked to choose either the left or right video for each criterion.
+We collected 6750 responses from 45 participants and conducted
+𝜒2-tests to evaluate statistical significance at the 𝑝< 0.05 level; all
+results were statistically significant.
+More results. We show more qualitative results in Figure S12, and
+the complete collection of generated and evaluated sequences in the
+project page.
+S3.3
+Multi-curriculum training
+In the following, we provide information and experiments to moti-
+vate our multi-curricular training strategy.
+VRAM footprint during training. In Table S11, we show the VRAM
+and iterations/day for each training stage (8x NVIDIA H100 with
+activation checkpointing to reduce VRAM). Full-resolution training
+(stage-3) requires significantly more memory and computation than
+other stages, motivating our curriculum.
+Performance for each stage. We evaluate performance after each
+training stage on our Nersemble self-reenactment benchmark
+(MMVDM only). Stage 1 performs significantly worse (no training
+at high resolution). Stage 2 performs slightly worse (no fine-tuning
+on many views/frames) (see Table S12).
+Ablation on multi-modal training curriculum. We conduct an ab-
+lation study of stages 1 and 2 at reduced spatial resolution (96x96 or
+Table S12. Model performance after each training stage.
+stage
+PSNR↑
+LPIPS↓
+stage 1
+21.50
+0.360
+stage 2
+22.90
+0.303
+stage 3
+23.39
+0.294
+Table S13. Ablation on multi-modal training curriculum. We compare
+different stage 1 and stage 2 combinations. The proposed curriculum (A)
+yields the best PSNR.
+variation
+description
+PSNR↑
+LPIPS↓
+A
+(stage 1) 15k iters / 96x96 / mode 1
+(stage 2) 1k iters / 192x192 / mode 1-4
+21.6
+0.392
+B
+(stage 1) 15k iters / 96x96 / mode 1-4
+(stage 2) 1k iters / 192x192 / mode 1-4
+21.2
+0.386
+C
+(stage 2 only) 5k iters / 192x192 / mode 1-4
+20.5
+0.385
+Table S14. Long video model performance. We report photometric qual-
+ity across temporal chunks. Performance degrades with each iterated gen-
+eration.
+frames
+PSNR↑
+LPIPS↓
+JOD↑
+1-49
+18.19
+0.332
+4.11
+50-98
+18.12
+0.335
+4.05
+99-147
+18.05
+0.339
+3.99
+148-196
+17.92
+0.345
+3.98
+197-245
+17.78
+0.349
+3.92
+246-294
+17.65
+0.355
+3.88
+192x192) while keeping the same number of views/frames described
+in Table 3.
+Our proposed low-resolution training in stage 1 followed by stage
+2’s higher-resolution fine-tuning (A, B) improves image quality
+vs. only stage 2 high-resolution training (C). We also observe an
+improvement in PSNR by limiting stage 1 training to mode 1 (A,
+proposed) instead of using modes 1-4 (B). Settings A–C all use the
+same compute budget. Results are shown in Table S13.
+S3.4
+Long video generation
+Computational requirements for longer videos. Below are the in-
+ference VRAM requirements for generating various video lengths
+(VxFxD).
+• 8x29x512: 27GB
+• 8x49x512: 35GB
+• 8x89x512: 42GB
+We believe that our model can be distilled into more efficient
+feed-forward methods, just like [Deng et al. 2024].
+Temporal stability across temporal chunks. We assess generation
+of long videos (294 frames) in 6 temporal chunks (8 views, 49 frames,
+512x512 resolution each) using generation mode 3 (Figure 3). Metrics
+are averaged over 4 RenderMe-360 sequences. As expected, iterated
+generation leads to some image quality deterioration (see Table S14).
+
+18
+•
+Felix Taubner, Ruihang Zhang, Mathieu Tuli, Sherwin Bahmani, and David B. Lindell
+H+29°
+V-17°
+H+12°
+V+19°
+H+40°
+V-14°
+H-22°
+V+18°
+H+59°
+V-3°
+H-34°
+V+16°
+driving image
+Portrait4D-v2
+GAGAvatar
+MVP4D
+CAP4D
+reference image
+Fig. S12. More cross-reenactment results. Our method reconstructs challenging geometry such as hair better than previous methods, while also portraying
+more realistic expressions.

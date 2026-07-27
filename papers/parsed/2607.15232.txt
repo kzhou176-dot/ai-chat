@@ -1,0 +1,1786 @@
+In-Place Tokenizer Expansion for Pre-trained LLMs
+Jimmy T.H. Smith, Tarek Dakhran, Alberto Cabrera, Simon S. Lee, Paul Pak,
+Aditya Tadimeti, Tim Seyde, Maxime Labonne, Alexander Amini, Mathias Lechner
+Liquid AI
+https://huggingface.co/LiquidAI
+A tokenizer fixed at the start of pre-training allocates vocabulary in proportion to the pre-training
+corpus, reflecting the deployment priorities at that time. When those priorities shift, languages
+added later are split into many more tokens per word, which can raise latency, compute, and energy
+consumption for users of those languages. Cloud models can afford a broad vocabulary because
+the embedding and LM-head matrices are a small fraction of their parameters. On a compact model
+those matrices are a material share of per-token decode bandwidth, so on-device models ship small
+vocabularies and accept fragmentation outside a fixed language set. We present tokenizer expansion,
+an in-place recipe for upgrading a pre-trained model’s tokenizer when the model producer con-
+trols its design. We continue the existing tokenizer’s BPE merges on a multilingual corpus, so most
+source tokens carry over unchanged as single tokens and every new token has an exact decompo-
+sition into source tokens. We copy the carried-over embedding rows unchanged and initialize new
+rows as the mean of their source sub-token embeddings. A two-stage adaptation, embedding-only
+training then full-model continued pre-training, recovers source-checkpoint quality. We apply the
+recipe to a continued pre-trained checkpoint of LFM2-8B-A1B, an 8B-parameter Mixture-of-Experts
+model, to help produce LFM2.5-8B-A1B with a 128K tokenizer. The expanded tokenizer encodes
+Hindi and Vietnamese in roughly 2.4× and 2.6× fewer tokens than the source (up to 4.0× on Thai).
+Combining these reductions with the measured per-token cost of the larger vocabulary, we estimate
+a 2.2–3.7× per-character decode speedup for these languages across our reference devices. We re-
+lease the model weights and the expanded tokenizer, and report the negative findings that shaped
+the recipe.
+Publication Date: July 17, 2026
+Correspondence:
+jimmy@liquid.ai, mathias@liquid.ai
+1
+Introduction
+Tokenizers chosen at the start of pre-training typically allocate vocabulary in proportion to the distribu-
+tion of the pre-training corpus, which reflects deployment priorities at that time. As those priorities shift,
+languages that were underrepresented originally, or became relevant only later, are split into many more
+tokens per word than the languages the tokenizer was trained for (Petrov et al., 2023; Rust et al., 2021).
+Because generation invokes the decoder once per output token, this fragmentation raises decode latency,
+compute, and energy consumption for users of those languages. For large cloud models, the embedding
+and LM-head matrices are a negligible fraction of total parameters, so broader script coverage can be bought
+with a larger vocabulary. On-device models face tighter constraints: the output LM-head projection touches
+1
+arXiv:2607.15232v1  [cs.CL]  16 Jul 2026
+
+Pre-trained
+Model
+Embedding
+Init
+Stage 1
+Embedding
+Only
+Stage 2
+CPT
+Mid-train
++ Post
+Final
+Model
+Source
+tokenizer
+(65K)
+Continued
+BPE merges
+Expanded
+tokenizer
+(128K)
+Multilingual
+corpus
+Multilingual
+embedding-tuning
+Multilingual
+pre-training
+Mid-train + SFT
+Tokenizer construction
+Model adaptation
+Fig. 1: Tokenizer expansion pipeline. Top: the expanded tokenizer is constructed by continuing the source
+tokenizer’s BPE merge procedure on a multilingual corpus, under which most source tokens carry over one-
+to-one into the expanded vocabulary. Bottom: the pre-trained model’s embedding matrix is reinitialized for
+the new vocabulary (rows copied directly for tokens that carry over, mean of sub-token embeddings for
+new rows), then adapted in two stages (embedding-only training with the rest of the model frozen, then
+full-model continued pre-training on a balanced multilingual mixture), after which mid-training and post-
+training proceed to produce the final model. The dashed arrow indicates that the expanded tokenizer is
+what fixes the new embedding-matrix shape for the entire adaptation pipeline.
+the full vocabulary dimension on every decode step, and at batch size 1 decode is generally memory-
+bandwidth-bound (Xu et al., 2024), so a larger vocabulary noticeably increases both the on-device footprint
+(the embedding/LM-head matrix that must be held in memory) and the per-token decode cost. Vocabulary
+size is therefore a first-order design constraint, and edge models typically ship with compact vocabularies
+covering a chosen set of priority languages and domains, accepting fragmentation outside that set.
+Open model families resolve the trade-off between vocabulary size and language coverage at different
+points, from compact tokenizers to much larger ones (Abdin et al., 2024; Gemma Team, 2025; Grattafiori
+et al., 2024; Yang et al., 2025). LFM2 (Liquid AI Team, 2025) sits at the compact end, as expected for an
+on-device model. Its tokenizer is a 65K-vocabulary byte-level BPE tokenizer optimized for English, code,
+and a fixed set of additional languages. It allocates little of that budget to several languages that it encodes
+inefficiently, such as Hindi and Vietnamese, which it therefore splits into several times as many tokens
+as comparable English text. Two standard remedies are unattractive. Training a new tokenizer and pre-
+training from scratch discards the compute already invested in the checkpoint. Replacing the tokenizer
+post-hoc with a zero-shot transfer method (Minixhofer et al., 2024) solves a harder problem than necessary:
+it must infer the source-to-target relationship for an arbitrary target tokenizer.
+We present an approach (Figure 1) for in-place tokenizer expansion, targeting a narrower but common
+production setting in which the model producer controls the tokenizer upgrade. We initialize the merge
+table from the pre-existing tokenizer, hold the existing merges fixed, and append new merges learned
+from a multilingual corpus. This continued-BPE construction maps most source tokens one-to-one into
+the expanded vocabulary and gives every new token an exact decomposition into source tokens, neither
+of which is available to methods that target an independently trained third-party tokenizer. The model is
+initialized to match: rows for the carried-over tokens are copied unchanged, and new rows take the mean of
+their source-token decomposition. We then adapt the model in two stages: embedding-only training with
+the body frozen, followed by full-model continued pre-training on a balanced multilingual corpus. We
+refer to this procedure as tokenizer expansion, a form of cross-lingual vocabulary adaptation (CVA) (Mundra
+et al., 2024; Yamaguchi et al., 2024) in which the tokenizer’s BPE merges are extended rather than vocabulary
+entries merely appended.
+We apply the recipe during continued pre-training of an LFM2-8B-A1B checkpoint. The adapted model
+then goes through the standard mid-training and post-training phases to produce LFM2.5-8B-A1B (Liquid
+2
+
+AI Team, 2025, 2026). The token-count reduction is large: the expanded tokenizer encodes Hindi in roughly
+2.4× fewer tokens and Vietnamese in 2.6× fewer than the source tokenizer for the same text, with the largest
+reduction on Thai at 4.0× (Figure 2). Combined with the measured per-token cost of the larger vocabulary,
+we estimate this compression yields a 2.2–3.7× per-character decode speedup on these languages across
+our reference devices (Section 7).
+Our contribution is on the model and deployment side. To our knowledge, ours is the first account of
+the model-side recipe for in-place, continued-BPE tokenizer expansion at production scale (an 8B-parameter
+on-device MoE). We present an embedding-initialization and two-stage adaptation recipe that applies the
+vocabulary upgrade to an existing checkpoint without sacrificing accumulated quality (Section 6), an on-
+device latency characterization that separates tokenizer compression from the per-token cost of a larger
+vocabulary (Section 7), and the negative findings that shaped the recipe (Section 8). The continued-BPE
+construction itself is shared with independent, concurrent work (Purason et al., 2026), which studies its
+tokenizer-side properties. We build the model-side recipe on top of it and release the model weights and
+the expanded tokenizer.
+2
+Tokenizer Construction
+The expanded tokenizer is a byte-level BPE tokenizer (Radford et al., 2019; Sennrich et al., 2016) built by
+continuing the merge training of the LFM2 tokenizer on a multilingual corpus weighted toward the under-
+tokenized languages.
+Source tokenizer.
+The LFM2 tokenizer has a 65K-token byte-level BPE vocabulary trained on a corpus
+weighted toward English, code, and a fixed set of additional languages (Arabic, Chinese, French, German,
+Japanese, Korean, Spanish) (Liquid AI Team, 2025). Its vocabulary predates the broader multilingual de-
+ployment requirements that motivate this work.
+Extended training and mapping properties.
+We build the expanded 128K tokenizer by initializing the
+merge table from the LFM2 tokenizer and continuing BPE training on a multilingual corpus that adds
+coverage of under-represented languages such as Hindi and Thai, while retaining English and code to
+preserve compression on existing workloads. Existing merges are kept and new merges are appended, so
+every new token decomposes, by construction, into a sequence of one or more source tokens. Although the
+expanded vocabulary reassigns token IDs, 63,151 of the 64,400 source tokens still appear as single tokens
+in it (Table 1), so their embedding rows transfer directly. Every other expanded token splits into two or
+more source tokens. Section 3 uses this decomposition for embedding initialization. Further construction
+details, including special-token handling and a comparison against other production tokenizers, are given
+in Appendix C.
+Why continued-BPE extension rather than vocabulary union.
+An alternative, used by early language-
+specific Llama derivatives such as Chinese-LLaMA (Cui et al., 2023), trains a separate tokenizer on the target
+language and takes the union of its vocabulary with the source vocabulary. Because the two tokenizers
+are trained independently, a new token need not decompose into source tokens, so there is no canonical
+source-side decomposition from which to initialize its embedding. Continued-BPE extension keeps a single
+merge table, so every new token decomposes deterministically into source tokens, which is exactly what
+the embedding initialization in Section 3 requires.
+Language coverage and fertility.
+We prioritized languages by how poorly the source tokenizer encodes
+them. Token fertility is the average number of tokens a tokenizer uses per word, and the source tokenizer
+has high fertility precisely on the languages that received little vocabulary budget, splitting their words
+into many tokens. The under-tokenized languages span non-Latin scripts (for example Hindi, Thai, and
+Bengali) and Latin-script languages poorly served by the source tokenizer. Figure 2 reports, per language,
+the ratio of source-tokenizer to expanded-tokenizer token count on the same held-out text (non-English
+web text drawn from FineWeb 2 (Penedo et al., 2025), plus held-out English, code, and JSON samples), so
+1.0× is parity and higher means a shorter encoding. The under-tokenized languages improve substantially
+3
+
+Metric
+Value
+Expanded tokenizer matrix size (nominal)
+128,000
+Expanded tokenizer active entries
+125,017
+Source tokenizer matrix size (nominal)
+65,536
+Source tokenizer active entries
+64,400
+Tokens with 1:1 mapping
+63,151
+Tokens with 1:N mapping (N ≥2)
+61,866
+Maximum decomposition length
+64
+Table 1: Mapping properties between source and expanded tokenizers. We use the nominal sizes (65K
+source, 128K expanded) as round numbers throughout the report and the active-entry counts (64,400 and
+125,017) when precision matters. Roughly half of the expanded vocabulary corresponds one-to-one to a
+single source token. Each of these tokens has a different integer ID in the two vocabularies but the same
+surface string, so its embedding row is copied from the matching source row. The remaining tokens decom-
+pose into sequences of two or more source tokens, of length up to 64, and their embeddings are initialized
+by averaging (Section 3). The remaining 1,249 source entries (64,400 minus 63,151) are reserved or special-
+token slots that do not carry over as ordinary tokens. This does not affect embedding initialization.
+(for example Hindi 2.4× and Thai 4.0×), while English and code stay at parity by design. Because batch-1
+decode cost is dominated by per-token weight reads, this compression largely carries over into decode-time
+speedup, as discussed in Section 7.
+English
+Code
+Spanish
+French
+German
+Chinese
+Japanese
+Korean
+Arabic
+Vietnamese
+Hindi
+Bengali
+Thai
+1
+2
+3
+4
+1.01
+1.03
+1.04
+1.05
+1.03
+1.09
+1.08
+1.19
+1.4
+2.59
+2.38
+3.35
+4
+Token-count ratio, source / expanded (×)
+Fig. 2: Encoding-length reduction of the expanded tokenizer over the source. For each language, the
+bar is the ratio of source-tokenizer to expanded-tokenizer token count on the same input text. A value of
+1.0× is parity and higher means a shorter encoding. English and code are at parity by design, previously
+supported languages improve modestly, and the under-tokenized languages improve substantially.
+3
+Embedding Initialization
+Given the pre-trained input embedding matrix Esrc ∈R|Vsrc|×d for the 65K source vocabulary, we build the
+embedding matrix Enew ∈R|Vnew|×d for the 128K expanded vocabulary (|Vnew| = 125,017 active entries,
+Table 1) with a single rule. Each new token t decomposes into a sequence (t′
+1, . . . , t′
+N) of source tokens
+4
+
+(Section 2), and we set its row to the mean of the corresponding source rows:
+Enew[t] = 1
+N
+N
+∑
+i=1
+Esrc[t′
+i].
+(1)
+For the 63,151 tokens that decompose to a single source token (N = 1) this copies the source row unchanged,
+and for the rest it averages two or more rows.
+Because LFM2-8B-A1B and LFM2.5-8B-A1B tie the input embedding and the output LM head, the same
+matrix Enew provides both, so initializing a row sets both the token’s input representation and its output
+classifier vector. The same construction applies to untied models, which initialize the two matrices sepa-
+rately.
+Why the mean.
+We average rather than sum so that new rows keep a norm comparable to existing rows
+rather than growing with N. Because every new token decomposes into known source tokens, this centroid
+is always defined and no row needs random initialization. We do not claim the centroid is the model’s
+internal representation of the token, only that it is a sensible starting point from which Stage 1 training
+converges cleanly (Section 6.1). Initializing new rows by averaging existing embeddings is an established
+baseline (Hewitt, 2021; Mundra et al., 2024). More elaborate weighted or learned initializers were developed
+mainly for tokenizer replacement, where the new tokenizer is trained independently and new tokens have
+no canonical decomposition into source tokens (Section 5). Here every new token has such a decomposition
+and Stage 1 trains the new rows, so we did not expect a more elaborate initializer to change the outcome
+and did not pursue it.
+4
+Training Recipe
+The source model for the expansion pipeline is an internal continuation of LFM2-8B-A1B (8.3B total param-
+eters, 1.5B active per token), continued pre-trained from its released 12T-token base (Liquid AI Team, 2025)
+to 35T tokens, still using the original 65K-vocabulary tokenizer. We call this checkpoint the source model
+throughout. Our primary evidence that the recipe preserves pre-expansion quality is the comparison of the
+expanded model to this source model.
+After embedding initialization, the model is adapted to the expanded tokenizer in two stages, illustrated
+in Figure 1 (lower row of the pipeline) and summarized in Table 2, after which mid-training and post-
+training follow. The staged structure is empirical: training all parameters at once degraded the parts of
+the model that already worked. Restricting the first stage to the new embedding rows isolates the change,
+and the subsequent full-model continued pre-training re-balances the model on data tokenized with the
+expanded tokenizer. As an MoE model, it requires healthy expert routing. We monitored expert load
+balancing and router health throughout the adaptation, with the router frozen in Stage 1 and trainable in
+Stage 2 and mid-training. These internal diagnostics, not reported here, showed no degradation from the
+vocabulary expansion.
+4.1
+Stage 1: Embedding-only Training
+In Stage 1 we train the new rows of the tied embedding/LM-head matrix Enew over 600B tokens while
+keeping all other parameters frozen, including the rows copied directly from the source (the N = 1 case of
+Section 3). Because the input embeddings and output head are tied, updating a new row changes both the
+input representation for that token and its output-logit vector. The training data is a multilingual mixture
+weighted toward the under-tokenized languages whose new rows are being trained, with the standard
+next-token prediction objective. These 600B tokens train only the embedding and we exclude them from the
+model’s pre-training-token total. We train at a 4,096-token sequence length, matching the source model’s
+pre-training context length. Context-length extension to 32K and then 128K is deferred to mid-training
+(Section 4.3). We reinitialize the optimizer state, warm up the learning rate to a relatively high peak, and
+then hold it constant. The high peak suits training a small set of freshly initialized parameters.
+This embedding-only step is closest to ReTok (Gu et al., 2024), which also trains only the embedding
+after a vocabulary change (full comparison in Section 5). We differ by additionally freezing the copied
+5
+
+rows: they already reproduce the source model’s lookup and logits for those tokens, and we find they drift
+harmfully when the rest of the body cannot follow (Section 8).
+Stage 1 alone recovers most of the dip from the zero-shot vocabulary swap. On the per-stage trajectory
+in Figure 3, it closes 4.8 of the 5.8 aggregate points lost at the swap, with English and code largely recovered.
+The under-tokenized languages also recover from the zero-shot dip, but their largest gains come in Stage
+2. Stage 1 alone is not sufficient: the full-model continued pre-training of Stage 2 is needed to close the
+remaining gap and integrate the new vocabulary into the body of the model (Section 6).
+4.2
+Stage 2: Continued Pre-training
+In Stage 2 we unfreeze all parameters and continue pre-training for 400B tokens, at the same sequence
+length as Stage 1, on a balanced multilingual corpus tokenized with the expanded tokenizer. As in Stage 1,
+we reinitialize the optimizer state and warm up the learning rate before holding it constant, here at a lower
+peak because the full model starts near a working configuration.
+The Stage 2 data mixture is the main factor in whether the unfrozen training preserves what Stage 1
+recovered. We studied its effect directly as an ablation (Section 8), where a predominantly English mixture
+left multiple-choice accuracy intact but caused a broad regression on generative benchmarks. A mixture
+with substantially more multilingual content, including coverage of the under-tokenized languages, re-
+moved the regression and yielded a checkpoint that matched or exceeded the source model on aggregate
+benchmarks (Section 6).
+Stage
+Trainable params
+Tokens
+Data mixture
+Stage 1: Embedding only
+New rows of Enew
+600B
+Under-tokenized focus
+Stage 2: CPT
+All parameters
+400B
+Balanced multilingual
+Mid-training
+All parameters
+2.4T
+32K then 128K context, higher-quality
+Table 2: Training summary across the two adaptation stages and the subsequent mid-training. The 600B
+Stage 1 tokens train only the embedding and are excluded from the model’s pre-training total. The Stage 1
+mixture is weighted toward the under-tokenized languages whose new rows are being trained, while the
+Stage 2 mixture is balanced across the full language set so that full-model training does not regress the
+previously supported languages (Section 4.2). Mid-training runs in two context-length phases, 32K over 2T
+tokens then 128K over 400B tokens. Post-training follows the LFM2.5 pipeline (Liquid AI Team, 2026).
+4.3
+Mid-training and Post-training
+Mid-training and post-training follow the LFM2.5 pipeline (Liquid AI Team, 2026), an update of the earlier
+LFM2 procedure (Liquid AI Team, 2025). Tokenizer expansion requires no change to this pipeline: the
+Stage 2 checkpoint is a drop-in replacement for the base model the pipeline normally consumes. Mid-
+training proceeds in two context-length phases, a 32K-context phase over 2T tokens followed by a 128K-
+context extension over 400B tokens, both drawing on higher-quality and naturally long-context sources,
+with the learning rate annealed. The chat template, special tokens, and tool-use formats follow the released
+LFM2.5 configuration.
+5
+Related Work
+Tokenizer expansion sits between cross-lingual vocabulary adaptation (CVA), which adds language coverage
+to a pre-trained model by expanding the vocabulary and continuing pre-training, and tokenizer transfer,
+which replaces a model’s tokenizer outright and retrains or transfers its embeddings. Prior work establishes
+the deployment cost of poor tokenization (Ahia et al., 2023; Petrov et al., 2023) and studies CVA’s inference
+efficiency and embedding-initialization choices (Mundra et al., 2024; Yamaguchi et al., 2024). We position
+our recipe against the most directly comparable works by the component each one shares with it.
+6
+
+Tokenizer construction.
+The continued-BPE construction we use, initializing the merge table from the
+source tokenizer and continuing BPE merge training on the target corpus, is also introduced in independent,
+concurrent work by Purason et al. (2026), who study its tokenizer-side properties (compression, avoidance
+of unreachable tokens, leaf-based pruning) across several base models at smaller scale and release a toolkit.
+Our contribution is on the model side: we apply the construction at 8B MoE scale and develop the em-
+bedding initialization and two-stage adaptation that recover quality, together with the on-device latency
+analysis and the accompanying negative findings. Dagan et al. (2024) show that swapping or substantially
+altering a pre-trained model’s tokenizer requires extensive continued pre-training to avoid performance
+degradation, which supports the full-model continued pre-training in our Stage 2.
+Adaptation recipe.
+Two model-side works are each closest to a single stage of our recipe. ReTok (Gu
+et al., 2024) trains only the embedding after a tokenizer change with the body frozen, as in our Stage 1,
+but it replaces the tokenizer and initializes new rows by heuristic segmentation under the old tokenizer.
+Our continued-BPE construction makes that decomposition exact, and we additionally unfreeze the body
+in Stage 2, which we find necessary at scale (Section 8). EEVE (Kim et al., 2024) progressively unfreezes the
+model across seven stages, similar to our staged structure, but appends merges from a separately trained
+tokenizer rather than continuing the source merges.
+Embedding initialization.
+The mean-of-subwords centroid we use is a simple, established baseline (He-
+witt, 2021; Mundra et al., 2024), and it suffices here because the continued-BPE construction makes the
+source-side decomposition exact. A large body of work develops more elaborate initializers, using align-
+ment, overlap statistics, weighted source combinations, hypernetworks, or distillation, for the harder set-
+ting where the new tokenizer is trained independently of the source and the source-target relationship
+must be recovered (Dobler and de Melo, 2023; Dobler et al., 2025; Goddard and Fernandes Neto, 2025; Li
+et al., 2025; Minixhofer et al., 2022, 2024; Nakash et al., 2025; Ostendorff and Rehm, 2023; Remy et al., 2024;
+Sharthak et al., 2025).
+Vocabulary extension with continued pre-training.
+Vocabulary extension followed by continued pre-
+training is well established for language-specific Llama derivatives (Cui et al., 2023; Fujii et al., 2024) and
+for multilingual continued training of Southeast Asian (Dou et al., 2024, 2025), low-resource (Lin et al.,
+2024; Yong et al., 2023), instruction-tuned ( ¨Ust¨un et al., 2024), and translation-oriented (Alves et al., 2024)
+models. Yamaguchi et al. (2026) show competitive target-language quality from as little as ∼0.01 GB of
+continued pre-training text. We target a less-explored point in this space: an in-place upgrade of a single
+already-deployed on-device model, where the central challenge is preserving the model’s existing quality
+while improving its tokenization.
+6
+Evaluation
+We evaluate along two axes. First, quality recovery across the expansion stages (Section 6.1) tracks an ag-
+gregate of pre-training-style benchmarks from the source through the zero-shot swap to Stages 1 and 2. Be-
+cause these benchmarks are dominated by English, code, and high-resource languages, this axis is primarily
+evidence that expansion preserves the source checkpoint’s existing capability, rather than a measure of the
+newly added languages. Second, per-language detail on Global-MMLU (Section 6.2) covers both sides of
+the goal: it confirms that previously supported languages do not regress and quantifies the gains on the
+under-tokenized languages that motivated the expansion. Beyond these two axes, the released LFM2.5-8B-
+A1B also improves over LFM2-8B-A1B on instruction following, tool use, math, and agentic tasks. Those
+gains reflect the full pipeline of additional pre-training and reasoning-oriented post-training rather than
+tokenizer expansion alone, and are reported in the LFM2.5 release materials (Liquid AI Team, 2026) rather
+than here.
+7
+
+6.1
+Quality Recovery Across Stages
+Figure 3 tracks an aggregate quality score, the unweighted mean of eight public benchmarks (Appendix A),
+across four controlled stages: Source →Zero-shot →Stage 1 →Stage 2. These share one training objective
+and differ only in the vocabulary change and its recovery training, so the trajectory isolates the tokenizer-
+expansion pipeline. Mid-training and post-training are excluded, since they would confound the tokenizer
+change with later capability gains.
+Because the source is a base pre-training checkpoint with no instruction tuning, we restrict the aggregate
+to benchmarks a base model can be scored on without instruction following. These are log-probability
+benchmarks, which rank fixed answer options by the probability the model assigns them, answer-extraction
+benchmarks, which read a short final answer out of the model’s free-form output, and execution-based code
+benchmarks. We exclude chat-dependent instruction-following benchmarks (e.g. IFEval), which would
+understate the base checkpoint’s quality because it has not been trained for chat-template adherence.
+The recovery is monotonic (Figure 3) after the zero-shot checkpoint. The zero-shot checkpoint loses
+5.8 aggregate points, reflecting a body not yet adapted to the new vocabulary. Stage 1 (embedding-only,
+body frozen) recovers 4.8 of them, and Stage 2 (full continued pre-training) closes the gap and surpasses
+the source by 3.6 points. Since Stage 2 adds 400B tokens of full-model continued pre-training, we read this
+surplus as potentially the effect of that additional training rather than of the vocabulary change in isolation.
+The headline result is therefore preservation: the Stage 2 checkpoint matches or exceeds the source on pre-
+training-style benchmarks while now using the 128K tokenizer. The under-tokenized-language gains that
+motivated the expansion are reported separately in Section 6.2. By category, Stage 2 exceeds the source on
+Knowledge (+4.5), Math (+2.8), Code (+6.3), and Multilingual (+1.6) (Table 3), though a few individual
+benchmarks dip slightly, mainly in math and multilingual generation. The Multilingual category here
+is MMMLU and MGSM, which cover mostly high-resource languages rather than the under-tokenized
+targets. These dips may reflect the Stage 2 mixture’s rebalancing toward the under-tokenized languages
+rather than a property of the recipe, but we did not isolate the cause. Per-benchmark detail across stages is
+in Appendix A, Table 8.
+Category
+Source
+Zero-shot
+Stage 1
+Stage 2
+Knowledge (MMLU-Pro)
+30.7
+28.1
+30.6
+35.2
+Math (GSM8K, MATH500, GSM-Plus)
+54.4
+49.6
+54.3
+57.2
+Code (HumanEval+, LiveCodeBench v5)
+30.9
+20.8
+27.9
+37.2
+Multilingual (MGSM, MMMLU)
+50.9
+46.3
+50.0
+52.5
+Aggregate (8-benchmark mean)
+44.7
+38.9
+43.7
+48.3
+Table 3: Per-category quality recovery across expansion stages. Each category is the unweighted mean of
+its constituent benchmarks. The aggregate is the unweighted mean of all eight benchmarks, so categories
+with more benchmarks contribute more to it. Stage 2 matches or exceeds the source in all four categories.
+8
+
+Source
+Zero-shot
+Stage 1
+Stage 2
+35
+40
+45
+50
+44.7
+38.9
+43.7
+48.3
+44.7
+44.7
+44.7
+44.7
+Stage
+Aggregate quality score
+Expanded model trajectory
+Source baseline
+Fig. 3: Quality recovery across the adaptation stages. Aggregate score defined in Section 6.1 (the un-
+weighted mean of eight benchmarks, with per-benchmark detail in Appendix A, Table 8). The zero-shot
+checkpoint loses about six aggregate points, Stage 1 recovers most of the gap, and Stage 2 closes the remain-
+der and surpasses the source.
+6.2
+Multilingual Benchmark Detail
+Per-language results confirm the headline pattern: previously supported languages hold their ground while
+the under-tokenized languages gain, so the expansion adds coverage without regressing what already
+worked.
+Global-MMLU (broad multilingual MCQ).
+Global-MMLU (Singh et al., 2024) renders the full MMLU
+test set (about 14,000 four-choice questions per language, chance 25%) into 42 languages, using a combina-
+tion of professional, community-verified, and machine translations. We report the 39 languages on which
+at least one checkpoint exceeds 30%. The other 3 stay at the floor throughout (Appendix Table 9). The
+expanded model recovers and exceeds the source by Stage 2 (mean over these 39 languages: 41.4, 37.0, 40.6,
+43.7 across Source, Zero-shot, Stage 1, Stage 2, net +2.3). The zero-shot vocabulary swap causes a transient
+dip (mean 37.0, Arabic falling to 32.9) that Stages 1 and 2 recover. By Stage 2 the previously supported lan-
+guages are preserved, with per-language changes ranging from −0.3 (Spanish) to +1.8 (Arabic), at or near
+the sampling noise, while the under-tokenized languages gain substantially (Vietnamese +11.6, Indonesian
++9.1, Hindi +7.6, Malay +6.8) (Table 4).
+Under-tokenized languages.
+Among the under-tokenized languages, Global-MMLU covers Hindi, Ben-
+gali, Indonesian, Malay, and Vietnamese, all of which improve at Stage 2. Hindi, Indonesian, Malay, and
+Vietnamese appear in Table 4, and Bengali improves by +4.8 (Appendix Table 9). Thai, another under-
+tokenized language, is not part of Global-MMLU and is not separately evaluated here.
+9
+
+Language
+Source
+Zero-shot
+Stage 1
+Stage 2
+∆
+Previously supported
+Arabic
+51.4
+32.9
+50.1
+53.2
++1.8
+German
+56.1
+53.5
+55.3
+57.2
++1.1
+Spanish
+57.5
+53.8
+56.6
+57.2
+-0.3
+French
+56.5
+53.1
+55.6
+57.4
++0.9
+Japanese
+53.5
+48.4
+52.2
+55.1
++1.6
+Korean
+50.7
+41.4
+49.8
+52.4
++1.7
+Chinese
+53.9
+46.5
+52.2
+54.9
++1.0
+Under-tokenized
+Hindi
+32.0
+26.2
+33.8
+39.6
++7.6
+Vietnamese
+35.8
+25.6
+38.8
+47.4
++11.6
+Indonesian
+41.9
+34.0
+40.2
+51.0
++9.1
+Malay
+38.6
+32.8
+37.5
+45.4
++6.8
+Mean (39 langs)
+41.4
+37.0
+40.6
+43.7
++2.3
+Table 4: Global-MMLU accuracy across expansion stages (5-shot). Four-choice multiple choice scored
+by answer-letter log-probability with 5-shot prompting, so chance is 25%. ∆is Stage 2 minus Source. The
+mean is over the 39 languages on which at least one checkpoint exceeds 30%. The 3 at-floor languages
+are excluded (Appendix Table 9). Per-language scores carry sampling noise on the order of half a point
+(n ≈14,000), so we do not read per-language differences of about a point or less as meaningful. Here
+“Zero-shot” is the expansion stage with no recovery training, not the few-shot setting.
+7
+On-device Latency
+The primary motivation for the tokenizer-expansion effort is on-device decoding efficiency. The user-facing
+metric is wall-clock time per character of generated text rather than raw tokens per second, so the expansion
+is a net win on a given language only if its compression gain there outweighs the added per-token cost of the
+larger vocabulary. In brief, we estimate that on all three reference devices the expanded tokenizer decodes
+the heavily under-tokenized languages (Thai, Bengali, Vietnamese, Hindi) 2.2× to 3.7× faster per character
+than the source tokenizer, at a per-character cost of up to about 9% on the least-compressed languages
+(English and code). The two components behind these figures, per-language compression and per-device
+decode cost, are measured separately in the rest of this section.
+Why we report a synthesis rather than a direct end-to-end measurement.
+Both LFM2-8B-A1B and LFM2.5-
+8B-A1B are released, so one direct option is to decode the same Hindi text on the same device with each
+release and compare. We do not treat that comparison as our primary evidence, because it does not isolate
+the tokenizer: the two releases differ along many axes beyond it, and LFM2.5-8B-A1B is a reasoning model
+that emits variable-length thinking traces, so the same prompt yields different output lengths and token
+distributions. Restricting the change to the tokenizer alone, by swapping it into a single post-trained check-
+point, is not feasible without re-running the full adaptation pipeline, which would introduce changes of its
+own. Either route therefore confounds the tokenizer change with other simultaneous changes.
+Instead, we decompose decode time per character of output into two independently measurable com-
+ponents. The decoding speedup of the expanded tokenizer over the source tokenizer for the same model
+body factors cleanly:
+chars/secnew
+chars/secold
+|
+{z
+}
+decode speedup per character
+=
+chars/tokennew
+chars/tokenold
+|
+{z
+}
+compression (per-language)
+×
+decode t/snew
+decode t/sold
+|
+{z
+}
+vocabulary-size cost (per-device)
+The compression term is a property of the tokenizers alone, measured on multilingual text without run-
+ning the model (Figure 2, Section 2). The vocabulary-size cost term is a property of the model on a given
+device, measured on the same LFM2-8B-A1B body with only the embedding/LM-head matrix size varied
+10
+
+(Section 7.1). The factorization is an identity. What makes the synthesized speedup an estimate is that we
+measure the vocabulary-size cost once and reuse it as a constant across languages and output lengths. That
+is a good approximation here: at batch size 1, decode is memory-bandwidth-bound and each step is dom-
+inated by reading the model weights and the LM-head matrix, a near-constant number of bytes per token
+regardless of which tokens are generated. The main thing it leaves out is the KV cache, which grows with
+context length and is identical for both vocabularies, so on long sequences it takes a larger share of each
+step and the per-token vocabulary penalty shrinks.
+7.1
+Per-token decode cost of vocabulary scaling
+To isolate the vocabulary-size cost from the tokenization compression, we hold the model body fixed and
+vary only the embedding and LM-head matrix size. We benchmark the same LFM2-8B-A1B weights with
+that matrix resized from the source tokenizer’s 65K entries to the expanded tokenizer’s 128K entries, feed-
+ing identical token sequences in both configurations so that the measurement isolates the per-token de-
+code cost of the larger matrix from any tokenization-induced change in token count. The benchmark uses
+llama-bench (Gerganov and contributors, 2023) with a fixed decode length of 128 tokens and Q4 0 quanti-
+zation throughout. Prefill is measured with a 512-token prompt on the M4 Max and a 256-token prompt on
+the Snapdragon 8 Elite Gen 5 phone (shorter to limit thermal throttling), but our synthesis depends only on
+the decode throughput.
+M4 Max CPU
+M4 Max GPU
+Snapdragon
+8 Elite Gen 5
+0
+100
+200
+187
+203
+53
+171
+188
+48
+Decode throughput (tokens/sec)
+Source matrix (65K)
+Expanded matrix (128K)
+Fig. 4: Per-token decode throughput at the source (65K) versus expanded (128K) embedding/LM-head
+matrix size, identical model body and identical input tokens. Measured with llama-bench (Gerganov
+and contributors, 2023) on LFM2-8B-A1B at Q4 0 quantization, batch size 1, 128 generated tokens. Decode
+throughput drops by 8.6% on the M4 Max CPU, 7.4% on the M4 Max GPU, and 9.4% on the Snapdragon
+8 Elite Gen 5 phone class when doubling the matrix from 65K to 128K rows. Prefill throughput is within
+run-to-run variance across matrix sizes, with no consistent direction (full numbers in Table 12). Model size
+on disk grows by approximately 100 MiB with the roughly 62K added embedding rows (65,536 to 128,000).
+Prefill and decode respond differently to the larger matrix. Prefill is compute-bound and amortizes the
+LM-head reads across the input, so it barely moves with vocabulary size. Decode is memory-bandwidth-
+bound and pays the larger LM-head read on every step, dropping 7–10% per token. Full per-device num-
+bers and disk sizes are in Appendix D, Table 12.
+7.2
+Per-character decode speedup (synthesis)
+Combining the per-language compression from Figure 2 with the per-device decode cost ratio from Table 12
+gives the estimated decode speedup per character of output, Table 5.
+Two patterns stand out in Table 5. On Thai, Bengali, Vietnamese, and Hindi, where compression is
+largest, the expanded tokenizer produces 2.2× to 3.7× as many characters per unit time across all three
+reference devices, the primary benefit. Because the per-token cost of the larger LM-head is the same for
+11
+
+Language
+Compression
+Synthesized decode speedup per character
+(Fig. 2)
+M4 Max CPU
+M4 Max GPU
+Snapdragon
+8 Elite Gen 5
+Thai
+4.00×
+3.66×
+3.70×
+3.62×
+Bengali
+3.35×
+3.06×
+3.10×
+3.03×
+Vietnamese
+2.59×
+2.37×
+2.40×
+2.35×
+Hindi
+2.38×
+2.18×
+2.20×
+2.16×
+Arabic
+1.40×
+1.28×
+1.30×
+1.27×
+Korean
+1.19×
+1.09×
+1.10×
+1.08×
+Chinese
+1.09×
+1.00×
+1.01×
+0.99×
+Japanese
+1.08×
+0.99×
+1.00×
+0.98×
+French
+1.05×
+0.96×
+0.97×
+0.95×
+Spanish
+1.04×
+0.95×
+0.96×
+0.94×
+German
+1.03×
+0.94×
+0.95×
+0.93×
+Code
+1.03×
+0.94×
+0.95×
+0.93×
+English
+1.01×
+0.92×
+0.94×
+0.91×
+Table 5: Synthesized decode speedup of the expanded tokenizer over the source tokenizer, per character
+of generated output, by language and device. Each entry is the product of the per-language compression
+ratio (Figure 2) and the per-device decode-throughput ratio (decode t/s of the 128K matrix divided by
+decode t/s of the 65K matrix, Table 12). Values above 1.0× indicate the expanded tokenizer produces the
+same character output faster. Values below 1.0× indicate the same output is produced slightly slower.
+every language, the change nets out as a gain wherever compression covers it (those four, plus previously
+supported languages like Arabic and Korean) and as a regression of up to about 9% per character where
+compression is near parity (English, code, the major European languages). This is the deliberate trade-off
+of the design: large gains on under-served scripts, paid for by a small uniform per-token cost. We discuss
+it further in Section 9.1.
+7.3
+Vocabulary-size scaling beyond 128K
+We considered, but did not adopt, larger vocabulary sizes. Figure 5 extends the experiment in Figure 4 to
+192K and 256K matrix sizes on the same three devices, plotted as decode-throughput ratio relative to the
+65K baseline on each device.
+Decode cost rises with vocabulary size on every device, fastest on the Snapdragon 8 Elite Gen 5, where
+doubling to 128K costs about 9% of decode throughput, tripling to 192K costs 26%, and quadrupling to 256K
+costs 37%. A larger vocabulary is worth it on a language only if its added compression outweighs this added
+device cost. Take 256K on the Snapdragon: the decode-cost ratio is 0.63, so a language needs compression
+above 1/0.63 ≈1.59× over the source just to break even. Only Thai, Bengali, Vietnamese, and Hindi reach
+that, and they already clear it at 128K, where the device cost is far lower. The incremental compression from
+doubling the vocabulary again (128K to 256K) would have to be large to overcome the further throughput
+loss, and BPE compression has diminishing returns as the vocabulary grows. We therefore stop at 128K on
+these devices.
+12
+
+65K
+128K
+192K
+256K
+0.6
+0.7
+0.8
+0.9
+1
+Embedding / LM-head vocabulary size
+Decode throughput / 65K decode throughput
+M4 Max GPU
+M4 Max CPU
+Snapdragon 8 Elite Gen 5
+Fig. 5: Matrix-size scaling of decode throughput, 65K to 256K, on identical LFM2-8B-A1B body weights.
+Each curve plots the device’s decode throughput at the given embedding/LM-head matrix size divided by
+its 65K decode throughput. The dashed horizontal line marks 65K parity. Decode cost grows with matrix
+size on every device, steepest on the Snapdragon 8 Elite Gen 5 phone class, where the LM-head projection
+is the largest fraction of total decode bandwidth. At 256K, the Snapdragon 8 Elite Gen 5 loses 37% of its
+65K decode throughput.
+8
+Ablations and Negative Findings
+Two findings shaped the final recipe. We report them here both for transparency about what did not work
+and as practical guidance for practitioners attempting similar tokenizer-expansion efforts.
+Training the full embedding matrix in Stage 1 degrades performance.
+To decide how much of the em-
+bedding to train in Stage 1, we ran the alternative configuration: training all rows of Enew, including the
+rows copied from the source model, rather than only the newly added rows, with the rest of the model
+frozen in both cases. The hypothesis was that letting the existing rows adjust would help the model rec-
+oncile the embedding space with the new vocabulary. Instead it degraded the model, with the damage
+concentrated on generation: MATH500, HumanEval+, and MGSM all fell while the model began to repeat
+itself, even though its multiple-choice scores (MMLU and MMMLU) were unchanged or higher. Because
+the input and output embeddings are tied, training Enew also moves the unembedding that produces the
+output logits. We did not isolate the mechanism directly, but the most likely explanation is that the copied
+rows are already matched to the frozen body, and letting them drift while the body cannot adapt breaks that
+match between the body and the logit layer. The reason the damage shows up in generation while spar-
+ing multiple-choice ranking is the same asymmetry we analyze under the Stage 2 mixture ablation below.
+Restricting Stage 1 to the new rows avoids the problem. Table 6 reports the comparison.
+Stage 2 data mixture is critical.
+To measure how much the Stage 2 mixture matters, we ran it with a
+deliberately unbalanced, predominantly English continued pre-training mix, testing the hypothesis that
+multilingual coverage was already established in Stage 1 and that English data would preserve general
+capability. The result was not a graceful loss of multilingual quality but a broad generative collapse. The
+clearest evidence is MATH500, an English-language benchmark, which fell from 61.8 to 27.0. MGSM fell
+from 61.2 to 28.4, and the model exhibited markedly more degenerate repetition. All of this happened while
+the model improved on log-probability-scored MCQ benchmarks (MMLU and MMMLU). Constructing a
+more balanced multilingual mixture eliminated the regression and produced the checkpoint reported in
+Section 6. The comparison is in Table 7.
+13
+
+Benchmark
+New rows only
+Full embedding
+Reading
+(final recipe)
+matrix
+MMLU
+61.3
+61.3
+MCQ: knowledge intact
+MMMLU
+39.5
+42.6
+MCQ: multilingual reading intact
+MATH500
+49.4
+27.6
+Generation: collapses
+HumanEval+
+43.9
+1.8
+Code generation: collapses
+MGSM
+60.5
+44.3
+Multilingual generation: declines
+Repetition score (↑better)
+0.92
+0.19
+Generation: severe looping
+Table 6: Ablation on Stage 1 freezing strategy. New rows only is the final recipe, in which only the newly
+added embedding rows are trainable (the same Stage 1 checkpoint as Table 8). Full embedding matrix trains
+all rows of Enew, including the rows copied from the source model. The rest of the model is frozen in both
+cases. Multiple-choice accuracy (MMLU, MMMLU) is unchanged or higher when the full matrix is trained,
+while every generation benchmark falls and the repetition score drops sharply: the same failure mode
+discussed under the Stage 2 data-mixture ablation (Table 7). The repetition score is an internal diagnostic:
+the fraction of held-out generations that pass an automated n-gram-loop check (no degenerate repetition),
+from 0 to 1, where higher is better and lower indicates more looping. The final recipe’s 0.92 is essentially at
+the source level (0.93, Table 7).
+The MCQ-versus-generation asymmetry is the key diagnostic. Multiple-choice benchmarks scored by
+log-probability over A/B/C/D options measure whether the model assigns higher probability to the correct
+option than to the distractors. They do not require the model to generate coherent text. The bad-mixture
+model retains, and slightly improves, this discriminative ability, while losing the generative ability needed
+for free-form math and multilingual reasoning. The MMMLU improvement under the bad mixture fits this
+story: the model still reads the multilingual prompt correctly and ranks options sensibly, while having lost
+the ability to produce coherent multilingual output. MMLU-Pro is the partial exception: although multiple-
+choice in format, it drops with the generative benchmarks (35.2 to 20.6) rather than holding like MMLU and
+MMMLU.
+Benchmark
+Source
+Stage 2 good
+Stage 2 bad
+Reading
+mixture
+mixture
+MMLU
+63.0
+64.7
+64.9
+MCQ: knowledge intact
+MMMLU
+39.3
+43.8
+48.3
+MCQ: multilingual reading intact
+MMLU-Pro
+30.7
+35.2
+20.6
+MCQ reasoning: degrades
+MATH500
+49.2
+61.8
+27.0
+Generation: collapses
+MGSM
+62.5
+61.2
+28.4
+Multilingual generation: collapses
+Repetition score (↑better)
+0.93
+0.88
+0.49
+Generation: more looping
+Table 7: Ablation on Stage 2 data mixture. Stage 2 (good mixture) is the run used in the released LFM2.5-
+8B-A1B. Stage 2 (bad mixture) is an ablation with a predominantly English continued pre-training mix.
+Multiple-choice benchmarks scored by log-probability (MMLU, MMMLU) are unchanged or even im-
+proved under the bad mixture, while generation-style benchmarks (MATH500, MGSM) and an internal
+repetition score collapse (see the diagnostic discussion above). The repetition score is the same diagnostic
+as in Table 6, where lower values indicate more degenerate output.
+A per-language breakdown of the MGSM collapse, and a tentative script-mediated reading of why
+Latin-script European languages collapse most sharply, is given in Appendix B.
+Taken together, the two ablations point to a practical lesson about evaluation. Two different interven-
+tions, drifting the tied embedding against a frozen body and continued pre-training on an unbalanced mix-
+ture, produced the same signature, and a practitioner relying on MMLU-style accuracy alone would have
+judged both broken checkpoints healthy. Tokenizer expansion, and continued pre-training more generally,
+can degrade a model in ways that multiple-choice accuracy does not register. This is why the evaluation in
+Section 6 includes generative benchmarks rather than relying on multiple-choice accuracy alone.
+14
+
+9
+Conclusion
+We present tokenizer expansion, an in-place recipe for extending the tokenizer of an already pre-trained
+LLM in the case where the model producer controls the design of the new tokenizer. By constructing the
+new tokenizer as a continuation of the source tokenizer’s BPE merges (with existing merges held fixed), the
+embedding initialization problem reduces to direct row copies for the tokens that carry over and the mean
+of the source sub-token embeddings for the new tokens. A two-stage adaptation (embedding-only train-
+ing, then unfrozen continued pre-training), followed by the mid-training and post-training phases, pre-
+serves source-checkpoint quality on the evaluated suite and substantially reduces token counts on under-
+tokenized languages. Per-language results show that performance and efficiency on previously supported
+languages are preserved, while the under-tokenized languages see large tokenizer-efficiency improvements
+(Section 7), together with multilingual quality gains on the evaluated languages from the Stage 2 data (Sec-
+tion 6.2).
+We used the recipe to help produce LFM2.5-8B-A1B, an updated version of the LFM2-8B-A1B on-device
+MoE model with a 128K tokenizer. The model is released with open weights. On languages that the source
+tokenizer fragmented heavily (for example Thai, Hindi, and Vietnamese), the expanded tokenizer needs
+fewer tokens for the same text, which our synthesis estimates as a substantial per-character decode speedup
+once the larger vocabulary’s per-token cost is accounted for (Section 7). We document two negative findings
+that shaped the recipe: training the full embedding matrix in Stage 1 degrades performance, and the Stage
+2 data mixture must be balanced multilingually to avoid regression at the unfreezing step.
+The recipe is narrow by design, suited to the setting where a model producer wishes to extend coverage
+of an existing checkpoint to additional languages or scripts without restarting training. For that setting,
+this tokenizer expansion recipe offers a practical reference point alongside the broader literature on cross-
+lingual vocabulary adaptation and zero-shot tokenizer transfer.
+9.1
+Limitations and Scope
+Several constraints bound where the recipe applies and what it costs.
+Restricted to continued-BPE constructions.
+The principal restriction is that the new tokenizer must be
+obtained by continuing the source tokenizer’s BPE merges on a new corpus (rather than being trained in-
+dependently). This requires the ability to retrain BPE on a new corpus while keeping the existing merge
+table fixed, which in turn requires access to the original tokenizer’s merge rules and special-token configu-
+ration. The recipe does not apply when the new tokenizer is an off-the-shelf tokenizer designed by a third
+party. For that setting, the zero-shot transfer methods of Goddard and Fernandes Neto (2025); Minixhofer
+et al. (2024) are the appropriate tool.
+Single model family.
+We validate the recipe on one model family (LFM2), the setting in which we control
+the tokenizer and can apply the upgrade end to end. Beyond the continued-BPE requirement above, the
+recipe is not specific to this architecture: it assumes only a checkpoint whose embeddings can be extended
+and trained further. We therefore expect it to transfer to other model families whose producers have the
+same control over the tokenizer.
+Continued pre-training compute.
+Stage 2 is a continued pre-training stage and carries a corresponding
+compute cost. In our runs, this was a small fraction of the original pre-training budget (LFM2-8B-A1B was
+pre-trained on 12 T tokens (Liquid AI Team, 2025), and the LFM2.5 release adds further pre-training to 38 T
+total (Liquid AI Team, 2026)), but it is not free. We did not determine the minimum continued pre-training
+budget needed to recover source-checkpoint quality, so this cost reflects our setup rather than a requirement
+of the method. The recipe is most attractive when the original pre-training cost is large enough that even a
+fractional re-investment in continued pre-training is preferable to training from scratch.
+Decode regression on previously supported languages.
+On languages already encoded efficiently by
+the source tokenizer (English, code, and the major European languages), the larger vocabulary’s per-token
+15
+
+cost is not offset by a compression gain and shows up as a per-character decode regression of up to about
+9% (Section 7.2, Table 5). The trade-off is favorable for our deployment targets, but practitioners whose
+workloads are dominated by these languages should weigh it when applying the recipe.
+9.2
+Availability
+LFM2.5-8B-A1B is released with open weights at huggingface.co/LiquidAI/LFM2.5-8B-A1B under the
+LFM Open License v1.0 along with the expanded 128K tokenizer and deployment guides for llama.cpp,
+MLX, vLLM, and SGLang.
+Acknowledgments
+We thank the broader Liquid team for the base model and the surrounding infrastructure on which this
+work depends (Liquid AI Team, 2025).
+References
+Marah Abdin et al. Phi-3 technical report: A highly capable language model locally on your phone. arXiv
+preprint arXiv:2404.14219, 2024.
+Orevaoghene Ahia, Sachin Kumar, Hila Gonen, Jungo Kasai, David Mortensen, Noah Smith, and Yulia
+Tsvetkov. Do all languages cost the same? Tokenization in the era of commercial language models. In
+Proceedings of the 2023 Conference on Empirical Methods in Natural Language Processing, pages 9904–9923,
+Singapore, 2023. Association for Computational Linguistics. doi: 10.18653/v1/2023.emnlp-main.614.
+Duarte M Alves, Jos´e Pombal, Nuno M Guerreiro, Pedro H Martins, Jo˜ao Alves, Amin Farajian, Ben Peters,
+Ricardo Rei, Patrick Fernandes, Sweta Agrawal, et al. Tower: An open multilingual large language model
+for translation-related tasks. arXiv preprint arXiv:2402.17733, 2024.
+Karl Cobbe, Vineet Kosaraju, Mohammad Bavarian, Mark Chen, Heewoo Jun, Lukasz Kaiser, Matthias
+Plappert, Jerry Tworek, Jacob Hilton, Reiichiro Nakano, Christopher Hesse, and John Schulman. Training
+verifiers to solve math word problems. arXiv preprint arXiv:2110.14168, 2021.
+Yiming Cui, Ziqing Yang, and Xin Yao. Efficient and effective text encoding for Chinese LLaMA and Alpaca.
+arXiv preprint arXiv:2304.08177, 2023.
+Gautier Dagan, Gabriel Synnaeve, and Baptiste Rozi`ere. Getting the most out of your tokenizer for pre-
+training and domain adaptation. In Proceedings of the 41st International Conference on Machine Learning
+(ICML), pages 9784–9805, 2024. arXiv:2402.01035.
+Konstantin Dobler and Gerard de Melo. FOCUS: Effective embedding initialization for monolingual spe-
+cialization of multilingual models. In Proceedings of the 2023 Conference on Empirical Methods in Natural
+Language Processing, pages 13440–13454, 2023.
+Konstantin Dobler, Desmond Elliott, and Gerard de Melo. Token distillation: Attention-aware input em-
+beddings for new tokens. arXiv preprint arXiv:2505.20133, 2025.
+Longxu Dou, Qian Liu, Guangtao Zeng, Jia Guo, Jiahui Zhou, Xin Mao, Ziqi Jin, Wei Lu, and Min Lin.
+Sailor: Open language models for South-East Asia. In Proceedings of the 2024 Conference on Empirical
+Methods in Natural Language Processing: System Demonstrations, pages 424–435, Miami, Florida, USA, 2024.
+Association for Computational Linguistics. arXiv:2404.03608.
+Longxu Dou, Qian Liu, Fan Zhou, Changyu Chen, Zili Wang, Ziqi Jin, et al. Sailor2: Sailing in South-East
+Asia with inclusive multilingual LLMs. arXiv preprint arXiv:2502.12982, 2025.
+16
+
+Kazuki Fujii, Taishi Nakamura, Mengsay Loem, Hiroki Iida, Masanari Ohi, Kakeru Hattori, Hirai Shota,
+Sakae Mizuki, Rio Yokota, and Naoaki Okazaki. Continual pre-training for cross-lingual LLM adap-
+tation: Enhancing Japanese language capabilities.
+In Conference on Language Modeling (COLM), 2024.
+arXiv:2404.17790.
+Gemma Team. Gemma 3 technical report. arXiv preprint arXiv:2503.19786, 2025.
+Georgi Gerganov and contributors. llama.cpp. https://github.com/ggml-org/llama.cpp, 2023. LLM
+inference in C/C++.
+Charles Goddard and Fernando Fernandes Neto. Training-free tokenizer transplantation via orthogonal
+matching pursuit. arXiv preprint arXiv:2506.06607, 2025.
+Aaron Grattafiori et al. The Llama 3 herd of models. arXiv preprint arXiv:2407.21783, 2024.
+Shuhao Gu, Mengdi Zhao, Bowen Zhang, Liangdong Wang, Jijie Li, and Guang Liu. ReTok: Replacing
+tokenizer to enhance representation efficiency in large language model. arXiv preprint arXiv:2410.04335,
+2024.
+Yun He, Di Jin, Chaoqi Wang, Chloe Bi, Karishma Mandyam, Hejia Zhang, Chen Zhu, Ning Li, Tengyu Xu,
+Hongjiang Lv, et al. Multi-IF: Benchmarking LLMs on multi-turn and multilingual instruction following.
+arXiv preprint arXiv:2410.15553, 2024.
+Dan Hendrycks, Collin Burns, Saurav Kadavath, Akul Arora, Steven Basart, Eric Tang, Dawn Song, and
+Jacob Steinhardt.
+Measuring mathematical problem solving with the MATH dataset.
+arXiv preprint
+arXiv:2103.03874, 2021.
+John Hewitt.
+Initializing new word embeddings for pretrained language models.
+https://www.cs.
+columbia.edu/~johnhew//vocab-expansion.html, 2021. Accessed 2026-05.
+Naman Jain, King Han, Alex Gu, Wen-Ding Li, Fanjia Yan, Tianjun Zhang, Sida Wang, Armando Solar-
+Lezama, Koushik Sen, and Ion Stoica. LiveCodeBench: Holistic and contamination free evaluation of
+large language models for code. arXiv preprint arXiv:2403.07974, 2024.
+Seungduk Kim, Seungtaek Choi, and Myeongho Jeong. Efficient and effective vocabulary expansion to-
+wards multilingual large language models. arXiv preprint arXiv:2402.14714, 2024.
+Chong Li, Jiajun Zhang, and Chengqing Zong. TokAlign: Efficient vocabulary adaptation via token align-
+ment. In Proceedings of the 63rd Annual Meeting of the Association for Computational Linguistics (Volume
+1: Long Papers), pages 4109–4126, Vienna, Austria, 2025. Association for Computational Linguistics.
+arXiv:2506.03523.
+Qintong Li, Leyang Cui, Xueliang Zhao, Lingpeng Kong, and Wei Bi. GSM-Plus: A comprehensive bench-
+mark for evaluating the robustness of LLMs as mathematical problem solvers. In Proceedings of the 62nd
+Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers), pages 2961–2984,
+Bangkok, Thailand, 2024. Association for Computational Linguistics. doi: 10.18653/v1/2024.acl-long.
+163.
+Hunter Lightman, Vineet Kosaraju, Yura Burda, Harri Edwards, Bowen Baker, Teddy Lee, Jan Leike, John
+Schulman, Ilya Sutskever, and Karl Cobbe. Let’s verify step by step. In International Conference on Learning
+Representations (ICLR), 2024. arXiv:2305.20050.
+Peiqin Lin, Shaoxiong Ji, J¨org Tiedemann, Andr´e F T Martins, and Hinrich Sch¨utze. MaLA-500: Massive
+language adaptation of large language models. arXiv preprint arXiv:2401.13303, 2024.
+Liquid AI Team. LFM2 technical report. arXiv preprint arXiv:2511.23404, 2025.
+Liquid AI Team.
+LFM2.5-8B-A1B: Personal Assistant On Your Laptop.
+Liquid AI Blog, https://www.
+liquid.ai/blog/lfm2-5-8b-a1b, 2026. Released May 28, 2026.
+17
+
+Jiawei Liu, Chunqiu Steven Xia, Yuyao Wang, and Lingming Zhang. Is your code generated by ChatGPT
+really correct? Rigorous evaluation of large language models for code generation. In Advances in Neural
+Information Processing Systems (NeurIPS), 2023. arXiv:2305.01210.
+Benjamin Minixhofer, Fabian Paischer, and Navid Rekabsaz. WECHSEL: Effective initialization of sub-
+word embeddings for cross-lingual transfer of monolingual language models. In Proceedings of the 2022
+Conference of the North American Chapter of the Association for Computational Linguistics: Human Language
+Technologies, pages 3992–4006, 2022.
+Benjamin Minixhofer, Edoardo M Ponti, and Ivan Vuli´c. Zero-shot tokenizer transfer. In Advances in Neural
+Information Processing Systems (NeurIPS), volume 37, 2024. arXiv:2405.07883.
+Nandini Mundra, Aditya Nanda Kishore Khandavally, Raj Dabre, Ratish Puduppully, Anoop Kunchukut-
+tan, and Mitesh M. Khapra. An empirical comparison of vocabulary expansion and initialization ap-
+proaches for language models. In Proceedings of the 28th Conference on Computational Natural Language
+Learning (CoNLL), pages 84–104, Miami, FL, USA, 2024. Association for Computational Linguistics.
+arXiv:2407.05841.
+Itay Nakash, Nitay Calderon, Eyal Ben David, Elad Hoffer, and Roi Reichart. AdaptiVocab: Enhancing
+LLM efficiency in focused domains through lightweight vocabulary adaptation. In Conference on Language
+Modeling (COLM), 2025. arXiv:2503.19693.
+OpenAI. MMMLU: Multilingual massive multitask language understanding. https://huggingface.co/
+datasets/openai/MMMLU, 2024. Dataset accessed 2025-11-26.
+Malte Ostendorff and Georg Rehm. Efficient language model training through cross-lingual and progres-
+sive transfer learning. arXiv preprint arXiv:2301.09626, 2023.
+Guilherme Penedo, Hynek Kydl´ıˇcek, Vinko Sabolˇcec, Bettina Messmer, Negar Foroutan, Amir Hossein
+Kargaran, Colin Raffel, Martin Jaggi, Leandro Von Werra, and Thomas Wolf. FineWeb2: One pipeline to
+scale them all – adapting pre-training data processing to every language. arXiv preprint arXiv:2506.20920,
+2025.
+Aleksandar Petrov, Emanuele La Malfa, Philip H S Torr, and Adel Bibi. Language model tokenizers in-
+troduce unfairness between languages. In Advances in Neural Information Processing Systems (NeurIPS),
+2023.
+Taido Purason, Pavel Chizhov, Ivan P. Yamshchikov, and Mark Fishel. Teaching old tokenizers new words:
+Efficient tokenizer adaptation for pre-trained models. In Findings of the Association for Computational Lin-
+guistics: EACL 2026, pages 6492–6516, Rabat, Morocco, 2026. Association for Computational Linguistics.
+doi: 10.18653/v1/2026.findings-eacl.341. arXiv:2512.03989.
+Alec Radford, Jeff Wu, Rewon Child, David Luan, Dario Amodei, and Ilya Sutskever. Language models are
+unsupervised multitask learners. Technical report, OpenAI, 2019.
+Franc¸ois Remy, Pieter Delobelle, Hayastan Avetisyan, Alfiya Khabibullina, Miryam de Lhoneux, and
+Thomas Demeester. Trans-tokenization and cross-lingual vocabulary transfers: Language adaptation
+of LLMs for low-resource NLP. In Conference on Language Modeling (COLM), 2024. arXiv:2408.04303.
+Phillip Rust, Jonas Pfeiffer, Ivan Vuli´c, Sebastian Ruder, and Iryna Gurevych. How good is your tokenizer?
+On the monolingual performance of multilingual language models. In Proceedings of the 59th Annual
+Meeting of the Association for Computational Linguistics and the 11th International Joint Conference on Natural
+Language Processing (Volume 1: Long Papers), pages 3118–3135, 2021.
+Rico Sennrich, Barry Haddow, and Alexandra Birch. Neural machine translation of rare words with sub-
+word units. In Proceedings of the 54th Annual Meeting of the Association for Computational Linguistics (Volume
+1: Long Papers), pages 1715–1725, 2016.
+18
+
+Shaurya Sharthak, Vinayak Pahalwan, Adithya Kamath, and Adarsh Shirawalmath. Achieving tokenizer
+flexibility in language models through heuristic adaptation and supertoken learning.
+arXiv preprint
+arXiv:2505.09738, 2025.
+Freda Shi, Mirac Suzgun, Markus Freitag, Xuezhi Wang, Suraj Srivats, Soroush Vosoughi, Hyung Won
+Chung, Yi Tay, Sebastian Ruder, Denny Zhou, et al. Language models are multilingual chain-of-thought
+reasoners. In International Conference on Learning Representations (ICLR), 2023.
+Shivalika Singh, Angelika Romanou, Cl´ementine Fourrier, David I. Adelani, Jian Gang Ngui, Daniel Vila-
+Suero, Peerat Limkonchotiwat, Kelly Marchisio, Wei Qi Leong, Yosephine Susanto, Raymond Ng, Shayne
+Longpre, Wei-Yin Ko, Sebastian Ruder, Madeline Smith, Antoine Bosselut, Alice Oh, Andre F. T. Mar-
+tins, Leshem Choshen, Daphne Ippolito, Enzo Ferrante, Marzieh Fadaee, Beyza Ermis, and Sara Hooker.
+Global MMLU: Understanding and addressing cultural and linguistic biases in multilingual evaluation.
+arXiv preprint arXiv:2412.03304, 2024.
+Ahmet ¨Ust¨un, Viraat Aryabumi, Zheng-Xin Yong, Wei-Yin Ko, Daniel D’souza, Gbemileke Onilude, Neel
+Bhandari, Shivalika Singh, Hui-Lee Ooi, Amr Kayid, et al. Aya model: An instruction finetuned open-
+access multilingual language model. arXiv preprint arXiv:2402.07827, 2024.
+Yubo Wang, Xueguang Ma, Ge Zhang, Yuansheng Ni, Abhranil Chandra, Shiguang Guo, Weiming Ren,
+Aaran Arulraj, Xuan He, Ziyan Jiang, Tianle Li, Max Ku, Kai Wang, Alex Zhuang, Rongqi Fan, Xiang
+Yue, and Wenhu Chen. MMLU-Pro: A more robust and challenging multi-task language understanding
+benchmark. In Advances in Neural Information Processing Systems (NeurIPS) Datasets and Benchmarks Track,
+2024.
+Jiajun Xu, Zhiyuan Li, Wei Chen, Qun Wang, Xin Gao, Qi Cai, and Ziyuan Ling. On-device language
+models: A comprehensive review. arXiv preprint arXiv:2409.00088, 2024.
+Atsuki Yamaguchi, Aline Villavicencio, and Nikolaos Aletras. An empirical study on cross-lingual vocab-
+ulary adaptation for efficient language model inference. In Findings of the Association for Computational
+Linguistics: EMNLP 2024, pages 6760–6785, Miami, Florida, USA, 2024. Association for Computational
+Linguistics. arXiv:2402.10712.
+Atsuki Yamaguchi, Aline Villavicencio, and Nikolaos Aletras. How can we effectively expand the vocab-
+ulary of LLMs with 0.01GB of target language text? Computational Linguistics, 52(1):295–330, 2026. doi:
+10.1162/COLI.a.581. arXiv:2406.11477.
+An Yang et al. Qwen3 technical report. arXiv preprint arXiv:2505.09388, 2025.
+Zheng-Xin Yong, Hailey Schoelkopf, Niklas Muennighoff, Alham Fikri Aji, David Ifeoluwa Adelani, Khalid
+Almubarak, M Saiful Bari, Lintang Sutawika, Jungo Kasai, Ahmed Baruwa, Genta Indra Winata, Stella
+Biderman, Edward Raff, Dragomir Radev, and Vassilina Nikoulina. BLOOM+1: Adding language sup-
+port to BLOOM for zero-shot prompting. In Proceedings of the 61st Annual Meeting of the Association for
+Computational Linguistics (Volume 1: Long Papers), pages 11682–11703, 2023.
+Jeffrey Zhou, Tianjian Lu, Swaroop Mishra, Siddhartha Brahma, Sujoy Basu, Yi Luan, Denny Zhou, and
+Le Hou. Instruction-following evaluation for large language models. arXiv preprint arXiv:2311.07911,
+2023.
+19
+
+A
+Evaluation Benchmark Details
+The per-stage recovery aggregate in Section 6.1 (Figure 3, Table 3) is computed over a fixed suite of eight
+public benchmarks chosen to isolate the tokenizer-expansion contribution rather than downstream mid-
+training gains. The suite is:
+• Knowledge (1 benchmark). MMLU-Pro (Wang et al., 2024) (we report the answer-ranking variant
+scored by log-probability over the option set, which is more stable across base and post-trained check-
+points than free-form answer extraction).
+• Math (3 benchmarks). GSM8K (Cobbe et al., 2021), MATH500 (the 500-problem test subset of MATH
+(Hendrycks et al., 2021) selected by Lightman et al. (2024)), and GSM-Plus (Li et al., 2024).
+• Code (2 benchmarks). HumanEval+ (Liu et al., 2023) and LiveCodeBench v5 (Jain et al., 2024).
+• Multilingual (2 benchmarks). MMMLU (OpenAI, 2024) (the multilingual counterpart of MMLU,
+scored by log-probability over multiple-choice options, reported on the language subset configured
+for this evaluation) and MGSM (Shi et al., 2023) (multilingual GSM8K, generation-style).
+We exclude chat-template-dependent benchmarks (IFEval (Zhou et al., 2023), Multi-IF (He et al., 2024),
+and other tool-use and instruction-following benchmarks) from the Section 6.1 aggregate, for the reason
+given there: the source pre-training checkpoint has not been trained for chat-template adherence or tool-
+use formatting, so these benchmarks would understate it. The released LFM2.5-8B-A1B incorporates the
+corresponding capabilities through post-training (Section 6).
+Category
+Benchmark
+Source
+Zero-shot
+Stage 1
+Stage 2
+Knowledge
+MMLU-Pro
+30.7
+28.1
+30.6
+35.2
+Math
+GSM8K
+67.7
+65.1
+67.1
+67.0
+MATH500
+49.2
+39.0
+49.4
+61.8
+GSM-Plus
+46.2
+44.7
+46.5
+42.7
+Code
+HumanEval+
+51.8
+34.2
+43.9
+60.4
+LiveCodeBench v5
+10.0
+7.3
+11.8
+14.1
+Multilingual
+MMMLU
+39.3
+37.1
+39.5
+43.8
+MGSM
+62.5
+55.4
+60.5
+61.2
+8-benchmark aggregate
+44.7
+38.9
+43.7
+48.3
+Table 8: Per-benchmark recovery across expansion stages. Detail behind Figure 3 and Table 3. MMMLU
+is grouped under Multilingual together with MGSM, matching the main-text categorization in Table 3. The
+aggregate is the unweighted mean of all eight per-benchmark values per stage (not the mean of category
+means). All values are accuracy in percent except LiveCodeBench v5, which is pass@1.
+B
+Ablation Details
+This appendix gives the per-language breakdown behind the Stage 2 data-mixture ablation (Section 8, Ta-
+ble 7).
+The per-language breakdown of MGSM (Table 10) sharpens the diagnosis. The drop relative to the good
+mixture is not uniform across languages. The largest are on Latin-script European languages: French falls
+from 71.6 to 10.4 (−61 points), German from 66.4 to 18.0 (−48), and Spanish from 56.4 to 12.4 (−44). CJK and
+Cyrillic languages hold up substantially better: Japanese drops only 7 points, Russian 14, and Chinese 22.
+We read this as further evidence that the failure mode under the bad mixture is generation behavior rather
+than lost capability. The observed pattern is consistent with, though does not establish, a script-mediated
+20
+
+mechanism: when the model is steered toward English-style output by the predominantly English mix-
+ture, languages whose Latin script and shared vocabulary make the boundary with English porous may be
+more easily shifted toward English-like output, while script-distinct languages (CJK, Cyrillic) retain their
+language-specific generation behavior more readily. A controlled study with more languages per script
+group, statistical testing, and a defined linguistic-distance metric would be needed to make this stronger
+than an observation.
+C
+Tokenizer Construction Implementation Notes
+The expanded tokenizer is constructed by initializing the BPE merge table with the source tokenizer’s
+merges and continuing the merge training on the multilingual corpus. The special-token configuration
+(chat template special tokens, function-call delimiters, BOS/EOS) is preserved unchanged from the source
+tokenizer. Byte-level pre-tokenization rules are inherited. The vocabulary is capped at 128K and trimmed
+to the most frequent merges up to that limit. The target vocabulary holds 125,017 active tokens (Table 1),
+with the remaining slots reserved for future expansion.
+When the source tokenizer is implemented in tiktoken or another non-SentencePiece BPE framework,
+the merge-extension procedure differs in implementation details from the SentencePiece case. We refer the
+reader to Purason et al. (2026) for a careful discussion of the implementation differences between byte-level
+and SentencePiece-based BPE.
+Comparison to other production tokenizers.
+Table 11 compares the expanded 128K tokenizer to four
+widely used production tokenizers on a fixed multilingual evaluation corpus. Two observations frame the
+rest of the table. First, on the total corpus the expanded tokenizer produces the lowest token count of any
+tokenizer measured (11.3M tokens), despite having a smaller vocabulary than all four (gpt-4o 200K, Mistral
+Small 3.1 131K, Qwen3 151K, gemma-3 262K). Second, on the under-tokenized languages the expanded
+tokenizer is competitive with all peers and far better than the source, though it does not displace tokenizers
+that simply allocate more vocabulary slots to those scripts. Gemma-3 (262K vocabulary, more than 2×
+the expanded tokenizer’s) wins on Hindi (by roughly 2×), Bengali (by roughly 2.3×), Thai, Indonesian,
+Vietnamese, and Japanese, an unsurprising consequence of having twice the vocabulary budget to spend.
+With only 128K entries, the expanded tokenizer still produces the best total compression on a multilingually
+balanced corpus, wins on Arabic, code, and JSON, and comes close to the best peers on the remaining
+languages, all while remaining a far smaller embedding matrix to serve on-device.
+D
+On-device Latency Details
+Table 12 reports the full per-device throughput and disk-size numbers behind Figure 4, comparing the 65K
+and 128K embedding/LM-head matrix on an otherwise-identical LFM2-8B-A1B body.
+21
+
+Language
+Source
+Zero-shot
+Stage 1
+Stage 2
+∆
+Arabic
+51.4
+32.9
+50.1
+53.2
++1.8
+Bengali
+27.4
+25.0
+28.5
+32.2
++4.8
+Chinese
+53.9
+46.5
+52.2
+54.9
++1.0
+Czech
+41.7
+40.2
+41.2
+43.9
++2.2
+Dutch
+47.9
+43.5
+45.3
+50.8
++2.9
+English
+62.3
+59.8
+60.4
+64.1
++1.8
+Filipino
+37.7
+34.8
+36.7
+40.8
++3.1
+French
+56.5
+53.1
+55.6
+57.4
++0.9
+German
+56.1
+53.5
+55.3
+57.2
++1.1
+Greek
+32.4
+27.7
+32.6
+33.8
++1.4
+Hausa
+29.9
+30.0
+30.3
+31.1
++1.2
+Hebrew
+39.7
+25.7
+32.3
+40.7
++1.0
+Hindi
+32.0
+26.2
+33.8
+39.6
++7.6
+Igbo
+29.7
+29.4
+29.1
+31.6
++1.9
+Indonesian
+41.9
+34.0
+40.2
+51.0
++9.1
+Italian
+57.0
+52.0
+55.0
+57.4
++0.4
+Japanese
+53.5
+48.4
+52.2
+55.1
++1.6
+Korean
+50.7
+41.4
+49.8
+52.4
++1.7
+Kyrgyz
+32.0
+30.3
+31.7
+32.0
+0.0
+Lithuanian
+32.5
+31.5
+32.2
+33.5
++1.0
+Malagasy
+30.4
+30.2
+30.2
+32.2
++1.8
+Malay
+38.6
+32.8
+37.5
+45.4
++6.8
+Nepali
+30.4
+25.8
+28.8
+33.5
++3.1
+Nyanja
+30.5
+30.2
+30.4
+31.2
++0.7
+Persian
+42.8
+27.5
+36.8
+41.9
+-0.9
+Polish
+49.3
+45.1
+49.1
+51.1
++1.8
+Portuguese
+56.6
+51.8
+55.9
+56.7
++0.1
+Romanian
+44.7
+40.0
+43.5
+46.5
++1.8
+Russian
+51.1
+47.6
+50.3
+52.7
++1.6
+Serbian
+38.0
+36.6
+37.8
+37.7
+-0.3
+Shona
+31.2
+30.8
+31.2
+32.3
++1.1
+Somali
+29.5
+29.0
+29.6
+30.8
++1.3
+Spanish
+57.5
+53.8
+56.6
+57.2
+-0.3
+Swahili
+30.1
+29.5
+29.8
+31.5
++1.4
+Swedish
+44.5
+40.8
+44.6
+47.4
++2.9
+Turkish
+36.7
+31.4
+36.1
+42.1
++5.4
+Ukrainian
+43.0
+41.7
+42.6
+44.1
++1.1
+Vietnamese
+35.8
+25.6
+38.8
+47.4
++11.6
+Yoruba
+28.9
+28.3
+28.3
+30.1
++1.2
+Mean
+41.4
+37.0
+40.6
+43.7
++2.3
+Table 9:
+Global-MMLU accuracy per language across expansion stages (5-shot, answer-letter log-
+probability, chance = 25%). ∆is Stage 2 minus Source. Sampling noise is on the order of half a point
+per language (n ≈14,000). “Zero-shot” denotes the expansion stage with no recovery training, not the
+few-shot setting. Shown are the 39 languages on which at least one checkpoint exceeds 30%. Omitted (3, at
+or near chance for all checkpoints): Amharic, Sinhala, Telugu.
+22
+
+Language
+Source
+Stage 2 good
+Stage 2 bad
+∆bad vs good
+Spanish
+69.6
+56.4
+12.4
+−44.0
+French
+64.8
+71.6
+10.4
+−61.2
+German
+60.8
+66.4
+18.0
+−48.4
+Chinese
+57.2
+52.0
+30.0
+−22.0
+Japanese
+56.8
+59.2
+52.4
+−6.8
+Russian
+66.0
+61.6
+47.2
+−14.4
+Mean
+62.5
+61.2
+28.4
+−32.8
+Table 10: Per-language MGSM under the Stage 2 data mixture ablation. In this six-language MGSM
+subset, the Latin-script European languages (Spanish, French, German) collapse most sharply (−44 to −61
+points), while CJK and Cyrillic languages hold up better. The pattern is consistent with the bad-mixture
+model losing the ability to generate text whose script overlaps with English while retaining script-distinct
+generation more readily.
+Source
+Expanded
+gpt-4o
+Qwen3
+gemma-3
+Mistral
+(65K)
+(128K)
+(200K)
+(151K)
+(262K)
+Small-3.1 (131K)
+English
+953
+947
+945
+938
+953
+956
+French
+628
+599
+588
+657
+594
+591
+Spanish
+870
+838
+777
+897
+781
+819
+German
+752
+728
+686
+817
+705
+732
+Chinese
+1,094
+1,000
+1,017
+838
+914
+1,234
+Japanese
+708
+655
+834
+729
+636
+827
+Korean
+1,247
+1,051
+1,103
+1,241
+1,046
+1,033
+Arabic
+3,104
+2,211
+2,452
+2,757
+2,342
+2,224
+Vietnamese
+2,958
+1,141
+1,200
+1,170
+1,120
+1,220
+Hindi
+3,036
+1,278
+1,728
+2,264
+651
+1,433
+Bengali
+4,259
+1,272
+1,685
+2,276
+541
+1,293
+Thai
+5,708
+1,426
+2,060
+1,792
+1,145
+2,005
+Indonesian
+1,733
+1,204
+1,153
+1,428
+1,088
+1,258
+Code (Other)
+26,138
+25,432
+27,300
+38,480
+38,747
+38,865
+JSON
+4,775
+4,227
+4,842
+5,108
+5,389
+5,157
+Total corpus (M)
+15.7
+11.3
+12.0
+14.8
+12.7
+13.9
+Table 11: Tokenizer comparison on a held-out multilingual evaluation corpus (non-English web text
+from FineWeb 2 (Penedo et al., 2025), plus held-out English, code, and JSON samples). Each cell reports
+the number of tokens produced by the tokenizer on the per-language sub-corpus (lower is better, same text
+across columns). Bold marks the most efficient tokenizer per row among the six columns shown.
+Device
+Vocab
+Model size (MiB)
+Prefill (t/s)
+Decode (t/s)
+∆decode
+M4 Max CPU
+65K
+4516
+425
+187
+n/a
+M4 Max CPU
+128K
+4618
+450
+171
+−8.6%
+M4 Max GPU
+65K
+4516
+2794
+203
+n/a
+M4 Max GPU
+128K
+4618
+2778
+188
+−7.4%
+Snapdragon 8 Elite Gen 5
+65K
+4514
+106
+53
+n/a
+Snapdragon 8 Elite Gen 5
+128K
+4617
+107
+48
+−9.4%
+Table 12: Throughput of LFM2-8B-A1B with 65K vs 128K embedding/LM-head matrix at Q4 0. The
+model body weights are identical across rows: only the embedding and LM-head matrix size differs. Prefill
+is measured with a 512-token prompt on the M4 Max and a 256-token prompt on the Snapdragon 8 Elite
+Gen 5 phone. Decode is measured over 128 generated tokens at batch size 1.
+23

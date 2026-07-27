@@ -1,0 +1,24 @@
+{
+  "arxiv_id": "2607.03932",
+  "title": "MPSelectTune: Prompt-type Selection for Fine-tuning improves Concept Unlearning in LLMs",
+  "authors": [
+    "Shubhadip Nag",
+    "Srinjoy Das",
+    "Agniva Saha",
+    "Anushree Ghosh",
+    "Soumi Das",
+    "Tarun Kumar",
+    "Suparna Bhattacharya",
+    "Sourangshu Bhattacharya"
+  ],
+  "abstract": "LLMs can be conveniently adapted to a diverse set of tasks, e.g, prediction, question-answering tasks, etc, using appropriate prompts with few-shot examples. Biased or harmful concepts, e.g. gender or bio-weapons, present in pre-trained LLMs can lead to unsafe or unethical responses for many such prompts. Removing such undesirable concepts robustly across different prompt types remains a challenging problem, since existing unlearning methods typically ignore the impact of prompt variation. In this paper, we explore a novel adversarial approach to use a joint prompt for the main task and concept task prediction. We show that fine-tuning using the ``worst prompt type'' for concept prediction (with the highest concept accuracy) improves the average unlearning performance over a fine-tuning method that uses a combination of all prompt types. Our proposed method, MPSelectTune, is a two-stage approach that minimizes the concept accuracy of the highest accuracy-prompt type, after fine-tuning using a novel multi-task loss using multiple prompt types. Experimental results on four benchmarks show $2 - 15\\%$ main task accuracy improvements over recent baselines and while reducing the worst-case concept accuracy by up to $17\\%$ compared to recent baselines.",
+  "published": "2026-07-04T15:52:16Z",
+  "categories": [
+    "cs.LG",
+    "cs.AI"
+  ],
+  "keyword": "pre_training",
+  "fetched_at": "2026-07-21T05:15:51Z",
+  "abs_url": "https://arxiv.org/abs/2607.03932",
+  "pdf_url": "https://arxiv.org/pdf/2607.03932"
+}
