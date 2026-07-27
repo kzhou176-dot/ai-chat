@@ -1,0 +1,15 @@
+# aichat-hub 仓库 CODEOWNERS
+# 详细语法:https://docs.github.com/zh/codeowners
+
+# 默认所有文件需 owner review
+*                       @kzhou176-dot
+
+# 核心代码(双 review 更稳)
+/scripts/                @kzhou176-dot
+/tests/                  @kzhou176-dot
+/packaging/              @kzhou176-dot
+/bin/                    @kzhou176-dot
+
+# 文档可放宽
+/docs/                   @kzhou176-dot
+/*.md                    @kzhou176-dot

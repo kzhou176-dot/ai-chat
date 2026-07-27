@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 📖 README
+    url: https://github.com/kzhou176-dot/ai-chat/blob/main/README.md
+  - name: 💬 Discussions
+    url: https://github.com/kzhou176-dot/ai-chat/discussions
+  - name: 📦 Releases
+    url: https://github.com/kzhou176-dot/ai-chat/releases
